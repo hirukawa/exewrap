@@ -1,21 +1,17 @@
 #include <Windows.h>
 
-int _main(int argc, char* argv[]);
-static LPWSTR _A2W(LPCSTR s);
+extern int main(int argc, char* argv[]);
 static LPSTR  _W2A(LPCWSTR s);
 
 void mainCRTStartup()
 {
 	int     argc;
-	LPSTR   lpCmdLineA;
 	LPWSTR  lpCmdLineW;
 	LPWSTR* argvW;
 	LPSTR*  argvA;
 	int     i;
-	int     ret;
+	int     ret = 0;
 	
-	lpCmdLineA = GetCommandLineA();
-	lpCmdLineW = _A2W(lpCmdLineA);
 	lpCmdLineW = GetCommandLineW();
 	argvW = CommandLineToArgvW(lpCmdLineW, &argc);
 	argvA = (LPSTR*)HeapAlloc(GetProcessHeap(), 0, (argc + 1) * sizeof(LPSTR));
@@ -23,35 +19,11 @@ void mainCRTStartup()
 	{
 		argvA[i] = _W2A(argvW[i]);
 	}
-	HeapFree(GetProcessHeap(), 0, lpCmdLineW);
 	argvA[argc] = NULL;
 	
-	ret = _main(argc, argvA);
+	ret = main(argc, argvA);
 	HeapFree(GetProcessHeap(), 0, argvA);
 	ExitProcess(ret);
-}
-
-static LPWSTR _A2W(LPCSTR s)
-{
-	LPWSTR buf;
-	int ret;
-
-	ret = MultiByteToWideChar(CP_ACP, 0, s, -1, NULL, 0);
-	if(ret == 0)
-	{
-		return NULL;
-	}
-
-	buf = (LPWSTR)HeapAlloc(GetProcessHeap(), 0, (ret + 1) * sizeof(WCHAR));
-	ret = MultiByteToWideChar(CP_ACP, 0, s, -1, buf, (ret + 1));
-	if(ret == 0)
-	{
-		HeapFree(GetProcessHeap(), 0, buf);
-		return NULL;
-	}
-	buf[ret] = L'\0';
-
-	return buf;
 }
 
 static LPSTR _W2A(LPCWSTR s)

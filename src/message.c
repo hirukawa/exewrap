@@ -3,49 +3,50 @@
 #include <mbctype.h>
 #include "include/message.h"
 
-const char* get_message(int msg_id);
-static int get_lang_index();
-static void init_message();
+static const WORD LANGID_ja_JP = MAKELANGID(LANG_JAPANESE, SUBLANG_JAPANESE_JAPAN);
 
-static int lang_index = -1;
+const char* get_message(int msg_id);
+static int  get_lang_index();
+static void init_message();
+static int  lang_index = -1;
 static const char** msg;
 
-const char* get_message(int msg_id) {
-	if(lang_index < 0) {
+const char* get_message(int msg_id)
+{
+	if(lang_index < 0)
+	{
 		lang_index = get_lang_index();
 		init_message();
 	}
+
 	return msg[MSG_ID_COUNT * lang_index + msg_id];
 }
 
-static int get_lang_index() {
+static int get_lang_index()
+{
 	int codepage = GetConsoleCP();
-	char* locale = setlocale(LC_ALL, "");
-	char* p = locale;
 
-	switch(codepage) {
+	switch(codepage)
+	{
 	case 65001: return MSG_LANG_ID_EN;
-	case 437: return MSG_LANG_ID_EN;
-	case 932: return MSG_LANG_ID_JA;
+	case 437:   return MSG_LANG_ID_EN;
+	case 932:   return MSG_LANG_ID_JA;
 	}
 
-	while(*p != '\0') {
-		*p = tolower(*p);
-		p++;
-	}
-
-	if(strstr(locale, "japan") != NULL) {
-		return MSG_LANG_ID_JA;
-	}
-	if(strstr(locale, "932") != NULL) {
+	if(GetUserDefaultLangID() == LANGID_ja_JP)
+	{
 		return MSG_LANG_ID_JA;
 	}
 
 	return MSG_LANG_ID_EN;
 }
 
-static void init_message() {
-	msg = (const char**)calloc(MSG_LANG_ID_COUNT * (MSG_ID_COUNT + 1), sizeof(const char*));
+static void init_message()
+{
+	int size = MSG_LANG_ID_COUNT * (MSG_ID_COUNT + 1) * sizeof(const char*);
+
+	msg = (const char**)HeapAlloc(GetProcessHeap(), 0, size);
+	SecureZeroMemory((void*)msg, size);
 
 	//
 	// ENGLISH
