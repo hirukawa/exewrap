@@ -15,7 +15,6 @@ extern LPTSTR  GetProgramFiles();
 extern LPTSTR  GetJavaVMPath();
 extern LPTSTR  GetLibraryPath();
 extern void    AddPath(const char* path);
-extern LPTSTR  lstrrchr(LPTSTR source, TCHAR c);
 
 extern JavaVM* jvm;
 extern JNIEnv* env;
