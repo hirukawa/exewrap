@@ -1,5 +1,3 @@
-BIN     = ..
-OBJ     = ..\obj
 INC     = /I ..\include /I..\include\win32
 LIBS    = kernel32.lib user32.lib advapi32.lib shell32.lib
 
@@ -8,6 +6,13 @@ LINK    = link.exe
 RC      = RC.exe
 JAVAC   = javac.exe
 
+!if ([@cl.exe 2>&1| @findstr "x64" > nul] == 0)
+BIN=..\bin\x64
+OBJ=..\obj\x64
+!else
+BIN=..\bin\x86
+OBJ=..\obj\x86
+!endif
 
 CFLAGS=\
 	/nologo\
@@ -18,7 +23,6 @@ CFLAGS=\
 	/c
 
 LDFLAGS=\
-	/INCREMENTAL:NO /DEBUG /OPT:REF /OPT:ICF\
 	/nologo\
 	/LTCG\
 	/NODEFAULTLIB\
@@ -27,21 +31,42 @@ LDFLAGS=\
 RCFLAGS=\
 	/nologo
 
-ALL : $(BIN)\exewrap.exe
+ALL :
+	Make.bat
+
+EXEWRAP_X86 : $(BIN)\exewrap.exe
+
+EXEWRAP_X64 : $(BIN)\exewrap.exe
+
+IMAGE_X86 : $(OBJ)\image_console.img $(OBJ)\image_gui.img $(OBJ)\image_service.img
+
+IMAGE_X64 : $(OBJ)\image_console.img $(OBJ)\image_gui.img $(OBJ)\image_service.img
 
 CLEAN :
-	-@erase /Q $(OBJ)\*
-	-@erase /Q $(OBJ)
+	-@erase /Q $(OBJ)\..\x86\*
+	-@erase /Q $(OBJ)\..\x86
+	-@erase /Q $(OBJ)\..\x64\*
+	-@erase /Q $(OBJ)\..\x64
+	-@erase /Q $(BIN)\..\x86\*
+	-@erase /Q $(BIN)\..\x86
+	-@erase /Q $(BIN)\..\x64\*
+	-@erase /Q $(BIN)\..\x64
+
+$(BIN) :
+	@if not exist $(BIN)/$(NULL) mkdir $(BIN)
 
 $(OBJ) :
 	@if not exist $(OBJ)/$(NULL) mkdir $(OBJ)
 
-$(BIN)\exewrap.exe : $(OBJ) $(OBJ)\exewrap.obj $(OBJ)\startup.obj $(OBJ)\message.obj $(OBJ)\jvm.obj $(OBJ)\libc.obj $(OBJ)\image_console.img $(OBJ)\image_gui.img $(OBJ)\image_service.img $(OBJ)\exewrap.res  $(OBJ)\ClassicLoader.class $(OBJ)\PackLoader.class $(OBJ)\JarOptimizer.class
+$(BIN)\exewrap.exe : $(BIN) $(OBJ) $(OBJ)\exewrap.obj $(OBJ)\startup.obj $(OBJ)\message.obj $(OBJ)\jvm.obj $(OBJ)\libc.obj $(OBJ)\image_console.img $(OBJ)\image_gui.img $(OBJ)\image_service.img $(OBJ)\exewrap.res  $(OBJ)\ClassicLoader.class $(OBJ)\PackLoader.class $(OBJ)\JarOptimizer.class
 	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE /OUT:$(BIN)\exewrap.exe $(OBJ)\exewrap.obj $(OBJ)\startup.obj $(OBJ)\message.obj $(OBJ)\jvm.obj $(OBJ)\libc.obj $(OBJ)\exewrap.res $(LIBS)
 	$(OBJ)\bindres.exe $(BIN)\exewrap.exe VERSION_INFO       resources\versioninfo.bin
-	$(OBJ)\bindres.exe $(BIN)\exewrap.exe IMAGE_CONSOLE      $(OBJ)\image_console.img
-	$(OBJ)\bindres.exe $(BIN)\exewrap.exe IMAGE_GUI          $(OBJ)\image_gui.img
-	$(OBJ)\bindres.exe $(BIN)\exewrap.exe IMAGE_SERVICE      $(OBJ)\image_service.img
+	$(OBJ)\bindres.exe $(BIN)\exewrap.exe IMAGE_CONSOLE_32   $(OBJ)\..\x86\image_console.img
+	$(OBJ)\bindres.exe $(BIN)\exewrap.exe IMAGE_CONSOLE_64   $(OBJ)\..\x64\image_console.img
+	$(OBJ)\bindres.exe $(BIN)\exewrap.exe IMAGE_GUI_32       $(OBJ)\..\x86\image_gui.img
+	$(OBJ)\bindres.exe $(BIN)\exewrap.exe IMAGE_GUI_64       $(OBJ)\..\x64\image_gui.img
+	$(OBJ)\bindres.exe $(BIN)\exewrap.exe IMAGE_SERVICE_32   $(OBJ)\..\x86\image_service.img
+	$(OBJ)\bindres.exe $(BIN)\exewrap.exe IMAGE_SERVICE_64   $(OBJ)\..\x64\image_service.img
 	$(OBJ)\bindres.exe $(BIN)\exewrap.exe CLASSIC_LOADER     $(OBJ)\ClassicLoader.class
 	$(OBJ)\bindres.exe $(BIN)\exewrap.exe PACK_LOADER        $(OBJ)\PackLoader.class
 	$(OBJ)\bindres.exe $(BIN)\exewrap.exe JAR_OPTIMIZER      $(OBJ)\JarOptimizer.class

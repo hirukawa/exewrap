@@ -3,6 +3,7 @@
 
 #define JVM_ELOADLIB	(+1)
 
+extern int     GetProcessArchitecture();
 extern void    InitializePath(LPTSTR relative_classpath, LPTSTR relative_extdirs, BOOL useServerVM);
 extern JNIEnv* CreateJavaVM(LPTSTR vm_args_opt, BOOL useServerVM, int* err);
 extern void    DestroyJavaVM();

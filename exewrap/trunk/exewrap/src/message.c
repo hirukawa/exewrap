@@ -70,7 +70,8 @@ static void init_message()
 	"Failed to create the Java Virtual Machine. An invalid argument was supplied.";
 
 	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_ERR_CREATE_JVM_ELOADLIB] =
-	"Failed to create the Java Virtual Machine. Failed to load jvm.dll.";
+	"Failed to create the Java Virtual Machine. Failed to load jvm.dll.\n"
+	"%d-bit Java Virtual Machine required.";
 
 	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_ERR_TARGET_VERSION] =
 	"Java %s or higher is required to run this program.";
@@ -154,7 +155,8 @@ static void init_message()
 	"JavaVMを作成できませんでした。引数が不正です。";
 
 	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_ERR_CREATE_JVM_ELOADLIB] =
-	"JavaVMを作成できませんでした。jvm.dllをロードできませんでした。";
+	"JavaVMを作成できませんでした。jvm.dllをロードできませんでした。\n"
+	"このプログラムの実行には %d-bit JavaVM が必要です。";
 
 	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_ERR_TARGET_VERSION] =
 	"このプログラムの実行には Java %s 以上が必要です。";
