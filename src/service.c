@@ -482,10 +482,8 @@ static char** ParseOption(int argc, char* argv[])
 	int i;
 	char** opt = (char**)HeapAlloc(GetProcessHeap(), 0, 256 * 8);
 
-	for(i = 0; i < 256; i++)
-	{
-		opt[i] = NULL;
-	}
+	SecureZeroMemory(opt, 256 * 8);
+
 	if((argc > 1) && (*argv[1] != '-'))
 	{
 		opt[0] = argv[1];

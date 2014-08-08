@@ -40,6 +40,8 @@ int main(int argc, char* argv[])
 	DWORD targetVersion;
 	char* targetVersionString;
 	char** opt = ParseOption(argc, argv);
+	int   architecture_bits = 0;
+	char  image_name[32];
 	char* jarfile;
 	char* exefile = NULL;
 	
@@ -65,13 +67,17 @@ int main(int argc, char* argv[])
 	
 	if((argc < 2) || ((opt['j'] == NULL) && (opt[0] == NULL)))
 	{
-		printf("exewrap 0.9.9 Native executable java application wrapper.\r\n"
+		int bits = GetProcessArchitecture();
+
+		printf("exewrap 0.9.9 for %s (%d-bit)\r\n"
+			   "Native executable java application wrapper.\r\n"
 			   "Copyright (C) 2005-2014 HIRUKAWA Ryo. All rights reserved.\r\n"
 			   "\r\n"
 			   "Usage: %s <options> <jar-file>\r\n"
 			   "Options:\r\n"
 			   "  -g                  \t create Window application.\r\n"
 			   "  -s                  \t create Windows Service application.\r\n"
+			   "  -A <architecture>   \t select exe-file architecture. (default %s)\r\n"
 			   "  -t <version>        \t set target java runtime version. (default 1.5)\r\n"
 			   "  -2                  \t disable Pack200.\r\n"
 			   "  -L <ext-dirs>       \t set ext-dirs.\r\n"
@@ -86,7 +92,7 @@ int main(int argc, char* argv[])
 			   "  -V <product-version>\t set product version.\r\n"
 			   "  -j <jar-file>       \t input jar-file.\r\n"
 			   "  -o <exe-file>       \t output exe-file.\r\n"
-			, argv[0]);
+			, (bits == 64 ? "x64" : "x86"), bits, argv[0], (bits == 64 ? "x64" : "x86"));
 
 		ExitProcess(0);
 	}
@@ -135,18 +141,37 @@ int main(int argc, char* argv[])
 		lstrcpy(exefile, buf);
 	}
 	
+
+	if(opt['A'])
+	{
+		if(lstrstr(opt['A'], "86") != NULL)
+		{
+			architecture_bits = 32;
+		}
+		else if (lstrstr(opt['A'], "64") != NULL)
+		{
+			architecture_bits = 64;
+		}
+	}
+	if(architecture_bits == 0)
+	{
+		architecture_bits = GetProcessArchitecture();
+	}
+	printf("Architecture: %s\n", (architecture_bits == 64 ? "x64 (64-bit)" : "x86 (32-bit)"));
+
 	if(opt['g'])
 	{
-		exeBuffer = GetResource("IMAGE_GUI", RT_RCDATA, &exeSize);
+		sprintf(image_name, "IMAGE_GUI_%d", architecture_bits);
 	}
 	else if(opt['s'])
 	{
-		exeBuffer = GetResource("IMAGE_SERVICE", RT_RCDATA, &exeSize);
+		sprintf(image_name, "IMAGE_SERVICE_%d", architecture_bits);
 	}
 	else
 	{
-		exeBuffer = GetResource("IMAGE_CONSOLE", RT_RCDATA, &exeSize);
+		sprintf(image_name, "IMAGE_CONSOLE_%d", architecture_bits);
 	}
+	exeBuffer = GetResource(image_name, RT_RCDATA, &exeSize);
 	
 	previousRevision = GetVersionRevision(exefile);
 	DeleteFile(exefile);
@@ -263,7 +288,7 @@ int main(int argc, char* argv[])
 	}
 	original_filename = lstrrchr(exefile, '\\') + 1;
 	newVersion = SetVersionInfo(exefile, versionNumber, previousRevision, fileDescription, copyright, company_name, product_name, product_version, original_filename, jarfile);
-	printf("%s  version %s\r\n", lstrrchr(exefile, '\\') + 1, newVersion);
+	printf("%s (%d-bit) version %s\r\n", lstrrchr(exefile, '\\') + 1, architecture_bits, newVersion);
 	
 	ExitProcess(0);
 }
@@ -473,13 +498,10 @@ char* SetVersionInfo(LPCTSTR filename, char* versionNumber, DWORD previousRevisi
 
 char** ParseOption(int argc, char* argv[])
 {
-	int i;
 	char** opt = (char**)HeapAlloc(GetProcessHeap(), 0, 256 * 8);
+	
+	SecureZeroMemory(opt, 256 * 8);
 
-	for(i = 0; i < 256; i++)
-	{
-		opt[i] = NULL;
-	}
 	if((argc > 1) && (*argv[1] != '-'))
 	{
 		opt[0] = argv[1];

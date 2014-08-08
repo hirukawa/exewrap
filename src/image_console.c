@@ -118,9 +118,12 @@ int main(int argc, char* argv[])
 		exit_code = MSG_ID_ERR_CREATE_JVM_EINVAL;
 		goto EXIT;
 	case JVM_ELOADLIB:
-		OutputMessage(_(MSG_ID_ERR_CREATE_JVM_ELOADLIB));
+	{
+		sprintf(message, _(MSG_ID_ERR_CREATE_JVM_ELOADLIB), GetProcessArchitecture());
+		OutputMessage(message);
 		exit_code = MSG_ID_ERR_CREATE_JVM_ELOADLIB;
 		goto EXIT;
+	}
 	default:
 		OutputMessage(_(MSG_ID_ERR_CREATE_JVM_UNKNOWN));
 		exit_code = MSG_ID_ERR_CREATE_JVM_UNKNOWN;
@@ -130,7 +133,7 @@ int main(int argc, char* argv[])
 	version = GetJavaRuntimeVersion();
 	targetVersionString = (LPTSTR)GetResourceBuffer("TARGET_VERSION");
 	targetVersion = *(DWORD*)targetVersionString;
-	if(targetVersion > version)
+	if (targetVersion > version)
 	{
 		sprintf(message, _(MSG_ID_ERR_TARGET_VERSION), targetVersionString + 4);
 		lstrcat(message, "\r\n");
@@ -462,4 +465,5 @@ void OutputMessage(const char* text)
 	DWORD written;
 
 	WriteConsole(GetStdHandle(STD_ERROR_HANDLE), text, size, &written, NULL); 
+	WriteConsole(GetStdHandle(STD_ERROR_HANDLE), "\r\n", 2, &written, NULL);
 }

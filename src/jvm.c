@@ -9,6 +9,7 @@
 #include "include/jvm.h"
 
 void    InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useServerVM);
+int     GetProcessArchitecture();
 JNIEnv* CreateJavaVM(LPTSTR vm_args_opt, BOOL useServerVM, int* err);
 void    DestroyJavaVM();
 JNIEnv* AttachJavaVM();
@@ -17,6 +18,7 @@ DWORD   GetJavaRuntimeVersion();
 jstring GetJString(JNIEnv* _env, const char* src);
 LPSTR   GetShiftJIS(JNIEnv* _env, jstring src);
 char*   GetArgsOpt(LPTSTR vm_args_opt);
+BOOL    FindJavaVM(char* output, const char* jre, BOOL useServerVM);
 LPTSTR  FindJavaHomeFromRegistry(LPCTSTR _subkey, char* output);
 void    AddPath(LPCTSTR path);
 LPTSTR  GetModulePath(LPTSTR buffer, DWORD size);
@@ -42,6 +44,14 @@ TCHAR   classpath[2048];
 TCHAR   extdirs[2048];
 TCHAR	libpath[2048];
 HMODULE jvmdll;
+
+/* このプロセスのアーキテクチャ(32ビット/64ビット)を返します。
+ * 戻り値として32ビットなら 32 を返します。64ビットなら 64 を返します。
+ */
+int GetProcessArchitecture()
+{
+	return sizeof(int*) * 8;
+}
 
 JNIEnv* CreateJavaVM(LPTSTR vm_args_opt, BOOL useServerVM, int* err)
 {
@@ -214,12 +224,12 @@ DWORD GetJavaRuntimeVersion()
 					tail++;
 				}
 				major = atoi(version);
-				version = lstrstr(version, ".");
+				version = lstrchr(version, '.');
 				if(version != NULL && version < tail)
 				{
 					minor = atoi(++version);
 				}
-				version = lstrstr(version, ".");
+				version = lstrchr(version, '.');
 				if(version != NULL && version < tail)
 				{
 					build = atoi(++version);
@@ -311,7 +321,7 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 	*(lstrrchr(buffer, '.')) = 0;
 	lstrcat(opt_policy_path, lstrrchr(buffer, '\\') + 1);
 	lstrcat(opt_policy_path, ".policy");
-	if(GetFileAttributes(opt_policy_path + 23) == 0xFFFFFFFF)
+	if(GetFileAttributes(opt_policy_path + 23) == -1)
 	{
 		opt_policy_path[0] = 0x00;
 	}
@@ -327,22 +337,9 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 		lstrcat(binpath, "\\bin");
 		lstrcpy(extpath, jre1);
 		lstrcat(extpath, "\\lib\\ext");
-		jvmpath[0] = '\0';
-		if(useServerVM)
+		if (FindJavaVM(jvmpath, jre2, useServerVM) == FALSE)
 		{
-			lstrcpy(jvmpath, jre1);
-			lstrcat(jvmpath, "\\bin\\server");
-			lstrcpy(buffer, jvmpath);
-			lstrcat(buffer, "\\jvm.dll");
-			if(GetFileAttributes(buffer) == 0xFFFFFFFF)
-			{
-				jvmpath[0] = '\0';
-			}
-		}
-		if(jvmpath[0] == '\0')
-		{
-			lstrcpy(jvmpath, jre1);
-			lstrcat(jvmpath, "\\bin\\client");
+			jvmpath[0] = '\0';
 		}
 	}
 	else
@@ -359,22 +356,9 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 				lstrcat(binpath, "\\bin");
 				lstrcpy(extpath, jre2);
 				lstrcat(extpath, "\\lib\\ext");
-				jvmpath[0] = '\0';
-				if(useServerVM)
+				if (FindJavaVM(jvmpath, jre2, useServerVM) == FALSE)
 				{
-					lstrcpy(jvmpath, jre2);
-					lstrcat(jvmpath, "\\bin\\server");
-					lstrcpy(buffer, jvmpath);
-					lstrcat(buffer, "\\jvm.dll");
-					if(GetFileAttributes(buffer) == 0xFFFFFFFF)
-					{
-						jvmpath[0] = '\0';
-					}
-				}
-				if(jvmpath[0] == '\0')
-				{
-					lstrcpy(jvmpath, jre2);
-					lstrcat(jvmpath, "\\bin\\client");
+					jvmpath[0] = '\0';
 				}
 			}
 		}
@@ -393,8 +377,14 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 				"SOFTWARE\\JavaSoft\\Java Runtime Environment",
 				NULL
 			};
-			int i = 0;
 			char* output = (char*)HeapAlloc(GetProcessHeap(), 0, MAX_PATH);
+			int i = 0;
+
+			if (GetProcessArchitecture() == 64)
+			{
+				i = 2; //64ビットEXEの場合は 32ビットJREに適合しないので、Wow6432 レジストリの検索をスキップします。
+			}
+
 			while(subkeys[i] != NULL)
 			{
 				if(FindJavaHomeFromRegistry(subkeys[i], output) != NULL)
@@ -428,23 +418,7 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 				lstrcat(binpath, "\\bin");
 				lstrcpy(extpath, jre3);
 				lstrcat(extpath, "\\lib\\ext");
-				jvmpath[0] = '\0';
-				if(useServerVM)
-				{
-					lstrcpy(jvmpath, jre3);
-					lstrcat(jvmpath, "\\bin\\server");
-					lstrcpy(buffer, jvmpath);
-					lstrcat(buffer, "\\jvm.dll");
-					if(GetFileAttributes(buffer) == 0xFFFFFFFF)
-					{
-						jvmpath[0] = '\0';
-					}
-				}
-				if(jvmpath[0] == '\0')
-				{
-					lstrcpy(jvmpath, jre3);
-					lstrcat(jvmpath, "\\bin\\client");
-				}
+				FindJavaVM(jvmpath, jre3, useServerVM);
 			}
 		}
 	}
@@ -509,6 +483,66 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 
 	AddPath(binpath);
 	AddPath(jvmpath);
+}
+
+/* 指定したJRE BINディレクトリで client\jvm.dll または server\jvm.dll を検索します。
+ * jvm.dll の見つかったディレクトリを output に格納します。
+ * jvm.dll が見つからなかった場合は output に client のパスを格納します。
+ * useServerVM が TRUE の場合、Server VM を優先検索します。
+ * jvm.dll が見つかった場合は TRUE, 見つからなかった場合は FALSE を返します。
+ */
+BOOL FindJavaVM(char* output, const char* jre, BOOL useServerVM)
+{
+	char path[MAX_PATH];
+	char buf[MAX_PATH];
+
+	if (useServerVM)
+	{
+		lstrcpy(path, jre);
+		lstrcat(path, "\\bin\\server");
+		lstrcpy(buf, path);
+		lstrcat(buf, "\\jvm.dll");
+		if (GetFileAttributes(buf) == -1)
+		{
+			lstrcpy(path, jre);
+			lstrcat(path, "\\bin\\client");
+			lstrcpy(buf, path);
+			lstrcat(buf, "\\jvm.dll");
+			if (GetFileAttributes(buf) == -1)
+			{
+				path[0] = '\0';
+			}
+		}
+	}
+	else
+	{
+		lstrcpy(path, jre);
+		lstrcat(path, "\\bin\\client");
+		lstrcpy(buf, path);
+		lstrcat(buf, "\\jvm.dll");
+		if (GetFileAttributes(buf) == -1)
+		{
+			lstrcpy(path, jre);
+			lstrcat(path, "\\bin\\server");
+			lstrcpy(buf, path);
+			lstrcat(buf, "\\jvm.dll");
+			if (GetFileAttributes(buf) == -1)
+			{
+				path[0] = '\0';
+			}
+		}
+	}
+	if (path[0] != '\0')
+	{
+		lstrcpy(output, path);
+		return TRUE;
+	}
+	else
+	{
+		lstrcpy(output, jre);
+		lstrcat(output, "\\bin\\client");
+		return FALSE;
+	}
 }
 
 char* FindJavaHomeFromRegistry(LPCTSTR _subkey, char* output)
