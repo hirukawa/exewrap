@@ -9,7 +9,9 @@
 #include "include/jvm.h"
 #include "include/notify.h"
 #include "include/message.h"
-#include "include/libc.h"
+
+static char** GetArgs(int* argc);
+static LPSTR _W2A(LPCWSTR s);
 
 DWORD WINAPI CallMainMethod(void* arglist);
 char** arg_split(char* buffer, int* p_argc);
@@ -37,8 +39,52 @@ DWORD  size   = 0;
 jclass mainClass = NULL;
 jmethodID mainMethod = NULL;
 
-int main(int argc, char* argv[])
+static char** GetArgs(int* argc)
 {
+	LPWSTR  lpCmdLineW;
+	LPWSTR* argvW;
+	LPSTR*  argvA;
+	int     i;
+	int     ret = 0;
+
+	lpCmdLineW = GetCommandLineW();
+	argvW = CommandLineToArgvW(lpCmdLineW, argc);
+	argvA = (LPSTR*)HeapAlloc(GetProcessHeap(), 0, (*argc + 1) * sizeof(LPSTR));
+	for (i = 0; i < *argc; i++)
+	{
+		argvA[i] = _W2A(argvW[i]);
+	}
+	argvA[*argc] = NULL;
+
+	return argvA;
+}
+
+static LPSTR _W2A(LPCWSTR s)
+{
+	LPSTR buf;
+	int ret;
+
+	ret = WideCharToMultiByte(CP_ACP, 0, s, -1, NULL, 0, NULL, NULL);
+	if (ret <= 0)
+	{
+		return NULL;
+	}
+	buf = (LPSTR)HeapAlloc(GetProcessHeap(), 0, ret + 1);
+	ret = WideCharToMultiByte(CP_ACP, 0, s, -1, buf, (ret + 1), NULL, NULL);
+	if (ret == 0)
+	{
+		HeapFree(GetProcessHeap(), 0, buf);
+		return NULL;
+	}
+	buf[ret] = '\0';
+
+	return buf;
+}
+
+INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine, INT nCmdShow)
+{
+	int argc;
+	char** argv = GetArgs(&argc);
 	int exit_code = 0;
 	int i;
 	BOOL useServerVM = FALSE;
@@ -73,16 +119,16 @@ int main(int argc, char* argv[])
 	}
 	if(GetResourceSize("EXTFLAGS") > 0)
 	{
-		ext_flags = lstrupr((LPTSTR)GetResourceBuffer("EXTFLAGS"));
+		ext_flags = _strupr((LPTSTR)GetResourceBuffer("EXTFLAGS"));
 	}
-	if(ext_flags != NULL && lstrstr(ext_flags, "SERVER") != NULL)
+	if(ext_flags != NULL && strstr(ext_flags, "SERVER") != NULL)
 	{
 		useServerVM = TRUE;
 	}
 
 	InitializePath(relative_classpath, relative_extdirs, useServerVM);
 
-	if(ext_flags != NULL && lstrstr(ext_flags, "SHARE") != NULL)
+	if(ext_flags != NULL && strstr(ext_flags, "SHARE") != NULL)
 	{
 		synchronize_mutex_handle = notify_exec(CallMainMethod, argc, argv);
 		if(synchronize_mutex_handle == NULL)
@@ -92,7 +138,7 @@ int main(int argc, char* argv[])
 		}
 	}
 
-	if(ext_flags != NULL && lstrstr(ext_flags, "SINGLE") != NULL)
+	if(ext_flags != NULL && strstr(ext_flags, "SINGLE") != NULL)
 	{
 		if(CreateMutex(NULL, TRUE, GetModuleObjectName("SINGLE")), GetLastError() == ERROR_ALREADY_EXISTS)
 		{
@@ -193,7 +239,7 @@ int main(int argc, char* argv[])
 	}
 	
 	// FileLogStream
-	if(ext_flags == NULL || lstrstr(ext_flags, "NOLOG") == NULL) 
+	if(ext_flags == NULL || strstr(ext_flags, "NOLOG") == NULL) 
 	{
 		if((fileLogStreamClass = (*env)->DefineClass(env, "FileLogStream", NULL, GetResourceBuffer("FILELOG_STREAM"), GetResourceSize("FILELOG_STREAM"))) != NULL)
 		{
@@ -433,27 +479,31 @@ DWORD WINAPI CallMainMethod(void* _shared_memory_handle)
 	lstrcpy(buf, (char*)arglist);
 	UnmapViewOfFile(lpShared);
 
+	argv = arg_split(buf, &argc);
+	HeapFree(GetProcessHeap(), 0, buf);
+
+	env = AttachJavaVM();
+	if(env != NULL)
+	{
+		args = (*env)->NewObjectArray(env, argc - 1, (*env)->FindClass(env, "java/lang/String"), NULL);
+		for (i = 1; i < argc; i++)
+		{
+			(*env)->SetObjectArrayElement(env, args, (i - 1), GetJString(env, argv[i]));
+		}
+	}
+
 	shared_memory_read_event_name = GetModuleObjectName("SHARED_MEMORY_READ");
 	shared_memory_read_event_handle = OpenEvent(EVENT_MODIFY_STATE, FALSE, shared_memory_read_event_name);
-	if(shared_memory_read_event_handle != NULL)
+	if (shared_memory_read_event_handle != NULL)
 	{
 		SetEvent(shared_memory_read_event_handle);
 		CloseHandle(shared_memory_read_event_handle);
 	}
 	HeapFree(GetProcessHeap(), 0, shared_memory_read_event_name);
 
-	argv = arg_split(buf, &argc);
-	HeapFree(GetProcessHeap(), 0, buf);
-
-	env = AttachJavaVM();
 	if(env == NULL)
 	{
 		goto EXIT;
-	}
-	args = (*env)->NewObjectArray(env, argc - 1, (*env)->FindClass(env, "java/lang/String"), NULL);
-	for(i = 1; i < argc; i++)
-	{
-		(*env)->SetObjectArrayElement(env, args, (i - 1), GetJString(env, argv[i]));
 	}
 
 	(*env)->CallStaticVoidMethod(env, mainClass, mainMethod, args);
@@ -485,7 +535,7 @@ char** arg_split(char* buffer, int* p_argc)
 	argv = (char**)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, (*p_argc) * sizeof(char*));
 	for(i = 0; i < *p_argc; i++)
 	{
-		argv[i] = lstrtok(i?NULL:buffer, "\n");
+		argv[i] = strtok(i?NULL:buffer, "\n");
 	}
 	return argv;
 }
@@ -572,7 +622,7 @@ void OutputMessage(const char* text)
 	char buffer[MAX_PATH];
 
 	GetModuleFileName(NULL, buffer, MAX_PATH);
-	filename = lstrrchr(buffer, '\\') + 1;
+	filename = strrchr(buffer, '\\') + 1;
 
 	MessageBox(NULL, text, filename, MB_ICONEXCLAMATION | MB_APPLMODAL | MB_OK | MB_SETFOREGROUND);
 }

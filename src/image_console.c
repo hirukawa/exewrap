@@ -9,7 +9,6 @@
 #include "include/jvm.h"
 #include "include/notify.h"
 #include "include/message.h"
-#include "include/libc.h"
 
 DWORD WINAPI CallMainMethod(void* arglist);
 char** arg_split(char* buffer, int* p_argc);
@@ -57,16 +56,16 @@ int main(int argc, char* argv[])
 	}
 	if(GetResourceSize("EXTFLAGS") > 0)
 	{
-		ext_flags = lstrupr((LPTSTR)GetResourceBuffer("EXTFLAGS"));
+		ext_flags = _strupr((LPTSTR)GetResourceBuffer("EXTFLAGS"));
 	}
-	if(ext_flags != NULL && lstrstr(ext_flags, "SERVER") != NULL)
+	if(ext_flags != NULL && strstr(ext_flags, "SERVER") != NULL)
 	{
 		useServerVM = TRUE;
 	}
 
 	InitializePath(relative_classpath, relative_extdirs, useServerVM);
 
-	if(ext_flags != NULL && lstrstr(ext_flags, "SHARE") != NULL)
+	if(ext_flags != NULL && strstr(ext_flags, "SHARE") != NULL)
 	{
 		synchronize_mutex_handle = notify_exec(CallMainMethod, argc, argv);
 		if(synchronize_mutex_handle == NULL)
@@ -75,7 +74,7 @@ int main(int argc, char* argv[])
 			goto EXIT;
 		}
 	}
-	if(ext_flags != NULL && lstrstr(ext_flags, "SINGLE") != NULL)
+	if(ext_flags != NULL && strstr(ext_flags, "SINGLE") != NULL)
 	{
 		if(CreateMutex(NULL, TRUE, GetModuleObjectName("SINGLE")), GetLastError() == ERROR_ALREADY_EXISTS)
 		{
@@ -421,7 +420,7 @@ char** arg_split(char* buffer, int* p_argc)
 	argv = (char**)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, (*p_argc) * sizeof(char*));
 	for(i = 0; i < *p_argc; i++)
 	{
-		argv[i] = lstrtok(i?NULL:buffer, "\n");
+		argv[i] = strtok(i?NULL:buffer, "\n");
 	}
 	return argv;
 }

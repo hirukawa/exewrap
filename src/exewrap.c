@@ -11,7 +11,6 @@
 #include "include/jvm.h"
 #include "include/icon.h"
 #include "include/message.h"
-#include "include/libc.h"
 
 char** ParseOption(int argc, char* argv[]);
 char*  GetResource(LPCTSTR name, LPCTSTR type, DWORD* size);
@@ -69,7 +68,7 @@ int main(int argc, char* argv[])
 	{
 		int bits = GetProcessArchitecture();
 
-		printf("exewrap 0.9.9 for %s (%d-bit)\r\n"
+		printf("exewrap 1.0.0 for %s (%d-bit)\r\n"
 			   "Native executable java application wrapper.\r\n"
 			   "Copyright (C) 2005-2014 HIRUKAWA Ryo. All rights reserved.\r\n"
 			   "\r\n"
@@ -94,7 +93,7 @@ int main(int argc, char* argv[])
 			   "  -o <exe-file>       \t output exe-file.\r\n"
 			, (bits == 64 ? "x64" : "x86"), bits, argv[0], (bits == 64 ? "x64" : "x86"));
 
-		ExitProcess(0);
+		return 0;
 	}
 	
 	if(opt['j'] && *opt['j'] != '-' && *opt['j'] != '\0')
@@ -110,7 +109,7 @@ int main(int argc, char* argv[])
 			char buf[_MAX_PATH];
 
 			lstrcpy(buf, jarfile + lstrlen(jarfile) - 4);
-			if(lstrcmp(lstrupr(buf), ".JAR"))
+			if(lstrcmp(_strupr(buf), ".JAR"))
 			{
 				printf("You must specify the jar-file.\n");
 				return 1;
@@ -118,13 +117,13 @@ int main(int argc, char* argv[])
 		}
 	}
 	
+	exefile = (char*)HeapAlloc(GetProcessHeap(), 0, MAX_PATH);
 	if(opt['o'] && *opt['o'] != '-' && *opt['o'] != '\0')
 	{
-		exefile = opt['o'];
+		lstrcpy(exefile, opt['o']);
 	}
 	else
 	{
-		exefile = (char*)HeapAlloc(GetProcessHeap(), 0, MAX_PATH);
 		lstrcpy(exefile, jarfile);
 		exefile[lstrlen(exefile) - 4] = 0;
 		lstrcat(exefile, ".exe");
@@ -144,11 +143,11 @@ int main(int argc, char* argv[])
 
 	if(opt['A'])
 	{
-		if(lstrstr(opt['A'], "86") != NULL)
+		if(strstr(opt['A'], "86") != NULL)
 		{
 			architecture_bits = 32;
 		}
-		else if (lstrstr(opt['A'], "64") != NULL)
+		else if (strstr(opt['A'], "64") != NULL)
 		{
 			architecture_bits = 64;
 		}
@@ -188,7 +187,7 @@ int main(int argc, char* argv[])
 	}
 	targetVersionString = GetTargetJavaRuntimeVersionString(targetVersion);
 	printf("Target: %s (%d.%d.%d.%d)\n", targetVersionString + 4, targetVersion >> 24 & 0xFF, targetVersion >> 16 & 0xFF, targetVersion >> 8 & 0xFF, targetVersion & 0xFF);
-	SetResource(exefile, "TARGET_VERSION", RT_RCDATA, targetVersionString, 4 + lstrlen(targetVersionString + 4) + 1);
+	SetResource(exefile, "TARGET_VERSION", RT_RCDATA, targetVersionString, 4);
 	
 	if(opt['2'])
 	{
@@ -216,7 +215,18 @@ int main(int argc, char* argv[])
 		HeapFree(GetProcessHeap(), 0, jarBuffer);
 		classBuffer = GetResource("CLASSIC_LOADER", RT_RCDATA, &classSize);
 		SetResource(exefile, "CLASSIC_LOADER", RT_RCDATA, classBuffer, classSize);
-		printf("Pack200: disable\r\n");
+		if(!enableJava)
+		{
+			printf("Pack200: disable / JavaVM (%d-bit) not found.\r\n", GetProcessArchitecture());
+		}
+		else if(targetVersion < 0x01050000)
+		{
+			printf("Pack200: disable / Target version is lower than 1.5\r\n");
+		}
+		else
+		{
+			printf("Pack200: disable\r\n");
+		}
 	}
 	
 	if(opt['e'] && *opt['e'] != '-' && *opt['e'] != '\0')
@@ -242,6 +252,7 @@ int main(int argc, char* argv[])
 	{
 		versionNumber = defaultVersion;
 	}
+
 	if(opt['d'] && *opt['d'] != '-' && *opt['d'] != '\0')
 	{
 		fileDescription = opt['d'];
@@ -254,6 +265,7 @@ int main(int argc, char* argv[])
 	{
 		fileDescription = (char*)"";
 	}
+
 	if(opt['c'] && *opt['c'] != '-' && *opt['c'] != '\0')
 	{
 		copyright = opt['c'];
@@ -262,6 +274,7 @@ int main(int argc, char* argv[])
 	{
 		copyright = (char*)"";
 	}
+
 	if(opt['C'] && *opt['C'] != '-' && *opt['C'] != '\0')
 	{
 		company_name = opt['C'];
@@ -270,6 +283,7 @@ int main(int argc, char* argv[])
 	{
 		company_name = (char*)"";
 	}
+
 	if(opt['p'] && *opt['p'] != '-' && *opt['p'] != '\0')
 	{
 		product_name = opt['p'];
@@ -278,6 +292,7 @@ int main(int argc, char* argv[])
 	{
 		product_name = (char*)"";
 	}
+
 	if(opt['V'] && *opt['V'] != '-' && *opt['V'] != '\0')
 	{
 		product_version = opt['V'];
@@ -286,11 +301,12 @@ int main(int argc, char* argv[])
 	{
 		product_version = defaultProductVersion;
 	}
-	original_filename = lstrrchr(exefile, '\\') + 1;
+
+	original_filename = strrchr(exefile, '\\') + 1;
 	newVersion = SetVersionInfo(exefile, versionNumber, previousRevision, fileDescription, copyright, company_name, product_name, product_version, original_filename, jarfile);
-	printf("%s (%d-bit) version %s\r\n", lstrrchr(exefile, '\\') + 1, architecture_bits, newVersion);
+	printf("%s (%d-bit) version %s\r\n", strrchr(exefile, '\\') + 1, architecture_bits, newVersion);
 	
-	ExitProcess(0);
+	return 0;
 }
 
 DWORD GetVersionRevision(char* filename)
@@ -364,9 +380,9 @@ char* SetVersionInfo(LPCTSTR filename, char* versionNumber, DWORD previousRevisi
 	short product_version_revision;
 	char* newVersion;
 
-	if(lstrrchr(jarfile, '\\') != NULL)
+	if(strrchr(jarfile, '\\') != NULL)
 	{
-		internalName = lstrrchr(jarfile, '\\') + 1;
+		internalName = strrchr(jarfile, '\\') + 1;
 	}
 	else
 	{
@@ -375,27 +391,27 @@ char* SetVersionInfo(LPCTSTR filename, char* versionNumber, DWORD previousRevisi
 	
 	lstrcpy(buffer, versionNumber);
 	lstrcat(buffer, ".0.0.0.0");
-	file_version_major    = atoi(lstrtok(buffer, "."));
-	file_version_minor    = atoi(lstrtok(NULL, "."));
-	file_version_build    = atoi(lstrtok(NULL, "."));
-	file_version_revision = atoi(lstrtok(NULL, "."));
+	file_version_major    = atoi(strtok(buffer, "."));
+	file_version_minor    = atoi(strtok(NULL, "."));
+	file_version_build    = atoi(strtok(NULL, "."));
+	file_version_revision = atoi(strtok(NULL, "."));
 	
 	lstrcpy(buffer, product_version);
 	lstrcat(buffer, ".0.0.0.0");
-	product_version_major    = atoi(lstrtok(buffer, "."));
-	product_version_minor    = atoi(lstrtok(NULL, "."));
-	product_version_build    = atoi(lstrtok(NULL, "."));
-	product_version_revision = atoi(lstrtok(NULL, "."));
+	product_version_major    = atoi(strtok(buffer, "."));
+	product_version_minor    = atoi(strtok(NULL, "."));
+	product_version_build    = atoi(strtok(NULL, "."));
+	product_version_revision = atoi(strtok(NULL, "."));
 	
 	// revison が明示的に指定されていなかった場合、既存ファイルから取得した値に 1　を加算して revision とする。
 	lstrcpy(buffer, versionNumber);
-	if(lstrtok(buffer, ".") != NULL)
+	if(strtok(buffer, ".") != NULL)
 	{
-		if(lstrtok(NULL, ".") != NULL)
+		if(strtok(NULL, ".") != NULL)
 		{
-			if(lstrtok(NULL, ".") != NULL)
+			if(strtok(NULL, ".") != NULL)
 			{
-				if(lstrtok(NULL, ".") != NULL)
+				if(strtok(NULL, ".") != NULL)
 				{
 					previousRevision = file_version_revision - 1;
 				}
@@ -548,13 +564,13 @@ void SetResource(LPCTSTR filename, LPCTSTR rscName, LPCTSTR rscType, char* rscDa
 	BOOL   ret1;
 	BOOL   ret2;
 	int i;
-	
-	for(i = 0; i < 100; i++)
+
+	for (i = 0; i < 100; i++)
 	{
 		ret1 = FALSE;
 		ret2 = FALSE;
 		hRes = BeginUpdateResource(filename, FALSE);
-		if(hRes != NULL)
+		if (hRes != NULL)
 		{
 			ret1 = UpdateResource(hRes, rscType, rscName, MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL), rscData, rscSize);
 			ret2 = EndUpdateResource(hRes, FALSE);
@@ -646,6 +662,25 @@ void SetApplicationIcon(LPCTSTR filename, LPCTSTR iconfile)
 	BOOL ret3;
 	int i;
 	
+	//Delete default icon.
+	for(z = 0; z < 99; z++)
+	{
+		hResource = BeginUpdateResource(filename, FALSE);
+		ret1 = UpdateResource(hResource, RT_ICON, MAKEINTRESOURCE(z + 1), MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL), NULL, 0);
+		EndUpdateResource(hResource, FALSE);
+		if(ret1 == FALSE)
+		{
+			break;
+		}
+	}
+
+	//Delete default icon group.
+	{
+		hResource = BeginUpdateResource(filename, FALSE);
+		UpdateResource(hResource, RT_GROUP_ICON, MAKEINTRESOURCE(1), MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL), NULL, 0);
+		EndUpdateResource(hResource, FALSE);
+	}
+
 	if(!lstrlen(iconfile))
 	{
 		return;
@@ -698,7 +733,7 @@ void SetApplicationIcon(LPCTSTR filename, LPCTSTR iconfile)
 	}
 	if(ret1 == FALSE || ret2 == FALSE || ret3 == FALSE)
 	{
-		printf("Failed to set icon group\n");
+		printf("Failed to set icon\n");
 		return;
 	}
 	CloseHandle(hResource);
@@ -715,13 +750,13 @@ DWORD GetTargetJavaRuntimeVersion(char* version)
 	if(p != NULL)
 	{
 		major = atoi(p);
-		if((p = lstrstr(p, ".")) != NULL)
+		if((p = strstr(p, ".")) != NULL)
 		{
 			minor = atoi(++p);
-			if((p = lstrstr(p, ".")) != NULL)
+			if((p = strstr(p, ".")) != NULL)
 			{
 				build = atoi(++p);
-				if((p = lstrstr(p, ".")) != NULL)
+				if((p = strstr(p, ".")) != NULL)
 				{
 					revision = atoi(++p);
 				}

@@ -2,7 +2,6 @@
 #include <stdio.h>
 
 #include "include/message.h"
-#include "include/libc.h"
 
 void service_main(int argc, char* argv[]);
 
@@ -272,9 +271,9 @@ BOOL InstallService(int argc, char* argv[], int optc, char** opt)
 		lpDependencies = HeapAlloc(GetProcessHeap(), 0, lstrlen(opt['d']) + 2);
 		lstrcpy(lpDependencies, opt['d']);
 		lstrcat(lpDependencies, ";");
-		while(lstrrchr(lpDependencies, ';') != NULL)
+		while(strrchr(lpDependencies, ';') != NULL)
 		{
-			*(lstrrchr(lpDependencies, ';')) = '\0';
+			*(strrchr(lpDependencies, ';')) = '\0';
 		}
 	}
 	if(opt['u'])
@@ -460,7 +459,7 @@ void SetCurrentDir()
 	char* b = (char*)HeapAlloc(GetProcessHeap(), 0, 1024);
 
 	GetModuleFileName(NULL, b, 1024);
-	*(lstrrchr(b, '\\')) = 0;
+	*(strrchr(b, '\\')) = 0;
 	SetCurrentDirectory(b);
 
 	HeapFree(GetProcessHeap(), 0, b);
@@ -471,8 +470,8 @@ void GetBaseName(char* buf)
 	char* b = (char*)HeapAlloc(GetProcessHeap(), 0, 1024);
 
 	GetModuleFileName(NULL, b, 1024);
-	*(lstrrchr(b, '.')) = 0;
-	lstrcpy(buf, lstrrchr(b, '\\') + 1);
+	*(strrchr(b, '.')) = 0;
+	lstrcpy(buf, strrchr(b, '\\') + 1);
 
 	HeapFree(GetProcessHeap(), 0, b);
 }
