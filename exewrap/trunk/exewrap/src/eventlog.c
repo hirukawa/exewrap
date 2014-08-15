@@ -1,7 +1,6 @@
 #include <windows.h>
 #include <stdio.h>
 #include "include/eventlog.h"
-#include "include/libc.h"
 
 BOOL InstallEventLog();
 BOOL RemoveEventLog();
@@ -22,8 +21,8 @@ BOOL InstallEventLog()
 
 	GetModuleFileName(NULL, buffer, MAX_PATH);
 	lstrcpy(module, buffer);
-	*(lstrrchr(buffer, '.')) = 0;
-	source = lstrrchr(buffer, '\\') + 1;
+	*(strrchr(buffer, '.')) = 0;
+	source = strrchr(buffer, '\\') + 1;
 	key = (char*)HeapAlloc(GetProcessHeap(), 0, 1024);
 	lstrcpy(key, "SYSTEM\\CurrentControlSet\\Services\\EventLog\\Application\\");
 	lstrcat(key, source);
@@ -79,8 +78,8 @@ BOOL RemoveEventLog()
 
 	GetModuleFileName(NULL, buffer, MAX_PATH);
 	lstrcpy(module, buffer);
-	*(lstrrchr(buffer, '.')) = 0;
-	source = lstrrchr(buffer, '\\') + 1;
+	*(strrchr(buffer, '.')) = 0;
+	source = strrchr(buffer, '\\') + 1;
 	
 	if((LastError = RegOpenKeyEx(HKEY_LOCAL_MACHINE, key, 0, KEY_ALL_ACCESS, &hKey)) != ERROR_SUCCESS)
 	{
@@ -118,8 +117,8 @@ void WriteEventLog(WORD type, const char* message)
 	char* source;
 
 	GetModuleFileName(NULL, buffer, MAX_PATH);
-	*(lstrrchr(buffer, '.')) = 0;
-	source = lstrrchr(buffer, '\\') + 1;
+	*(strrchr(buffer, '.')) = 0;
+	source = strrchr(buffer, '\\') + 1;
 
 	if((hEventLog = RegisterEventSource(NULL, source)) == NULL)
 	{

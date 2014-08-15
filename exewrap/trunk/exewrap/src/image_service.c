@@ -10,7 +10,6 @@
 #include "include/eventlog.h"
 #include "include/service.h"
 #include "include/message.h"
-#include "include/libc.h"
 
 BOOL WINAPI HandlerRoutine(DWORD dwCtrlType);
 void    InitResource(LPCTSTR name);
@@ -91,9 +90,9 @@ int service_start(int argc, char* argv[])
 	}
 	if(GetResourceSize("EXTFLAGS") > 0)
 	{
-		ext_flags = lstrupr((LPTSTR)GetResourceBuffer("EXTFLAGS"));
+		ext_flags = _strupr((LPTSTR)GetResourceBuffer("EXTFLAGS"));
 	}
-	if(ext_flags != NULL && lstrstr(ext_flags, "CLIENT") != NULL)
+	if(ext_flags != NULL && strstr(ext_flags, "CLIENT") != NULL)
 	{
 		useServerVM = FALSE;
 	}
@@ -183,7 +182,7 @@ int service_start(int argc, char* argv[])
 
 		if((eventLogStreamClass = (*env)->DefineClass(env, "EventLogStream", NULL, GetResourceBuffer("EVENTLOG_STREAM"), GetResourceSize("EVENTLOG_STREAM"))) != NULL)
 		{
-			if(ext_flags == NULL || lstrstr(ext_flags, "NOLOG") == NULL)
+			if(ext_flags == NULL || strstr(ext_flags, "NOLOG") == NULL)
 			{
 				if((eventLogStreamInit = (*env)->GetStaticMethodID(env, eventLogStreamClass, "initialize", "()V")) != NULL)
 				{
@@ -580,9 +579,9 @@ int main_start(int argc, char* argv[])
 	}
 	if(GetResourceSize("EXTFLAGS") > 0)
 	{
-		ext_flags = lstrupr((LPTSTR)GetResourceBuffer("EXTFLAGS"));
+		ext_flags = _strupr((LPTSTR)GetResourceBuffer("EXTFLAGS"));
 	}
-	if(ext_flags != NULL && lstrstr(ext_flags, "CLIENT") != NULL)
+	if(ext_flags != NULL && strstr(ext_flags, "CLIENT") != NULL)
 	{
 		useServerVM = FALSE;
 	}

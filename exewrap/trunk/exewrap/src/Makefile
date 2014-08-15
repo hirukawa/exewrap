@@ -9,13 +9,16 @@ JAVAC   = javac.exe
 !if ([@cl.exe 2>&1| @findstr "x64" > nul] == 0)
 BIN=..\bin\x64
 OBJ=..\obj\x64
+CRT=..\lib\crt\amd64
 !else
 BIN=..\bin\x86
 OBJ=..\obj\x86
+CRT=..\lib\crt
 !endif
 
 CFLAGS=\
 	/nologo\
+	/MD\
 	/W3\
 	/O1\
 	/GS-\
@@ -25,8 +28,8 @@ CFLAGS=\
 LDFLAGS=\
 	/nologo\
 	/LTCG\
-	/NODEFAULTLIB\
-	/ENTRY:mainCRTStartup
+	/OPT:REF\
+	/LIBPATH:$(CRT)
 
 RCFLAGS=\
 	/nologo
@@ -58,8 +61,8 @@ $(BIN) :
 $(OBJ) :
 	@if not exist $(OBJ)/$(NULL) mkdir $(OBJ)
 
-$(BIN)\exewrap.exe : $(BIN) $(OBJ) $(OBJ)\exewrap.obj $(OBJ)\startup.obj $(OBJ)\message.obj $(OBJ)\jvm.obj $(OBJ)\libc.obj $(OBJ)\image_console.img $(OBJ)\image_gui.img $(OBJ)\image_service.img $(OBJ)\exewrap.res  $(OBJ)\ClassicLoader.class $(OBJ)\PackLoader.class $(OBJ)\JarOptimizer.class
-	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE /OUT:$(BIN)\exewrap.exe $(OBJ)\exewrap.obj $(OBJ)\startup.obj $(OBJ)\message.obj $(OBJ)\jvm.obj $(OBJ)\libc.obj $(OBJ)\exewrap.res $(LIBS)
+$(BIN)\exewrap.exe : $(BIN) $(OBJ) $(OBJ)\exewrap.obj $(OBJ)\message.obj $(OBJ)\jvm.obj $(OBJ)\image_console.img $(OBJ)\image_gui.img $(OBJ)\image_service.img $(OBJ)\exewrap.res  $(OBJ)\ClassicLoader.class $(OBJ)\PackLoader.class $(OBJ)\JarOptimizer.class
+	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE /OUT:$(BIN)\exewrap.exe $(OBJ)\exewrap.obj $(OBJ)\message.obj $(OBJ)\jvm.obj $(OBJ)\exewrap.res $(LIBS)
 	$(OBJ)\bindres.exe $(BIN)\exewrap.exe VERSION_INFO       resources\versioninfo.bin
 	$(OBJ)\bindres.exe $(BIN)\exewrap.exe IMAGE_CONSOLE_32   $(OBJ)\..\x86\image_console.img
 	$(OBJ)\bindres.exe $(BIN)\exewrap.exe IMAGE_CONSOLE_64   $(OBJ)\..\x64\image_console.img
@@ -77,8 +80,8 @@ $(OBJ)\exewrap.obj : $(OBJ) exewrap.c
 $(OBJ)\exewrap.res : $(OBJ) resources\exewrap.rc
 	$(RC) $(RCFLAGS) /fo$(OBJ)\exewrap.res  resources\exewrap.rc
 
-$(OBJ)\image_console.img : $(OBJ) $(OBJ)\image_console.obj $(OBJ)\image_console.res $(OBJ)\startup.obj $(OBJ)\notify.obj $(OBJ)\message.obj $(OBJ)\jvm.obj $(OBJ)\libc.obj $(OBJ)\bindres.exe $(OBJ)\URLConnection.class $(OBJ)\URLStreamHandler.class
-	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE /OUT:$(OBJ)\image_console.img $(OBJ)\image_console.obj $(OBJ)\image_console.res $(OBJ)\startup.obj $(OBJ)\notify.obj $(OBJ)\message.obj $(OBJ)\jvm.obj $(OBJ)\libc.obj $(LIBS)
+$(OBJ)\image_console.img : $(OBJ) $(OBJ)\image_console.obj $(OBJ)\image_console.res $(OBJ)\notify.obj $(OBJ)\message.obj $(OBJ)\jvm.obj $(OBJ)\bindres.exe $(OBJ)\URLConnection.class $(OBJ)\URLStreamHandler.class
+	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE /OUT:$(OBJ)\image_console.img $(OBJ)\image_console.obj $(OBJ)\image_console.res $(OBJ)\notify.obj $(OBJ)\message.obj $(OBJ)\jvm.obj $(LIBS)
 	$(OBJ)\bindres.exe $(OBJ)\image_console.img URL_CONNECTION     $(OBJ)\URLConnection.class
 	$(OBJ)\bindres.exe $(OBJ)\image_console.img URL_STREAM_HANDLER $(OBJ)\URLStreamHandler.class
 
@@ -88,8 +91,8 @@ $(OBJ)\image_console.obj : $(OBJ) image_console.c
 $(OBJ)\image_console.res : $(OBJ) resources\image_console.rc
 	$(RC) $(RCFLAGS) /fo$(OBJ)\image_console.res resources\image_console.rc
 
-$(OBJ)\image_gui.img : $(OBJ) $(OBJ)\image_gui.obj $(OBJ)\image_gui.res $(OBJ)\startup.obj $(OBJ)\notify.obj $(OBJ)\message.obj $(OBJ)\jvm.obj $(OBJ)\libc.obj $(OBJ)\bindres.exe $(OBJ)\FileLogStream.class $(OBJ)\UncaughtHandler.class $(OBJ)\URLConnection.class $(OBJ)\URLStreamHandler.class
-	$(LINK) $(LDFLAGS) /SUBSYSTEM:WINDOWS /OUT:$(OBJ)\image_gui.img $(OBJ)\image_gui.obj $(OBJ)\image_gui.res $(OBJ)\startup.obj $(OBJ)\notify.obj $(OBJ)\message.obj $(OBJ)\jvm.obj $(OBJ)\libc.obj $(LIBS)
+$(OBJ)\image_gui.img : $(OBJ) $(OBJ)\image_gui.obj $(OBJ)\image_gui.res $(OBJ)\notify.obj $(OBJ)\message.obj $(OBJ)\jvm.obj $(OBJ)\bindres.exe $(OBJ)\FileLogStream.class $(OBJ)\UncaughtHandler.class $(OBJ)\URLConnection.class $(OBJ)\URLStreamHandler.class
+	$(LINK) $(LDFLAGS) /SUBSYSTEM:WINDOWS /OUT:$(OBJ)\image_gui.img $(OBJ)\image_gui.obj $(OBJ)\image_gui.res $(OBJ)\notify.obj $(OBJ)\message.obj $(OBJ)\jvm.obj $(LIBS)
 	$(OBJ)\bindres.exe $(OBJ)\image_gui.img FILELOG_STREAM     $(OBJ)\FileLogStream.class
 	$(OBJ)\bindres.exe $(OBJ)\image_gui.img UNCAUGHT_HANDLER   $(OBJ)\UncaughtHandler.class
 	$(OBJ)\bindres.exe $(OBJ)\image_gui.img URL_CONNECTION     $(OBJ)\URLConnection.class
@@ -101,8 +104,8 @@ $(OBJ)\image_gui.obj : $(OBJ) image_gui.c
 $(OBJ)\image_gui.res : $(OBJ) resources\image_gui.rc
 	$(RC) $(RCFLAGS) /fo$(OBJ)\image_gui.res resources\image_gui.rc
 
-$(OBJ)\image_service.img : $(OBJ) $(OBJ)\image_service.obj $(OBJ)\image_service.res $(OBJ)\service.obj $(OBJ)\startup.obj $(OBJ)\eventlog.obj $(OBJ)\message.obj $(OBJ)\jvm.obj $(OBJ)\libc.obj $(OBJ)\bindres.exe $(OBJ)\EventLogStream.class $(OBJ)\EventLogHandler.class $(OBJ)\UncaughtHandler.class $(OBJ)\URLConnection.class $(OBJ)\URLStreamHandler.class
-	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE /OUT:$(OBJ)\image_service.img $(OBJ)\image_service.obj $(OBJ)\image_service.res $(OBJ)\service.obj $(OBJ)\startup.obj $(OBJ)\eventlog.obj $(OBJ)\message.obj $(OBJ)\jvm.obj $(OBJ)\libc.obj $(LIBS)
+$(OBJ)\image_service.img : $(OBJ) $(OBJ)\image_service.obj $(OBJ)\image_service.res $(OBJ)\service.obj $(OBJ)\eventlog.obj $(OBJ)\message.obj $(OBJ)\jvm.obj $(OBJ)\bindres.exe $(OBJ)\EventLogStream.class $(OBJ)\EventLogHandler.class $(OBJ)\UncaughtHandler.class $(OBJ)\URLConnection.class $(OBJ)\URLStreamHandler.class
+	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE /OUT:$(OBJ)\image_service.img $(OBJ)\image_service.obj $(OBJ)\image_service.res $(OBJ)\service.obj $(OBJ)\eventlog.obj $(OBJ)\message.obj $(OBJ)\jvm.obj $(LIBS)
 	$(OBJ)\bindres.exe $(OBJ)\image_service.img EVENTLOG_STREAM    $(OBJ)\EventLogStream.class
 	$(OBJ)\bindres.exe $(OBJ)\image_service.img EVENTLOG_HANDLER   $(OBJ)\EventLogHandler.class
 	$(OBJ)\bindres.exe $(OBJ)\image_service.img UNCAUGHT_HANDLER   $(OBJ)\UncaughtHandler.class
@@ -130,17 +133,11 @@ $(OBJ)\message.obj : $(OBJ) message.c
 $(OBJ)\jvm.obj : $(OBJ) jvm.c
 	$(CC) $(CFLAGS) $(INC) /Fo$(OBJ)\jvm.obj jvm.c
 
-$(OBJ)\bindres.exe : $(OBJ) $(OBJ)\bindres.obj $(OBJ)\startup.obj $(OBJ)\libc.obj
-	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE /OUT:$(OBJ)\bindres.exe $(OBJ)\bindres.obj $(OBJ)\startup.obj $(OBJ)\libc.obj $(LIBS)
+$(OBJ)\bindres.exe : $(OBJ) $(OBJ)\bindres.obj
+	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE /OUT:$(OBJ)\bindres.exe $(OBJ)\bindres.obj $(LIBS)
 
 $(OBJ)\bindres.obj : $(OBJ) bindres.c
 	$(CC) $(CFLAGS) $(INC) /Fo$(OBJ)\bindres.obj bindres.c
-
-$(OBJ)\startup.obj : $(OBJ) startup.c
-	$(CC) $(CFLAGS) $(INC) /Fo$(OBJ)\startup.obj startup.c
-
-$(OBJ)\libc.obj : $(OBJ) libc.c
-	$(CC) $(CFLAGS) $(INC) /Fo$(OBJ)\libc.obj libc.c
 
 $(OBJ)\JarOptimizer.class : java\JarOptimizer.java
 	$(JAVAC) -Xlint:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\JarOptimizer.java

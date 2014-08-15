@@ -1,8 +1,8 @@
 #include <windows.h>
+#include <process.h>
 #include <stdio.h>
 
 #include "include\notify.h"
-#include "include\libc.h"
 
 #define WM_APP_NOTIFY         (WM_APP + 0x702)
 
@@ -30,7 +30,7 @@ HANDLE notify_exec(DWORD (WINAPI *_p_callback_function)(void*), int argc, char* 
 	WaitForSingleObject(synchronize_mutex_handle, INFINITE);
 
 TRY_CREATE_SHARED_MEMORY:
-	shared_memory_handle = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, len, shared_memory_name);
+	shared_memory_handle = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE | SEC_COMMIT | SEC_NOCACHE, 0, len, shared_memory_name);
 	dwReturn = GetLastError();
 	if(dwReturn == ERROR_ALREADY_EXISTS)
 	{
@@ -46,11 +46,11 @@ TRY_CREATE_SHARED_MEMORY:
 			char*  arglist = create_arglist(argc, argv);
 
 			lstrcpy((char*)(lpShared + sizeof(DWORD) + sizeof(DWORD)), arglist);
+			FlushViewOfFile(lpShared, 0);
+			UnmapViewOfFile(lpShared);
 			HeapFree(GetProcessHeap(), 0, arglist);
-			FlushViewOfFile(lpShared, len);
 			AllowSetForegroundWindow(process_id);
 			PostThreadMessage(thread_id, WM_APP_NOTIFY, (WPARAM)0, (LPARAM)0);
-			UnmapViewOfFile(lpShared);
 			wait_result = WaitForSingleObject(shared_memory_read_event_handle, 5000);
 			CloseHandle(shared_memory_read_event_handle);
 			HeapFree(GetProcessHeap(), 0, shared_memory_read_event_name);
@@ -68,7 +68,8 @@ TRY_CREATE_SHARED_MEMORY:
 	else
 	{
 		p_callback_function = _p_callback_function;
-		listener_thread_handle = CreateThread(NULL, 0, listener, NULL, 0, &listener_thread_id);
+		listener_thread_handle = (HANDLE)_beginthreadex(NULL, 0, listener, NULL, 0, &listener_thread_id);
+		//listener_thread_handle = CreateThread(NULL, 0, listener, NULL, 0, &listener_thread_id);
 		//_beginthread(listener, 0, NULL);
 	}
 	HeapFree(GetProcessHeap(), 0, synchronize_mutex_name);
@@ -130,7 +131,7 @@ static DWORD WINAPI listener(void* arglist)
 	{
 		*((DWORD*)(lpShared + 0)) = GetCurrentProcessId();
 		*((DWORD*)(lpShared + sizeof(DWORD))) = GetCurrentThreadId();
-		FlushViewOfFile(lpShared, 2048);
+		FlushViewOfFile(lpShared, 0);
 		UnmapViewOfFile(lpShared);
 	}
 	
@@ -146,7 +147,8 @@ static DWORD WINAPI listener(void* arglist)
 			HANDLE hThread;
 			DWORD threadId;
 
-			hThread = CreateThread(NULL, 0, p_callback_function, shared_memory_handle, 0, &threadId);
+			hThread = (HANDLE)_beginthreadex(NULL, 0, p_callback_function, shared_memory_handle, 0, &threadId);
+			//hThread = CreateThread(NULL, 0, p_callback_function, shared_memory_handle, 0, &threadId);
 			CloseHandle(hThread);
 		}
 	}
@@ -166,7 +168,7 @@ char* GetModuleObjectName(const char* prefix)
 		lstrcat(objectName, prefix);
 	}
 	lstrcat(objectName, ":");
-	lstrcat(objectName, (char*)(lstrrchr(moduleFileName, '\\') + 1));
+	lstrcat(objectName, (char*)(strrchr(moduleFileName, '\\') + 1));
 
 	HeapFree(GetProcessHeap(), 0, moduleFileName);
 	return objectName;

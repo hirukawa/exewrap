@@ -5,7 +5,6 @@
 #include <shlobj.h>
 #include <jni.h>
 
-#include "include/libc.h"
 #include "include/jvm.h"
 
 void    InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useServerVM);
@@ -224,12 +223,12 @@ DWORD GetJavaRuntimeVersion()
 					tail++;
 				}
 				major = atoi(version);
-				version = lstrchr(version, '.');
+				version = strchr(version, '.');
 				if(version != NULL && version < tail)
 				{
 					minor = atoi(++version);
 				}
-				version = lstrchr(version, '.');
+				version = strchr(version, '.');
 				if(version != NULL && version < tail)
 				{
 					build = atoi(++version);
@@ -315,11 +314,11 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 
 	GetModuleFileName(NULL, buffer, size);
 	lstrcpy(opt_app_name, "-Djava.application.name=");
-	lstrcat(opt_app_name, lstrrchr(buffer, '\\') + 1);
+	lstrcat(opt_app_name, strrchr(buffer, '\\') + 1);
 
 	lstrcat(opt_policy_path, "\\");
-	*(lstrrchr(buffer, '.')) = 0;
-	lstrcat(opt_policy_path, lstrrchr(buffer, '\\') + 1);
+	*(strrchr(buffer, '.')) = 0;
+	lstrcat(opt_policy_path, strrchr(buffer, '\\') + 1);
 	lstrcat(opt_policy_path, ".policy");
 	if(GetFileAttributes(opt_policy_path + 23) == -1)
 	{
@@ -345,9 +344,9 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 	else
 	{
 		GetModulePath(jre2, MAX_PATH);
-		if(lstrrchr(jre2, '\\') != NULL && lstrlen(jre2) >= 4 && lstrcmpi(jre2 + lstrlen(jre2) - 4, "\\bin") == 0)
+		if(strrchr(jre2, '\\') != NULL && lstrlen(jre2) >= 4 && lstrcmpi(jre2 + lstrlen(jre2) - 4, "\\bin") == 0)
 		{
-			*(lstrrchr(jre2, '\\')) = 0;
+			*(strrchr(jre2, '\\')) = 0;
 			lstrcat(jre2, "\\jre");
 			if(IsDirectory(jre2))
 			{
@@ -410,7 +409,7 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 			}
 			if(!IsDirectory(jre3))
 			{
-				*(lstrrchr(jre3, '\\')) = '\0';
+				*(strrchr(jre3, '\\')) = '\0';
 			}
 			if(IsDirectory(jre3))
 			{
@@ -429,9 +428,9 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 
 	if(relative_classpath != NULL)
 	{
-		while((token = lstrtok(relative_classpath, ";")) != NULL)
+		while((token = strtok(relative_classpath, ";")) != NULL)
 		{
-			if(lstrstr(token, ":") == NULL)
+			if(strstr(token, ":") == NULL)
 			{
 				lstrcat(classpath, modulePath);
 				lstrcat(classpath, "\\");
@@ -450,10 +449,10 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 		char* p = buf_extdirs;
 
 		lstrcpy(buf_extdirs, relative_extdirs);
-		while((token = lstrtok(p, ";")) != NULL)
+		while((token = strtok(p, ";")) != NULL)
 		{
 			extdir[0] = '\0';
-			if(lstrstr(token, ":") == NULL)
+			if(strstr(token, ":") == NULL)
 			{
 				lstrcat(extdir, modulePath);
 				lstrcat(extdir, "\\");
@@ -617,7 +616,7 @@ void AddPath(LPCTSTR path)
 char* GetModulePath(char* buf, DWORD size)
 {
 	GetModuleFileName(NULL, buf, size);
-	*(lstrrchr(buf, '\\')) = 0;
+	*(strrchr(buf, '\\')) = 0;
 
 	return buf;
 }
