@@ -107,16 +107,16 @@ static void init_message()
 	"The %s service was terminated abnormally.";
 
 	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_SUCCESS_SERVICE_INSTALL] =
-	"%s サービスをインストールしました。";
+	"%s service installed.";
 
 	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_SUCCESS_SERVICE_REMOVE] =
-	"%s サービスは正常に開始されました。";
+	"%s service was removed.";
 
 	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_SERVICE_STARTING] =
-	"%s サービスを開始します.";
+	"%s service is starting.";
 
 	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_SERVICE_STOPING] =
-	"%s サービスを停止中です.";
+	"%s service is stopping.";
 
 	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_SUCCESS_SERVICE_START] =
 	"The %s service was started successfully.";
