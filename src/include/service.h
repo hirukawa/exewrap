@@ -7,8 +7,9 @@
 extern "C" {
 #endif
 
-extern void service_main(int argc, char* argv[]);
+extern int  service_main(int argc, char* argv[]);
 extern BOOL SetServiceDescription(LPCTSTR Description);
+extern int  ShowErrorMessage();
 
 #ifdef __cplusplus
 }

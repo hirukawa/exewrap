@@ -2,14 +2,14 @@
 #include <stdio.h>
 #include "include/eventlog.h"
 
-BOOL InstallEventLog();
-BOOL RemoveEventLog();
+int  InstallEventLog();
+int  RemoveEventLog();
 void WriteEventLog(WORD type, const char* message);
 static void ShowErrorMessage();
 
-BOOL InstallEventLog()
+int InstallEventLog()
 {
-	BOOL  ret = FALSE;
+	int   err = 0;
 	HKEY  hKey = NULL;
 	DWORD keys;
 	DWORD LastError = 0;
@@ -31,6 +31,7 @@ BOOL InstallEventLog()
 	{
 		SetLastError(LastError);
 		ShowErrorMessage();
+		err = (int)LastError;
 		goto EXIT;
 	}
 	
@@ -38,6 +39,7 @@ BOOL InstallEventLog()
 	{
 		SetLastError(LastError);
 		ShowErrorMessage();
+		err = (int)LastError;
 		goto EXIT;
 	}
 	
@@ -46,10 +48,9 @@ BOOL InstallEventLog()
 	{
 		SetLastError(LastError);
 		ShowErrorMessage();
+		err = (int)LastError;
 		goto EXIT;
 	}
-
-	ret = TRUE;
 
 EXIT:
 	if(hKey != NULL)
@@ -60,12 +61,12 @@ EXIT:
 	{
 		HeapFree(GetProcessHeap(), 0, key);
 	}
-	return ret;
+	return err;
 }
 
-BOOL RemoveEventLog()
+int RemoveEventLog()
 {
-	BOOL ret = FALSE;
+	int   err = 0;
 	HKEY  hKey = NULL;
 	DWORD LastError = 0;
 	char buffer[MAX_PATH];
@@ -85,6 +86,7 @@ BOOL RemoveEventLog()
 	{
 		SetLastError(LastError);
 		ShowErrorMessage();
+		err = (int)LastError;
 		goto EXIT;
 	}
 	
@@ -92,10 +94,9 @@ BOOL RemoveEventLog()
 	{
 		SetLastError(LastError);
 		ShowErrorMessage();
+		err = (int)LastError;
 		goto EXIT;
 	}
-
-	ret = TRUE;
 
 EXIT:
 	if(hKey != NULL)
@@ -106,7 +107,7 @@ EXIT:
 	{
 		HeapFree(GetProcessHeap(), 0, key);
 	}
-	return ret;
+	return err;
 }
 
 void WriteEventLog(WORD type, const char* message)

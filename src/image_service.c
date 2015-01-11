@@ -19,10 +19,14 @@ void    OutputMessage(const char* text);
 
 void JNICALL JNI_WriteEventLog(JNIEnv *env, jobject clazz, jint logType, jstring message);
 void JNICALL JNI_UncaughtException(JNIEnv *env, jobject clazz, jstring message, jstring trace);
+static DWORD WINAPI uac_thread(void* arglist);
+static BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam);
 
 TCHAR  cache[] = "12345678901234567890123456789012";
 jbyte* buffer = NULL;
-DWORD  size   = 0;
+DWORD  size = 0;
+
+const char RUN_AS_ADMINISTRATOR[] = "__RUN_AS_ADMINISTRATOR__";
 
 static char      service_name[1024];
 static jclass    mainClass;
@@ -33,29 +37,168 @@ int isRunning = FALSE;
 
 int main(int argc, char* argv[])
 {
+	int   err = 0;
+	int   i;
+	char* params = NULL;
+	BOOL  is_install = FALSE;
+	BOOL  is_remove = FALSE;
+	BOOL  is_runas = lstrcmpi(argv[argc - 1], RUN_AS_ADMINISTRATOR) == 0;
+	char pipe_name[MAX_PATH];
+	HANDLE pipe = NULL;
+
+	strcpy(pipe_name, "\\\\.\\pipe\\");
+	if (strrchr(argv[0], '\\') != NULL)
+	{
+		strcat(pipe_name, strrchr(argv[0], '\\') + 1);
+	}
+	else
+	{
+		strcat(pipe_name, argv[0]);
+	}
+	strcat(pipe_name, ".pipe");
+
+	if (is_runas)
+	{
+		argc--;
+	}
+
+	params = (char*)HeapAlloc(GetProcessHeap(), 0, 2048);
+	params[0] = '\0';
+
+	for (i = 1; i < argc; i++)
+	{
+		if (lstrcmpi(argv[i], "-install") == 0)
+		{
+			is_install = TRUE;
+		}
+		if (lstrcmpi(argv[i], "-remove") == 0)
+		{
+			is_remove = TRUE;
+		}
+
+		strcat(params, "\"");
+		strcat(params, argv[i]);
+		strcat(params, "\"");
+		strcat(params, " ");
+	}
+
+	strcat(params, RUN_AS_ADMINISTRATOR);
+
+	if (!is_runas && (is_install || is_remove))
+	{
+		SHELLEXECUTEINFO si;
+		BOOL ret;
+		DWORD exit_code = 0;
+
+		pipe = CreateNamedPipe(pipe_name, PIPE_ACCESS_INBOUND, PIPE_TYPE_BYTE | PIPE_WAIT, 2, 1024, 1024, 1000, NULL);
+		if (pipe == INVALID_HANDLE_VALUE)
+		{
+			err = ShowErrorMessage();
+			return err;
+		}
+
+		ZeroMemory(&si, sizeof(SHELLEXECUTEINFO));
+		si.cbSize = sizeof(SHELLEXECUTEINFO);
+		si.fMask = SEE_MASK_NOCLOSEPROCESS;
+		si.hwnd = GetActiveWindow();
+		si.lpVerb = "runas";
+		si.lpFile = argv[0];
+		si.lpParameters = params;
+		si.lpDirectory = NULL;
+		si.nShow = SW_HIDE;
+		si.hInstApp = 0;
+		si.hProcess = 0;
+
+		ret = ShellExecuteEx(&si);
+
+		if (GetLastError() == ERROR_CANCELLED)
+		{
+			err = ShowErrorMessage();
+		}
+		else if (ret == TRUE)
+		{
+			char* buf = (char*)HeapAlloc(GetProcessHeap(), 0, 1024);
+			DWORD read_size;
+			DWORD write_size;
+
+			if (!ConnectNamedPipe(pipe, NULL))
+			{
+				err = ShowErrorMessage();
+				CloseHandle(pipe);
+				return err;
+			}
+
+			for (;;)
+			{
+				if (!ReadFile(pipe, buf, 1024, &read_size, NULL))
+				{
+					break;
+				}
+				WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), buf, read_size, &write_size, NULL);
+			}
+			FlushFileBuffers(pipe);
+			DisconnectNamedPipe(pipe);
+			CloseHandle(pipe);
+			pipe = NULL;
+
+			WaitForSingleObject(si.hProcess, INFINITE);
+			ret = GetExitCodeProcess(si.hProcess, &err);
+			if (ret == FALSE)
+			{
+				err = GetLastError();
+			}
+			CloseHandle(si.hProcess);
+		}
+		else
+		{
+			err = GetLastError();
+		}
+		return err;
+	}
+
+	if (is_runas)
+	{
+		pipe = CreateFile(pipe_name, GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+		if (pipe == INVALID_HANDLE_VALUE)
+		{
+			err = ShowErrorMessage();
+			return err;
+		}
+		SetStdHandle(STD_OUTPUT_HANDLE, pipe);
+	}
+
 	if((argc >= 2) && (lstrcmpi(argv[1], "-service") == 0))
 	{
 		isService = TRUE;
 	}
-	service_main(argc, argv);
+	err = service_main(argc, argv);
+
+	if (pipe != NULL)
+	{
+		CloseHandle(pipe);
+	}
+
+	return err;
 }
 
 int service_install(int argc, char* argv[])
 {
+	int err = 0;
+
 	if(GetResourceSize("SVCDESC") > 0)
 	{
-		SetServiceDescription((LPTSTR)GetResourceBuffer("SVCDESC"));
+		err = SetServiceDescription((LPTSTR)GetResourceBuffer("SVCDESC"));
+		if (err)
+		{
+			return err;
+		}
 	}
-	InstallEventLog();
-
-	return 0;
+	return InstallEventLog();
 }
 
 int service_remove()
 {
-	RemoveEventLog();
-
-	return 0;
+	return RemoveEventLog();
 }
 
 int service_start(int argc, char* argv[])
