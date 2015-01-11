@@ -5,8 +5,8 @@
 extern "C" {
 #endif
 
-extern BOOL InstallEventLog();
-extern BOOL RemoveEventLog();
+extern int  InstallEventLog();
+extern int  RemoveEventLog();
 extern void WriteEventLog(WORD type, const char* message); 
 
 #ifdef __cplusplus

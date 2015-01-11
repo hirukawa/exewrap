@@ -3,7 +3,7 @@
 
 #include "include/message.h"
 
-void service_main(int argc, char* argv[]);
+int service_main(int argc, char* argv[]);
 
 extern int service_install(int argc, char* argv[]);
 extern int service_remove(void);
@@ -14,14 +14,13 @@ extern int  main_start(int argc, char* argv[]);
 
 void  ServiceMain();
 void  ServiceCtrlHandler(DWORD request);
-BOOL  InstallService(int argc, char* argv[], int optc, char** opt);
-BOOL  RemoveService(int optc, char** opt);
-BOOL  SetServiceDescription(LPCTSTR Description);
+int   InstallService(int argc, char* argv[], int optc, char** opt);
+int   RemoveService(int optc, char** opt);
+int   SetServiceDescription(LPCTSTR Description);
 void  SetCurrentDir(void);
 void  GetBaseName(char* buffer);
 
 static char** ParseOption(int argc, char* argv[]);
-static void ShowErrorMessage();
 
 SERVICE_STATUS        ServiceStatus;
 SERVICE_STATUS_HANDLE hStatus;
@@ -29,20 +28,25 @@ SERVICE_STATUS_HANDLE hStatus;
 static int    ARG_COUNT;
 static char** ARG_VALUE;
 
-void service_main(int argc, char* argv[])
+static char msg_buf[2048];
+static DWORD msg_write_size;
+
+int service_main(int argc, char* argv[])
 {
+	int err = 0;
 	char* service_name = NULL;
 	int i;
 	char** opt;
 	SC_HANDLE hSCManager = NULL;
 	SC_HANDLE hService = NULL;
 
+
 	ARG_COUNT = argc;
 	ARG_VALUE = argv;
 	
 	if((argc >= 2) && ((lstrcmpi(argv[1], "-help") == 0) || (lstrcmpi(argv[1], "-h") == 0) || (lstrcmpi(argv[1], "-?") == 0)))
 	{
-		printf("Usage:\r\n"
+		sprintf(msg_buf, "Usage:\r\n"
 			   "  %s [install-options] -install [runtime-arguments]\r\n"
 			   "  %s [remove-options] -remove\r\n"
 			   "  %s [runtime-arguments]\r\n"
@@ -59,16 +63,18 @@ void service_main(int argc, char* argv[])
 			   "Remove Options:\r\n"
 			   "  -s               \t stop service.\r\n"
 			, argv[0], argv[0], argv[0]);
+		WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), msg_buf, strlen(msg_buf), &msg_write_size, NULL);
 
 		goto EXIT;
 	}
+
+	SetCurrentDir();
+	service_name = (char*)HeapAlloc(GetProcessHeap(), 0, 1024);
+	GetBaseName(service_name);
+
 	if((argc >= 2) && (lstrcmpi(argv[1], "-service") == 0))
 	{
 		SERVICE_TABLE_ENTRY ServiceTable[2];
-
-		SetCurrentDir();
-		service_name = (char*)HeapAlloc(GetProcessHeap(), 0, 1024);
-		GetBaseName(service_name);
 
 		ServiceTable[0].lpServiceName = service_name;
 		ServiceTable[0].lpServiceProc = (LPSERVICE_MAIN_FUNCTION)ServiceMain;
@@ -86,33 +92,38 @@ void service_main(int argc, char* argv[])
 			{
 				opt = ParseOption(i, argv);
 				
-				if(InstallService(argc, argv, i - 1, opt))
+				err = InstallService(argc, argv, i - 1, opt);
+				if(err == 0)
 				{
-					service_install(argc, argv);
+					err = service_install(argc, argv);
+					if(err)
+					{
+						goto EXIT;
+					}
 
 					if(opt['s'])
 					{
 						Sleep(500);
-						GetBaseName(service_name);
 
 						if((hSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS)) == NULL)
 						{
-							ShowErrorMessage();
+							err = ShowErrorMessage();
 						}
 						else if((hService = OpenService(hSCManager, service_name, SERVICE_START)) == NULL)
 						{
-							ShowErrorMessage();
+							err = ShowErrorMessage();
 						}
 						else
 						{
 							if(StartService(hService, 0, NULL))
 							{
-								printf(_(MSG_ID_SUCCESS_SERVICE_START), service_name);
-								printf("\n");
+								sprintf(msg_buf, _(MSG_ID_SUCCESS_SERVICE_START), service_name);
+								strcat(msg_buf, "\n");
+								WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), msg_buf, strlen(msg_buf), &msg_write_size, NULL);
 							}
 							else
 							{
-								ShowErrorMessage();
+								err = ShowErrorMessage();
 							}
 						}
 						if(hService != NULL)
@@ -137,9 +148,10 @@ void service_main(int argc, char* argv[])
 			{
 				opt = ParseOption(i, argv);
 
-				if(RemoveService(i - 1, opt))
+				err = RemoveService(i - 1, opt);
+				if(err == 0)
 				{
-					service_remove();
+					err = service_remove();
 				}
 				goto EXIT;
 			}
@@ -154,6 +166,8 @@ EXIT:
 	{
 		HeapFree(GetProcessHeap(), 0, service_name);
 	}
+
+	return err;
 }
 
 void ServiceMain()
@@ -225,9 +239,9 @@ void ServiceCtrlHandler(DWORD request)
 	SetServiceStatus(hStatus, &ServiceStatus);
 }
 
-BOOL InstallService(int argc, char* argv[], int optc, char** opt)
+int InstallService(int argc, char* argv[], int optc, char** opt)
 {
-	BOOL ret = FALSE;
+	int   err = 0;
 	char* service_name;
 	char* path;
 	char* lpDisplayName;
@@ -287,7 +301,7 @@ BOOL InstallService(int argc, char* argv[], int optc, char** opt)
 	
 	if((hSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS)) == NULL)
 	{
-		ShowErrorMessage();
+		err = ShowErrorMessage();
 		goto EXIT;
 	}
 	if((hService = CreateService(hSCManager, service_name, lpDisplayName,
@@ -295,14 +309,14 @@ BOOL InstallService(int argc, char* argv[], int optc, char** opt)
 						dwStartType, SERVICE_ERROR_NORMAL,
 						path, NULL, NULL, lpDependencies, lpServiceStartName, lpPassword)) == NULL)
 	{
-		ShowErrorMessage();
+		err = ShowErrorMessage();
 		goto EXIT;
 	}
 	else
 	{
-		printf(_(MSG_ID_SUCCESS_SERVICE_INSTALL), service_name);
-		printf("\n");
-		ret = TRUE;
+		sprintf(msg_buf, _(MSG_ID_SUCCESS_SERVICE_INSTALL), service_name);
+		strcat(msg_buf, "\n");
+		WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), msg_buf, strlen(msg_buf), &msg_write_size, NULL);
 	}
 
 EXIT:
@@ -327,12 +341,12 @@ EXIT:
 		HeapFree(GetProcessHeap(), 0, service_name);
 	}
 
-	return ret;
+	return err;
 }
 
-BOOL RemoveService(int optc, char** opt)
+int RemoveService(int optc, char** opt)
 {
-	BOOL ret = FALSE;
+	int err = 0;
 	char* service_name;
 	SC_HANDLE hSCManager = NULL;
 	SC_HANDLE hService = NULL;
@@ -344,12 +358,12 @@ BOOL RemoveService(int optc, char** opt)
 
 	if((hSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS)) == NULL)
 	{
-		ShowErrorMessage();
+		err = ShowErrorMessage();
 		goto EXIT;
 	}
 	if((hService = OpenService(hSCManager, service_name, SERVICE_ALL_ACCESS)) == NULL)
 	{
-		ShowErrorMessage();
+		err = ShowErrorMessage();
 		goto EXIT;
 	}
 	if(opt['s'] && QueryServiceStatus(hService, &Status))
@@ -358,22 +372,24 @@ BOOL RemoveService(int optc, char** opt)
 		{
 			if(ControlService(hService, SERVICE_CONTROL_STOP, &Status) == 0)
 			{
-				ShowErrorMessage();
+				err = ShowErrorMessage();
 				goto EXIT;
 			}
-			printf(_(MSG_ID_SERVICE_STOPING), service_name);
-			printf("\n");
+			sprintf(msg_buf, _(MSG_ID_SERVICE_STOPING), service_name);
+			strcat(msg_buf, "\n");
+			WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), msg_buf, strlen(msg_buf), &msg_write_size, NULL);
 			for(i = 0; i < 240; i++)
 			{
 				if(QueryServiceStatus(hService, &Status) == 0)
 				{
-					ShowErrorMessage();
+					err = ShowErrorMessage();
 					goto EXIT;
 				}
 				if(Status.dwCurrentState == SERVICE_STOPPED)
 				{
-					printf(_(MSG_ID_SUCCESS_SERVICE_STOP), service_name);
-					printf("\n");
+					sprintf(msg_buf, _(MSG_ID_SUCCESS_SERVICE_STOP), service_name);
+					strcat(msg_buf, "\n");
+					WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), msg_buf, strlen(msg_buf), &msg_write_size, NULL);
 					Sleep(500);
 					break;
 				}
@@ -383,12 +399,12 @@ BOOL RemoveService(int optc, char** opt)
 	}
 	if(!DeleteService(hService))
 	{
-		ShowErrorMessage();
+		err = ShowErrorMessage();
 		goto EXIT;
 	}
-	printf(_(MSG_ID_SUCCESS_SERVICE_REMOVE), service_name);
-	printf("\n");
-	ret = TRUE;
+	sprintf(msg_buf, _(MSG_ID_SUCCESS_SERVICE_REMOVE), service_name);
+	strcat(msg_buf, "\n");
+	WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), msg_buf, strlen(msg_buf), &msg_write_size, NULL);
 
 EXIT:
 	if(hService != NULL)
@@ -404,12 +420,12 @@ EXIT:
 		HeapFree(GetProcessHeap(), 0, service_name);
 	}
 
-	return ret;
+	return err;
 }
 
-BOOL SetServiceDescription(LPCTSTR Description)
+int SetServiceDescription(LPCTSTR Description)
 {
-	BOOL  ret = FALSE;
+	int   err = 0;
 	HKEY  hKey = NULL;
 	DWORD LastError = 0;
 	char* service_name;
@@ -425,17 +441,15 @@ BOOL SetServiceDescription(LPCTSTR Description)
 	if((LastError = RegOpenKeyEx(HKEY_LOCAL_MACHINE, key, 0, KEY_ALL_ACCESS, &hKey)) != ERROR_SUCCESS)
 	{
 		SetLastError(LastError);
-		ShowErrorMessage();
+		err = ShowErrorMessage();
 		goto EXIT;
 	}
 	if((LastError = RegSetValueEx(hKey, "Description", 0, REG_SZ, (LPBYTE)Description, lstrlen(Description) + 1)) != ERROR_SUCCESS)
 	{
 		SetLastError(LastError);
-		ShowErrorMessage();
+		err = ShowErrorMessage();
 		goto EXIT;
 	}
-
-	ret = TRUE;
 
 EXIT:
 	if(hKey != NULL)
@@ -451,7 +465,7 @@ EXIT:
 		HeapFree(GetProcessHeap(), 0, service_name);
 	}
 
-	return ret;
+	return err;
 }
 
 void SetCurrentDir()
@@ -508,17 +522,20 @@ static char** ParseOption(int argc, char* argv[])
 	return opt;
 }
 
-static void ShowErrorMessage()
+int ShowErrorMessage()
 {
 	LPVOID Message = NULL;
 	DWORD LastError = GetLastError();
+	DWORD written = 0;
 
 	if(LastError != 0)
 	{
 		FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
 			NULL, GetLastError(), MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPTSTR)&Message, 0, NULL);
 
-		printf("%s", Message);
+		WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), Message, strlen(Message), &written, NULL);
 		LocalFree(Message);
 	}
+
+	return (int)LastError;
 }
