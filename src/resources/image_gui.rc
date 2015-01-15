@@ -7,4 +7,3 @@
 LANGUAGE 0,0
 
 1	ICON MOVEABLE PURE LOADONCALL DISCARDABLE "resources/image_gui.ico"
-1	RT_MANIFEST "resources/image_gui_x86.manifest"

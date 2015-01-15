@@ -4,7 +4,6 @@ LIBS    = kernel32.lib user32.lib advapi32.lib shell32.lib
 CC      = cl.exe
 LINK    = link.exe
 RC      = RC.exe
-MT      = MT.exe
 JAVAC   = javac.exe
 
 !if ([@cl.exe 2>&1| @findstr "x64" > nul] == 0)
@@ -94,8 +93,8 @@ $(OBJ)\image_console.obj : $(OBJ) image_console.c
 $(OBJ)\image_console.res : $(OBJ) resources\image_console.rc
 	$(RC) $(RCFLAGS) /fo$(OBJ)\image_console.res resources\image_console.rc
 
-$(OBJ)\image_gui.img : $(OBJ) $(OBJ)\image_gui.obj $(OBJ)\image_gui_$(ARCHITECTURE).res $(OBJ)\notify.obj $(OBJ)\message.obj $(OBJ)\jvm.obj $(OBJ)\bindres.exe $(OBJ)\FileLogStream.class $(OBJ)\UncaughtHandler.class $(OBJ)\URLConnection.class $(OBJ)\URLStreamHandler.class
-	$(LINK) $(LDFLAGS) /SUBSYSTEM:WINDOWS /MANIFEST:NO /OUT:$(OBJ)\image_gui.img $(OBJ)\image_gui.obj $(OBJ)\image_gui_$(ARCHITECTURE).res $(OBJ)\notify.obj $(OBJ)\message.obj $(OBJ)\jvm.obj $(LIBS)
+$(OBJ)\image_gui.img : $(OBJ) $(OBJ)\image_gui.obj $(OBJ)\image_gui.res $(OBJ)\notify.obj $(OBJ)\message.obj $(OBJ)\jvm.obj $(OBJ)\bindres.exe $(OBJ)\FileLogStream.class $(OBJ)\UncaughtHandler.class $(OBJ)\URLConnection.class $(OBJ)\URLStreamHandler.class
+	$(LINK) $(LDFLAGS) /SUBSYSTEM:WINDOWS /MANIFEST:EMBED /OUT:$(OBJ)\image_gui.img $(OBJ)\image_gui.obj $(OBJ)\image_gui.res $(OBJ)\notify.obj $(OBJ)\message.obj $(OBJ)\jvm.obj $(LIBS)
 	$(OBJ)\bindres.exe $(OBJ)\image_gui.img FILELOG_STREAM     $(OBJ)\FileLogStream.class
 	$(OBJ)\bindres.exe $(OBJ)\image_gui.img UNCAUGHT_HANDLER   $(OBJ)\UncaughtHandler.class
 	$(OBJ)\bindres.exe $(OBJ)\image_gui.img URL_CONNECTION     $(OBJ)\URLConnection.class
@@ -104,8 +103,8 @@ $(OBJ)\image_gui.img : $(OBJ) $(OBJ)\image_gui.obj $(OBJ)\image_gui_$(ARCHITECTU
 $(OBJ)\image_gui.obj : $(OBJ) image_gui.c
 	$(CC) $(CFLAGS) $(INC) /Fo$(OBJ)\image_gui.obj image_gui.c
 
-$(OBJ)\image_gui_$(ARCHITECTURE).res : $(OBJ) resources\image_gui_$(ARCHITECTURE).rc
-	$(RC) $(RCFLAGS) /fo$(OBJ)\image_gui_$(ARCHITECTURE).res resources\image_gui_$(ARCHITECTURE).rc
+$(OBJ)\image_gui.res : $(OBJ) resources\image_gui.rc
+	$(RC) $(RCFLAGS) /fo$(OBJ)\image_gui.res resources\image_gui.rc
 
 $(OBJ)\image_service.img : $(OBJ) $(OBJ)\image_service.obj $(OBJ)\image_service.res $(OBJ)\service.obj $(OBJ)\eventlog.obj $(OBJ)\message.obj $(OBJ)\jvm.obj $(OBJ)\bindres.exe $(OBJ)\EventLogStream.class $(OBJ)\EventLogHandler.class $(OBJ)\UncaughtHandler.class $(OBJ)\URLConnection.class $(OBJ)\URLStreamHandler.class
 	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE /MANIFEST:EMBED /OUT:$(OBJ)\image_service.img $(OBJ)\image_service.obj $(OBJ)\image_service.res $(OBJ)\service.obj $(OBJ)\eventlog.obj $(OBJ)\message.obj $(OBJ)\jvm.obj $(LIBS)
