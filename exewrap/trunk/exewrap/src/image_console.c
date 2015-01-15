@@ -117,12 +117,10 @@ int main(int argc, char* argv[])
 		exit_code = MSG_ID_ERR_CREATE_JVM_EINVAL;
 		goto EXIT;
 	case JVM_ELOADLIB:
-	{
 		sprintf(message, _(MSG_ID_ERR_CREATE_JVM_ELOADLIB), GetProcessArchitecture());
 		OutputMessage(message);
 		exit_code = MSG_ID_ERR_CREATE_JVM_ELOADLIB;
 		goto EXIT;
-	}
 	default:
 		OutputMessage(_(MSG_ID_ERR_CREATE_JVM_UNKNOWN));
 		exit_code = MSG_ID_ERR_CREATE_JVM_UNKNOWN;
