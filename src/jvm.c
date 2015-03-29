@@ -16,13 +16,18 @@ void    DetachJavaVM();
 DWORD   GetJavaRuntimeVersion();
 jstring GetJString(JNIEnv* _env, const char* src);
 LPSTR   GetShiftJIS(JNIEnv* _env, jstring src);
-char*   GetArgsOpt(LPTSTR vm_args_opt);
 BOOL    FindJavaVM(char* output, const char* jre, BOOL useServerVM);
 LPTSTR  FindJavaHomeFromRegistry(LPCTSTR _subkey, char* output);
 void    AddPath(LPCTSTR path);
 LPTSTR  GetModulePath(LPTSTR buffer, DWORD size);
 LPTSTR	GetModuleVersion(LPTSTR buffer);
 BOOL    IsDirectory(LPTSTR path);
+char*   GetSubDirs(char* dir);
+char*   AddSubDirs(char* buf, char* dir, int* size);
+char**  GetArgsOpt(char* vm_args_opt, int* argc);
+static  LPWSTR A2W(LPCSTR s);
+static  LPSTR W2A(LPCWSTR s);
+
 
 typedef jint (WINAPI* JNIGetDefaultJavaVMInitArgs)(JavaVMInitArgs*);
 typedef jint (WINAPI* JNICreateJavaVM)(JavaVM**, void**, JavaVMInitArgs*);
@@ -39,9 +44,9 @@ BOOL    path_initialized = FALSE;
 TCHAR   binpath[MAX_PATH];
 TCHAR   jvmpath[MAX_PATH];
 TCHAR   extpath[MAX_PATH];
-TCHAR   classpath[2048];
-TCHAR   extdirs[2048];
-TCHAR	libpath[2048];
+char*   classpath = NULL;
+char*   extdirs = NULL;
+char*	libpath = NULL;
 HMODULE jvmdll;
 
 /* このプロセスのアーキテクチャ(32ビット/64ビット)を返します。
@@ -58,7 +63,9 @@ JNIEnv* CreateJavaVM(LPTSTR vm_args_opt, BOOL useServerVM, int* err)
 	JNICreateJavaVM createJavaVM;
 	JavaVMOption options[64];
 	JavaVMInitArgs vm_args;
-	char* a;
+	char** argv;
+	int argc;
+	int i;
 	int result;
 
 	if(!path_initialized)
@@ -79,7 +86,7 @@ JNIEnv* CreateJavaVM(LPTSTR vm_args_opt, BOOL useServerVM, int* err)
 	
 	getDefaultJavaVMInitArgs = (JNIGetDefaultJavaVMInitArgs)GetProcAddress(jvmdll, "JNI_GetDefaultJavaVMInitArgs");
 	createJavaVM = (JNICreateJavaVM)GetProcAddress(jvmdll, "JNI_CreateJavaVM");
-	
+
 	options[0].optionString = opt_app_path;
 	options[1].optionString = opt_app_name;
 	options[2].optionString = opt_app_version;
@@ -98,9 +105,10 @@ JNIEnv* CreateJavaVM(LPTSTR vm_args_opt, BOOL useServerVM, int* err)
 		options[vm_args.nOptions++].optionString = opt_policy_path;
 	}
 	
-	while((a = GetArgsOpt(vm_args_opt)) != NULL)
+	argv = GetArgsOpt(vm_args_opt, &argc);
+	for (i = 0; i < argc; i++)
 	{
-		options[vm_args.nOptions++].optionString = a;
+		options[vm_args.nOptions++].optionString = argv[i];
 	}
 	
 	getDefaultJavaVMInitArgs(&vm_args);
@@ -109,52 +117,15 @@ JNIEnv* CreateJavaVM(LPTSTR vm_args_opt, BOOL useServerVM, int* err)
 	{
 		*err = result;
 	}
-EXIT:
-	return env;
-}
 
-char* GetArgsOpt(char* vm_args_opt)
-{
-	static char* sp;
-	static char* p;
-	char* ret;
-	
-	if((sp == NULL) && (p == NULL))
+EXIT:
+	for (i = 0; i < argc; i++)
 	{
-		sp = vm_args_opt;
+		HeapFree(GetProcessHeap(), 0, argv[i]);
 	}
-	p = sp;
-	if(sp == NULL)
-	{
-		return NULL;
-	}
-	for(;;)
-	{
-		if(*p == 0x00)
-		{
-			if(p > sp)
-			{
-				ret = sp;
-				sp = NULL;
-				return ret;
-			}
-			else
-			{
-				return NULL;
-			}
-		}
-		else if((*p == ' ') && (*(p+1) == '-'))
-		{
-			*p = 0x00;
-			ret = sp;
-			sp = p + 1;
-			return ret;
-		}
-		else
-		{
-			p++;
-		}
-	}
+	HeapFree(GetProcessHeap(), 0, argv);
+
+	return env;
 }
 
 void DestroyJavaVM()
@@ -163,6 +134,22 @@ void DestroyJavaVM()
 	{
 		(*jvm)->DestroyJavaVM(jvm);
 		jvm = NULL;
+	}
+
+	if (classpath != NULL)
+	{
+		HeapFree(GetProcessHeap(), 0, classpath);
+		classpath = NULL;
+	}
+	if (extdirs != NULL)
+	{
+		HeapFree(GetProcessHeap(), 0, extdirs);
+		extdirs = NULL;
+	}
+	if (libpath != NULL)
+	{
+		HeapFree(GetProcessHeap(), 0, libpath);
+		libpath = NULL;
 	}
 }
 
@@ -289,19 +276,38 @@ char* GetShiftJIS(JNIEnv* _env, jstring src)
 
 void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useServerVM) {
 	char modulePath[_MAX_PATH];
-	char buffer[2048];
+	char* buffer;
 	char* token;
 	DWORD size = MAX_PATH;
 	TCHAR jre1[MAX_PATH+1];
 	TCHAR jre2[MAX_PATH+1];
 	TCHAR jre3[MAX_PATH+1];
+	TCHAR search[MAX_PATH + 1];
+	WIN32_FIND_DATA fd;
+	HANDLE hSearch;
+	BOOL found = FALSE;
 
 	path_initialized = TRUE;
+
+	if (classpath == NULL)
+	{
+		classpath = (char*)HeapAlloc(GetProcessHeap(), 0, 64 * 1024);
+	}
+	if (extdirs == NULL)
+	{
+		extdirs = (char*)HeapAlloc(GetProcessHeap(), 0, 64 * 1024);
+	}
+	if (libpath == NULL)
+	{
+		libpath = (char*)HeapAlloc(GetProcessHeap(), 0, 64 * 1024);
+	}
 
 	binpath[0] = '\0';
 	jvmpath[0] = '\0';
 	extdirs[0] = '\0';
 	libpath[0] = '\0';
+
+	buffer = HeapAlloc(GetProcessHeap(), 0, 64 * 1024);
 
 	lstrcpy(opt_app_version, "-Djava.application.version=");
 	lstrcat(opt_app_version, GetModuleVersion(buffer));
@@ -326,29 +332,60 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 	}
 
 	// Find local JRE
-	GetModulePath(jre1, MAX_PATH);
-	lstrcat(jre1, "\\jre");
-
-	if(IsDirectory(jre1))
+	if (jvmpath[0] == 0)
 	{
-		SetEnvironmentVariable("JAVA_HOME", jre1);
-		lstrcpy(binpath, jre1);
-		lstrcat(binpath, "\\bin");
-		lstrcpy(extpath, jre1);
-		lstrcat(extpath, "\\lib\\ext");
-		if (FindJavaVM(jvmpath, jre2, useServerVM) == FALSE)
+		GetModulePath(jre1, MAX_PATH);
+		lstrcpy(search, jre1);
+		lstrcat(search, "\\jre*");
+		hSearch = FindFirstFile(search, &fd);
+		if (hSearch != INVALID_HANDLE_VALUE)
 		{
-			jvmpath[0] = '\0';
+			found = FALSE;
+			do
+			{
+				if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+				{
+					lstrcat(jre1, "\\");
+					lstrcat(jre1, fd.cFileName);
+					found = TRUE;
+				}
+			} while (!found && FindNextFile(hSearch, &fd));
+			FindClose(hSearch);
+			if (found)
+			{
+				SetEnvironmentVariable("JAVA_HOME", jre1);
+				lstrcpy(binpath, jre1);
+				lstrcat(binpath, "\\bin");
+				lstrcpy(extpath, jre1);
+				lstrcat(extpath, "\\lib\\ext");
+				if (FindJavaVM(jvmpath, jre1, useServerVM) == FALSE)
+				{
+					jvmpath[0] = '\0';
+				}
+			}
 		}
 	}
-	else
+
+	if (jvmpath[0] == 0)
 	{
 		GetModulePath(jre2, MAX_PATH);
-		if(strrchr(jre2, '\\') != NULL && lstrlen(jre2) >= 4 && lstrcmpi(jre2 + lstrlen(jre2) - 4, "\\bin") == 0)
+		lstrcpy(search, jre2);
+		lstrcat(search, "\\..\\jre*");
+		hSearch = FindFirstFile(search, &fd);
+		if (hSearch != INVALID_HANDLE_VALUE)
 		{
-			*(strrchr(jre2, '\\')) = 0;
-			lstrcat(jre2, "\\jre");
-			if(IsDirectory(jre2))
+			found = FALSE;
+			do
+			{
+				if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+				{
+					lstrcat(jre2, "\\");
+					lstrcat(jre2, fd.cFileName);
+					found = TRUE;
+				}
+			} while (!found && FindNextFile(hSearch, &fd));
+			FindClose(hSearch);
+			if (found)
 			{
 				SetEnvironmentVariable("JAVA_HOME", jre2);
 				lstrcpy(binpath, jre2);
@@ -460,13 +497,21 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 			lstrcat(extdir, token);
 			if(IsDirectory(extdir))
 			{
-				lstrcat(classpath, ";");
-				lstrcat(classpath, extdir);
-				lstrcat(extdirs, extdir);
-				lstrcat(extdirs, ";");
-				lstrcat(libpath, extdir);
-				lstrcat(libpath, ";");
-				AddPath(extdir);
+				char* dirs = GetSubDirs(extdir);
+				char* dir = dirs;
+				while (*dir)
+				{
+					lstrcat(classpath, ";");
+					lstrcat(classpath, dir);
+					lstrcat(extdirs, dir);
+					lstrcat(extdirs, ";");
+					lstrcat(libpath, dir);
+					lstrcat(libpath, ";");
+					AddPath(dir);
+
+					dir += lstrlen(dir) + 1;
+				}
+				HeapFree(GetProcessHeap(), 0, dirs);
 			}
 			p = NULL;
 		}
@@ -475,13 +520,15 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 	}
 	lstrcat(extdirs, extpath);
 
-	if(GetEnvironmentVariable("PATH", buffer, 2048))
+	if(GetEnvironmentVariable("PATH", buffer, 64 * 1024))
 	{
 		lstrcat(libpath, buffer);
 	}
 
 	AddPath(binpath);
 	AddPath(jvmpath);
+
+	HeapFree(GetProcessHeap(), 0, buffer);
 }
 
 /* 指定したJRE BINディレクトリで client\jvm.dll または server\jvm.dll を検索します。
@@ -600,10 +647,10 @@ EXIT:
 
 void AddPath(LPCTSTR path)
 {
-	char* buf = (char*)HeapAlloc(GetProcessHeap(), 0, 2048);
-	char* old_path = (char*)HeapAlloc(GetProcessHeap(), 0, 2048);
+	char* buf = (char*)HeapAlloc(GetProcessHeap(), 0, 64 * 1024);
+	char* old_path = (char*)HeapAlloc(GetProcessHeap(), 0, 64 * 1024);
 
-	GetEnvironmentVariable("PATH", old_path, 2048);
+	GetEnvironmentVariable("PATH", old_path, 64 * 1024);
 	lstrcpy(buf, path);
 	lstrcat(buf, ";");
 	lstrcat(buf, old_path);
@@ -639,4 +686,138 @@ char* GetModuleVersion(char* buf)
 BOOL IsDirectory(char* path)
 {
 	return (GetFileAttributes(path) != -1) && (GetFileAttributes(path) & FILE_ATTRIBUTE_DIRECTORY);
+}
+
+char* GetSubDirs(char* dir)
+{
+	int size = lstrlen(dir) + 2;
+	char* buf;
+
+	AddSubDirs(NULL, dir, &size);
+	buf = (char*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, size);
+	lstrcpy(buf, dir);
+	AddSubDirs(buf + lstrlen(dir) + 1, dir, NULL);
+	return buf;
+}
+
+char* AddSubDirs(char* buf, char* dir, int* size)
+{
+	WIN32_FIND_DATA fd;
+	HANDLE hSearch;
+	char search[MAX_PATH];
+	char child[MAX_PATH];
+	lstrcpy(search, dir);
+	lstrcat(search, "\\*");
+
+	hSearch = FindFirstFile(search, &fd);
+	if (hSearch != INVALID_HANDLE_VALUE)
+	{
+		do
+		{
+			if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+			{
+				if (lstrcmp(fd.cFileName, ".") == 0 || lstrcmp(fd.cFileName, "..") == 0)
+				{
+					continue;
+				}
+
+				lstrcpy(child, dir);
+				lstrcat(child, "\\");
+				lstrcat(child, fd.cFileName);
+				if (size != NULL)
+				{
+					*size = *size + lstrlen(child) + 1;
+				}
+				if (buf != NULL)
+				{
+					lstrcpy(buf, child);
+					buf += lstrlen(child) + 1;
+				}
+				buf = AddSubDirs(buf, child, size);
+			}
+		} while (FindNextFile(hSearch, &fd));
+		FindClose(hSearch);
+	}
+	return buf;
+}
+
+char** GetArgsOpt(char* vm_args_opt, int* argc)
+{
+	LPWSTR lpCmdLineW;
+	LPWSTR* argvW;
+	LPSTR* argvA;
+	int i;
+
+	if (vm_args_opt == NULL || vm_args_opt[0] == '\0') {
+		argvA = (char**)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, 1);
+		*argc = 0;
+		return argvA;
+	}
+
+	lpCmdLineW = A2W((LPCSTR)vm_args_opt);
+	if (lpCmdLineW == NULL)
+	{
+		return NULL;
+	}
+	argvW = CommandLineToArgvW(lpCmdLineW, argc);
+	HeapFree(GetProcessHeap(), 0, lpCmdLineW);
+	if (argvW == NULL)
+	{
+		return NULL;
+	}
+
+	argvA = (LPSTR*)HeapAlloc(GetProcessHeap(), 0, (*argc + 1) * sizeof(LPSTR));
+	for (i = 0; i < *argc; i++)
+	{
+		argvA[i] = W2A(argvW[i]);
+	}
+	argvA[*argc] = NULL;
+	LocalFree(argvW);
+	return (LPTSTR*)argvA;
+}
+
+
+static LPWSTR A2W(LPCSTR s)
+{
+	LPWSTR buf;
+	int ret;
+
+	ret = MultiByteToWideChar(CP_ACP, 0, s, -1, NULL, 0);
+	if (ret == 0)
+	{
+		return NULL;
+	}
+
+	buf = (LPWSTR)HeapAlloc(GetProcessHeap(), 0, (ret + 1) * sizeof(WCHAR));
+	ret = MultiByteToWideChar(CP_ACP, 0, s, -1, buf, (ret + 1));
+	if (ret == 0)
+	{
+		HeapFree(GetProcessHeap(), 0, buf);
+		return NULL;
+	}
+	buf[ret] = L'\0';
+
+	return buf;
+}
+
+static LPSTR W2A(LPCWSTR s)
+{
+	LPSTR buf;
+	int ret;
+
+	ret = WideCharToMultiByte(CP_ACP, 0, s, -1, NULL, 0, NULL, NULL);
+	if (ret == 0)
+	{
+		return NULL;
+	}
+	buf = (LPSTR)HeapAlloc(GetProcessHeap(), 0, ret + 1);
+	ret = WideCharToMultiByte(CP_ACP, 0, s, -1, buf, (ret + 1), NULL, NULL);
+	if (ret == 0)
+	{
+		HeapFree(GetProcessHeap(), 0, buf);
+		return NULL;
+	}
+	buf[ret] = '\0';
+
+	return buf;
 }

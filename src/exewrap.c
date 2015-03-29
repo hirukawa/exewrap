@@ -68,9 +68,9 @@ int main(int argc, char* argv[])
 	{
 		int bits = GetProcessArchitecture();
 
-		printf("exewrap 1.0.0 for %s (%d-bit)\r\n"
+		printf("exewrap 1.0.3 for %s (%d-bit)\r\n"
 			   "Native executable java application wrapper.\r\n"
-			   "Copyright (C) 2005-2014 HIRUKAWA Ryo. All rights reserved.\r\n"
+			   "Copyright (C) 2005-2015 HIRUKAWA Ryo. All rights reserved.\r\n"
 			   "\r\n"
 			   "Usage: %s <options> <jar-file>\r\n"
 			   "Options:\r\n"
