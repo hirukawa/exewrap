@@ -9,66 +9,67 @@
 #include <jni.h>
 
 #include "include/jvm.h"
+#include "include/loader.h"
 #include "include/icon.h"
 #include "include/message.h"
 
-char** ParseOption(int argc, char* argv[]);
-char*  GetResource(LPCTSTR name, LPCTSTR type, DWORD* size);
-void   SetResource(LPCTSTR filename, LPCTSTR rscName, LPCTSTR rscType, char* rscData, DWORD rscSize);
-void   CreateExeFile(LPCTSTR filename, char* data, DWORD size);
-char*  GetFileData(LPCTSTR filename, DWORD* size);
+#define DEFAULT_VERSION         "0.0"
+#define DEFAULT_PRODUCT_VERSION "0.0"
 
-void    InitResource(LPCTSTR name);
-DWORD   GetResourceSize(LPCTSTR name);
-jbyte*  GetResourceBuffer(LPCTSTR name);
+void    OutputMessage(const char* text);
+UINT    UncaughtException(const char* thread, const char* message, const char* trace);
 
-DWORD  GetVersionRevision(LPTSTR filename);
-char*  SetVersionInfo(LPCTSTR filename, char* versionNumber, DWORD previousBuild, char* fileDescription, char* copyright, char* company_name, char* product_name, char* product_version, char* original_filename, char* jarfile);
-void   SetApplicationIcon(LPCTSTR filename, LPCTSTR iconfile);
+static char** parse_opt(int argc, char* argv[]);
+static DWORD  get_version_revision(char* filename);
+static BOOL   create_exe_file(const char* filename, BYTE* image_buf, DWORD image_len, BOOL is_reverse);
+static DWORD  get_target_java_runtime_version(char* version);
+static char*  get_target_java_runtime_version_string(DWORD version, char* buf);
+static void   set_resource(const char* filename, const char* rsc_name, const char* rsc_type, BYTE* rsc_data, DWORD rsc_size);
+static BYTE*  get_jar_buf(const char* jar_file, DWORD* jar_len);
+static void   set_application_icon(const char* filename, const char* icon_file);
+static char*  set_version_info(const char* filename, const char* version_number, DWORD previous_revision, char* file_description, char* copyright, char* company_name, char* product_name, char* product_version, char* original_filename, char* jar_file);
 
-DWORD GetTargetJavaRuntimeVersion(char* version);
-LPTSTR GetTargetJavaRuntimeVersionString(DWORD version);
 
 void UsePack200(LPCTSTR exefile, LPCTSTR jarfile);
 
-char defaultVersion[] = "0.0";
-char defaultProductVersion[] = "0.0";
 
 int main(int argc, char* argv[])
 {
-	DWORD targetVersion;
-	char* targetVersionString;
-	char** opt = ParseOption(argc, argv);
-	int   architecture_bits = 0;
-	char  image_name[32];
-	char* jarfile;
-	char* exefile = NULL;
+	char**   opt = NULL;
+	char*    jar_file = NULL;
+	char*    exe_file = NULL;
+	int      architecture_bits = 0;
+	char     image_name[32];
+	BYTE*    image_buf;
+	DWORD    image_len;
+	DWORD    previous_revision = 0;
+	DWORD    target_version;
+	char*    target_version_string;
+	BOOL     disable_pack200 = FALSE;
+	BOOL     enable_java = FALSE;
+	BYTE*    jar_buf;
+	DWORD    jar_len;
+	char*    version_number;
+	char*    file_description;
+	char*    copyright;
+	char*    company_name;
+	char*    product_name;
+	char*    product_version;
+	char*    original_filename;
+	char*    new_version;
+
+	char*    buf = NULL;
+	char*    ptr = NULL;
+	RESOURCE res;
+	BOOL     b;
 	
-	char* exeBuffer;
-	DWORD exeSize;
-	char* jarBuffer;
-	DWORD jarSize;
-	char* classBuffer = NULL;
-	DWORD classSize;
-	
-	DWORD previousRevision = 0;
-	char* versionNumber;
-	char* fileDescription;
-	char* copyright;
-	char* company_name;
-	char* product_name;
-	char* product_version;
-	char* original_filename;
-	
-	BOOL enableJava = FALSE;
-	BOOL disablePack200 = FALSE;
-	char* newVersion;
-	
+	opt = parse_opt(argc, argv);
+
 	if((argc < 2) || ((opt['j'] == NULL) && (opt[0] == NULL)))
 	{
 		int bits = GetProcessArchitecture();
 
-		printf("exewrap 1.0.3 for %s (%d-bit)\r\n"
+		printf("exewrap 1.0.4 for %s (%d-bit)\r\n"
 			   "Native executable java application wrapper.\r\n"
 			   "Copyright (C) 2005-2015 HIRUKAWA Ryo. All rights reserved.\r\n"
 			   "\r\n"
@@ -95,21 +96,22 @@ int main(int argc, char* argv[])
 
 		return 0;
 	}
+
+	buf = malloc(2048);
 	
+	jar_file = malloc(1024);
 	if(opt['j'] && *opt['j'] != '-' && *opt['j'] != '\0')
 	{
-		jarfile = opt['j'];
+		strcpy(jar_file, opt['j']);
 	}
 	else
 	{
-		jarfile = opt[0];
+		strcpy(jar_file, opt[0]);
 
-		if(lstrlen(jarfile) > 4)
+		if(strlen(jar_file) > 4)
 		{
-			char buf[_MAX_PATH];
-
-			lstrcpy(buf, jarfile + lstrlen(jarfile) - 4);
-			if(lstrcmp(_strupr(buf), ".JAR"))
+			strcpy(buf, jar_file + strlen(jar_file) - 4);
+			if(strcmp(_strupr(buf), ".JAR"))
 			{
 				printf("You must specify the jar-file.\n");
 				return 1;
@@ -117,29 +119,23 @@ int main(int argc, char* argv[])
 		}
 	}
 	
-	exefile = (char*)HeapAlloc(GetProcessHeap(), 0, MAX_PATH);
+	exe_file = malloc(1024);
 	if(opt['o'] && *opt['o'] != '-' && *opt['o'] != '\0')
 	{
-		lstrcpy(exefile, opt['o']);
+		strcpy(exe_file, opt['o']);
 	}
 	else
 	{
-		lstrcpy(exefile, jarfile);
-		exefile[lstrlen(exefile) - 4] = 0;
-		lstrcat(exefile, ".exe");
+		strcpy(exe_file, jar_file);
+		exe_file[strlen(exe_file) - 4] = 0;
+		strcat(exe_file, ".exe");
 	}
 
+	if(GetFullPathName(exe_file, _MAX_PATH, buf, &ptr) == 0)
 	{
-		char buf[_MAX_PATH];
-		char* p;
-
-		if(GetFullPathName(exefile, _MAX_PATH, buf, &p) == 0)
-		{
-			printf("Invalid path: %s\n", exefile);
-		}
-		lstrcpy(exefile, buf);
+		printf("Invalid path: %s\n", exe_file);
 	}
-	
+	strcpy(exe_file, buf);
 
 	if(opt['A'])
 	{
@@ -170,40 +166,187 @@ int main(int argc, char* argv[])
 	{
 		sprintf(image_name, "IMAGE_CONSOLE_%d", architecture_bits);
 	}
-	exeBuffer = GetResource(image_name, RT_RCDATA, &exeSize);
+
+	GetResource(image_name, &res);
+	image_buf = res.buf;
+	image_len = res.len;
 	
-	previousRevision = GetVersionRevision(exefile);
-	DeleteFile(exefile);
+	previous_revision = get_version_revision(exe_file);
+	DeleteFile(exe_file);
 	
-	CreateExeFile(exefile, exeBuffer, exeSize);
+	b = create_exe_file(exe_file, image_buf, image_len, TRUE);
+	if (b == FALSE)
+	{
+		goto EXIT;
+	}
 
 	if(opt['t'])
 	{
-		targetVersion = GetTargetJavaRuntimeVersion(opt['t']);
+		target_version = get_target_java_runtime_version(opt['t']);
 	}
 	else
 	{
-		targetVersion = 0x01050000; //default target version 1.5
+		target_version = 0x01050000; //default target version 1.5
 	}
-	targetVersionString = GetTargetJavaRuntimeVersionString(targetVersion);
-	printf("Target: %s (%d.%d.%d.%d)\n", targetVersionString + 4, targetVersion >> 24 & 0xFF, targetVersion >> 16 & 0xFF, targetVersion >> 8 & 0xFF, targetVersion & 0xFF);
-	SetResource(exefile, "TARGET_VERSION", RT_RCDATA, targetVersionString, 4);
+	target_version_string = get_target_java_runtime_version_string(target_version, buf);
+	printf("Target: %s (%d.%d.%d.%d)\n", target_version_string + 4, target_version >> 24 & 0xFF, target_version >> 16 & 0xFF, target_version >> 8 & 0xFF, target_version & 0xFF);
+	set_resource(exe_file, "TARGET_VERSION", RT_RCDATA, target_version_string, 4);
 	
 	if(opt['2'])
 	{
-		disablePack200 = TRUE;
+		disable_pack200 = TRUE;
 	}
 
 	if(opt['L'] && *opt['L'] != '-' && *opt['L'] != '\0')
 	{
-		SetResource(exefile, "EXTDIRS", RT_RCDATA, opt['L'], lstrlen(opt['L']) + 1);
+		set_resource(exe_file, "EXTDIRS", RT_RCDATA, opt['L'], (DWORD)strlen(opt['L']) + 1);
 	}
 
-	enableJava = CreateJavaVM(NULL, FALSE, NULL) != NULL;
-	if(targetVersion >= 0x01050000 && enableJava && !disablePack200)
+	enable_java = CreateJavaVM(NULL, FALSE, NULL) != NULL;
+	if (enable_java)
 	{
-		GetFileData(jarfile, &jarSize);
-		UsePack200(exefile, jarfile);
+		LOAD_RESULT result;
+		jbyteArray  buf;
+		jclass      JarProcessor;
+		jmethodID   JarProcessor_init;
+		jobject     jarProcessor;
+		jmethodID   jarProcessor_getMainClass;
+		jmethodID   jarProcessor_getClassPath;
+		jmethodID   jarProcessor_getSplashScreenName;
+		jmethodID   jarProcessor_getSplashScreenImage;
+		jmethodID   jarProcessor_getBytes;
+		char*       main_class;
+		char*       class_path;
+		char*       splash_screen_name;
+		BYTE*       splash_screen_image;
+		BYTE*       bytes;
+
+		if (LoadMainClass(argc, argv, NULL, &result) == FALSE)
+		{
+			goto EXIT;
+		}
+		JarProcessor = result.MainClass;
+
+		jar_buf = get_jar_buf(jar_file, &jar_len);
+		if (jar_buf == NULL)
+		{
+			goto EXIT;
+		}
+		buf = (*env)->NewByteArray(env, jar_len);
+		if (buf == NULL)
+		{
+			goto EXIT;
+		}
+		(*env)->SetByteArrayRegion(env, buf, 0, jar_len, (jbyte*)jar_buf);
+
+		JarProcessor_init = (*env)->GetMethodID(env, JarProcessor, "<init>", "([BZ)V");
+		if (JarProcessor_init == NULL)
+		{
+			result.msg_id = MSG_ID_ERR_GET_CONSTRUCTOR;
+			printf(_(MSG_ID_ERR_GET_CONSTRUCTOR), "exewrap.tool.JarProcessor(byte[], boolean)");
+			goto EXIT;
+		}
+		jarProcessor = (*env)->NewObject(env, JarProcessor, JarProcessor_init, buf, !disable_pack200);
+		if (jarProcessor == NULL)
+		{
+			result.msg_id = MSG_ID_ERR_NEW_OBJECT;
+			printf(_(MSG_ID_ERR_NEW_OBJECT), "exewrap.tool.JarProcessor(byte[], boolean)");
+			goto EXIT;
+		}
+		jarProcessor_getMainClass = (*env)->GetMethodID(env, JarProcessor, "getMainClass", "()Ljava/lang/String;");
+		if (jarProcessor_getMainClass == NULL)
+		{
+			result.msg_id = MSG_ID_ERR_GET_METHOD;
+			printf(_(MSG_ID_ERR_GET_METHOD), "exewrap.tool.JarProcessor.getMainClass()");
+			goto EXIT;
+		}
+		jarProcessor_getClassPath = (*env)->GetMethodID(env, JarProcessor, "getClassPath", "()Ljava/lang/String;");
+		if (jarProcessor_getClassPath == NULL)
+		{
+			result.msg_id = MSG_ID_ERR_GET_METHOD;
+			printf(_(MSG_ID_ERR_GET_METHOD), "exewrap.tool.JarProcessor.getClassPath()");
+			goto EXIT;
+		}
+		jarProcessor_getSplashScreenName = (*env)->GetMethodID(env, JarProcessor, "getSplashScreenName", "()Ljava/lang/String;");
+		if (jarProcessor_getSplashScreenName == NULL)
+		{
+			result.msg_id = MSG_ID_ERR_GET_METHOD;
+			printf(_(MSG_ID_ERR_GET_METHOD), "exewrap.tool.JarProcessor.getSplashScreenName()");
+			goto EXIT;
+		}
+		jarProcessor_getSplashScreenImage = (*env)->GetMethodID(env, JarProcessor, "getSplashScreenImage", "()[B");
+		if (jarProcessor_getSplashScreenImage == NULL)
+		{
+			result.msg_id = MSG_ID_ERR_GET_METHOD;
+			printf(_(MSG_ID_ERR_GET_METHOD), "exewrap.tool.JarProcessor.getSplashScreenImage()");
+			goto EXIT;
+		}
+		jarProcessor_getBytes =             (*env)->GetMethodID(env, JarProcessor, "getBytes", "()[B");
+		if (jarProcessor_getBytes == NULL)
+		{
+			result.msg_id = MSG_ID_ERR_GET_METHOD;
+			printf(_(MSG_ID_ERR_GET_METHOD), "exewrap.tool.JarProcessor.getBytes()");
+			goto EXIT;
+		}
+
+		main_class = GetShiftJIS(env, (*env)->CallObjectMethod(env, jarProcessor, jarProcessor_getMainClass));
+		if (main_class == NULL)
+		{
+
+		}
+		set_resource(exe_file, "MAIN_CLASS", RT_RCDATA, main_class, (DWORD)strlen(main_class) + 1);
+
+		class_path = GetShiftJIS(env, (*env)->CallObjectMethod(env, jarProcessor, jarProcessor_getClassPath));
+		if (class_path != NULL)
+		{
+			set_resource(exe_file, "CLASS_PATH", RT_RCDATA, class_path, (DWORD)strlen(class_path) + 1);
+		}
+
+		splash_screen_name = GetShiftJIS(env, (*env)->CallObjectMethod(env, jarProcessor, jarProcessor_getSplashScreenName));
+		if (splash_screen_name != NULL)
+		{
+			set_resource(exe_file, "SPLASH_SCREEN_NAME", RT_RCDATA, splash_screen_name, (DWORD)strlen(splash_screen_name) + 1);
+		}
+		buf = (*env)->CallObjectMethod(env, jarProcessor, jarProcessor_getSplashScreenImage);
+		if (buf != NULL)
+		{
+			jboolean isCopy = 0;
+			jint len;
+			splash_screen_image = (*env)->GetByteArrayElements(env, buf, &isCopy);
+			len = (*env)->GetArrayLength(env, buf);
+			set_resource(exe_file, "SPLASH_SCREEN_IMAGE", RT_RCDATA, splash_screen_image, (DWORD)len);
+			(*env)->ReleaseByteArrayElements(env, buf, splash_screen_image, 0);
+		}
+
+		buf = (*env)->CallObjectMethod(env, jarProcessor, jarProcessor_getBytes);
+		if (buf != NULL)
+		{
+			jboolean isCopy;
+			jint len;
+			bytes  = (*env)->GetByteArrayElements(env, buf, &isCopy);
+			len = (*env)->GetArrayLength(env, buf);
+			set_resource(exe_file, (disable_pack200 ? "JAR" : "PACK_GZ"), RT_RCDATA, bytes, (DWORD)len);
+			(*env)->ReleaseByteArrayElements(env, buf, bytes, 0);
+		}
+	}
+	else
+	{
+		jar_buf = get_jar_buf(jar_file, &jar_len);
+		if (jar_buf != NULL)
+		{
+			set_resource(exe_file, "JAR", RT_RCDATA, jar_buf, jar_len);
+		}
+		printf("Pack200: disable / JavaVM (%d-bit) not found.\r\n", GetProcessArchitecture());
+	}
+	/*
+	if(target_version >= 0x01050000 && enable_java && !disable_pack200)
+	{
+		jar_buf = get_jar_buf(jar_file, &jar_len);
+		if (jar_buf == NULL)
+		{
+			goto EXIT;
+		}
+		UsePack200(exe_file, jar_file);
 		classBuffer = GetResource("PACK_LOADER", RT_RCDATA, &classSize);
 		SetResource(exefile, "PACK_LOADER", RT_RCDATA, classBuffer, classSize);
 		printf("Pack200: enable\r\n");
@@ -228,42 +371,43 @@ int main(int argc, char* argv[])
 			printf("Pack200: disable\r\n");
 		}
 	}
+	*/
 	
 	if(opt['e'] && *opt['e'] != '-' && *opt['e'] != '\0')
 	{
-		SetResource(exefile, "EXTFLAGS", RT_RCDATA, opt['e'], lstrlen(opt['e']) + 1);
+		set_resource(exe_file, "EXTFLAGS", RT_RCDATA, opt['e'], (DWORD)strlen(opt['e']) + 1);
 	}
 	
 	if(opt['a'] && *opt['a'] != '\0')
 	{
-		SetResource(exefile, "VMARGS", RT_RCDATA, opt['a'], lstrlen(opt['a']) + 1);
+		set_resource(exe_file, "VMARGS", RT_RCDATA, opt['a'], (DWORD)strlen(opt['a']) + 1);
 	}
 	
 	if(opt['i'] && *opt['i'] != '-' && *opt['i'] != '\0')
 	{
-		SetApplicationIcon(exefile, opt['i']);
+		set_application_icon(exe_file, opt['i']);
 	}
 	
 	if(opt['v'] && *opt['v'] != '-' && *opt['v'] != '\0')
 	{
-		versionNumber = opt['v'];
+		version_number = opt['v'];
 	}
 	else
 	{
-		versionNumber = defaultVersion;
+		version_number = DEFAULT_VERSION;
 	}
 
 	if(opt['d'] && *opt['d'] != '-' && *opt['d'] != '\0')
 	{
-		fileDescription = opt['d'];
+		file_description = opt['d'];
 		if(opt['s'])
 		{
-			SetResource(exefile, "SVCDESC", RT_RCDATA, opt['d'], lstrlen(opt['d']) + 1);
+			set_resource(exe_file, "SVCDESC", RT_RCDATA, opt['d'], (DWORD)strlen(opt['d']) + 1);
 		}
 	}
 	else
 	{
-		fileDescription = (char*)"";
+		file_description = (char*)"";
 	}
 
 	if(opt['c'] && *opt['c'] != '-' && *opt['c'] != '\0')
@@ -299,554 +443,34 @@ int main(int argc, char* argv[])
 	}
 	else
 	{
-		product_version = defaultProductVersion;
+		product_version = DEFAULT_PRODUCT_VERSION;
 	}
 
-	original_filename = strrchr(exefile, '\\') + 1;
-	newVersion = SetVersionInfo(exefile, versionNumber, previousRevision, fileDescription, copyright, company_name, product_name, product_version, original_filename, jarfile);
-	printf("%s (%d-bit) version %s\r\n", strrchr(exefile, '\\') + 1, architecture_bits, newVersion);
+	original_filename = strrchr(exe_file, '\\') + 1;
+	new_version = set_version_info(exe_file, version_number, previous_revision, file_description, copyright, company_name, product_name, product_version, original_filename, jar_file);
+	printf("%s (%d-bit) version %s\r\n", strrchr(exe_file, '\\') + 1, architecture_bits, new_version);
 	
-	return 0;
+EXIT:
+	if (env != NULL)
+	{
+		if ((*env)->ExceptionCheck(env) == JNI_TRUE)
+		{
+			(*env)->ExceptionDescribe(env);
+			(*env)->ExceptionClear(env);
+		}
+		DetachJavaVM();
+	}
+	if (jvm != NULL)
+	{
+		DestroyJavaVM();
+	}
+	ExitProcess(0);
 }
 
-DWORD GetVersionRevision(char* filename)
-{
-	/* GetFileVersionInfoSize, GetFileVersionInfo を使うと内部で LoadLibrary が使用されるらしく
-	 * その後のリソース書き込みがうまくいかなくなるようです。なので、自力で EXEファイルから
-	 * リビジョンナンバーを取り出すように変更しました。
-	 */
-	DWORD  revision = 0;
-	HANDLE hFile;
-	char   HEADER[] = "VS_VERSION_INFO";
-	int    len;
-	char*  buf;
-	DWORD  size;
-	unsigned int i;
-	int j;
-	
-	buf = (char*)HeapAlloc(GetProcessHeap(), 0, 8192);
-	
-	if((hFile = CreateFile(filename, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)) == INVALID_HANDLE_VALUE)
-	{
-		return 0;
-	}
-	
-	SetFilePointer(hFile, -1 * 8192, 0, FILE_END);
-	ReadFile(hFile, buf, 8192, &size, NULL);
-	CloseHandle(hFile);
-	
-	len = lstrlen(HEADER);
-	for(i = 0; i < size - len; i++)
-	{
-		for(j = 0; j < len; j++)
-		{
-			if(buf[i + j * 2] != HEADER[j]) break;
-		}
-		if(j == lstrlen(HEADER))
-		{
-			revision = ((buf[i + 47] << 8) & 0xFF00) | ((buf[i + 46]     ) & 0x00FF);
-		}
-	}
-	HeapFree(GetProcessHeap(), 0, buf);
-	return revision;
-}
-
-char* SetVersionInfo(LPCTSTR filename, char* versionNumber, DWORD previousRevision, char* fileDescription, char* copyright, char* company_name, char* product_name, char* product_version, char* original_filename, char* jarfile)
-{
-	int   i;
-	int   SIZE_VERSION            = 48;
-	int   SIZE_TEXT               = 256;
-	int   ADDR_COMPANY_NAME       = 0x00B8;
-	int   ADDR_FILE_DESCRIPTION   = 0x01E4;
-	int   ADDR_FILE_VERSION       = 0x0308;
-	int   ADDR_INTERNAL_NAME      = 0x0358;
-	int   ADDR_COPYRIGHT          = 0x0480;
-	int   ADDR_ORIGINAL_FILENAME  = 0x05AC;
-	int   ADDR_PRODUCT_NAME       = 0x06D0;
-	int   ADDR_PRODUCT_VERSION    = 0x07F8;
-	char* internalName;
-	char  file_version[48];
-	char  buffer[260];
-	char* tmp;
-	char* versioninfoBuffer = NULL;
-	DWORD versioninfoSize;
-	short file_version_major;
-	short file_version_minor;
-	short file_version_build;
-	short file_version_revision;
-	short product_version_major;
-	short product_version_minor;
-	short product_version_build;
-	short product_version_revision;
-	char* newVersion;
-
-	if(strrchr(jarfile, '\\') != NULL)
-	{
-		internalName = strrchr(jarfile, '\\') + 1;
-	}
-	else
-	{
-		internalName = jarfile;
-	}
-	
-	lstrcpy(buffer, versionNumber);
-	lstrcat(buffer, ".0.0.0.0");
-	file_version_major    = atoi(strtok(buffer, "."));
-	file_version_minor    = atoi(strtok(NULL, "."));
-	file_version_build    = atoi(strtok(NULL, "."));
-	file_version_revision = atoi(strtok(NULL, "."));
-	
-	lstrcpy(buffer, product_version);
-	lstrcat(buffer, ".0.0.0.0");
-	product_version_major    = atoi(strtok(buffer, "."));
-	product_version_minor    = atoi(strtok(NULL, "."));
-	product_version_build    = atoi(strtok(NULL, "."));
-	product_version_revision = atoi(strtok(NULL, "."));
-	
-	// revison が明示的に指定されていなかった場合、既存ファイルから取得した値に 1　を加算して revision とする。
-	lstrcpy(buffer, versionNumber);
-	if(strtok(buffer, ".") != NULL)
-	{
-		if(strtok(NULL, ".") != NULL)
-		{
-			if(strtok(NULL, ".") != NULL)
-			{
-				if(strtok(NULL, ".") != NULL)
-				{
-					previousRevision = file_version_revision - 1;
-				}
-			}
-		}
-	}
-	
-	file_version_revision = (short)previousRevision + 1;
-	// build 加算判定ここまで。
-	sprintf(file_version, "%d.%d.%d.%d", file_version_major, file_version_minor, file_version_build, file_version_revision);
-	
-	tmp = GetResource("VERSION_INFO", RT_RCDATA, &versioninfoSize);
-	versioninfoBuffer = (char*)HeapAlloc(GetProcessHeap(), 0, versioninfoSize);
-	CopyMemory(versioninfoBuffer, tmp, versioninfoSize);
-
-	//FILEVERSION
-	versioninfoBuffer[48] = file_version_minor & 0xFF;
-	versioninfoBuffer[49] = (file_version_minor >> 8) & 0xFF;
-	versioninfoBuffer[50] = file_version_major & 0xFF;
-	versioninfoBuffer[51] = (file_version_major >> 8) & 0xFF;
-	versioninfoBuffer[52] = file_version_revision & 0xFF;
-	versioninfoBuffer[53] = (file_version_revision >> 8) & 0xFF;
-	versioninfoBuffer[54] = file_version_build & 0xFF;
-	versioninfoBuffer[55] = (file_version_build >> 8) & 0xFF;
-	//PRODUCTVERSION
-	versioninfoBuffer[56] = product_version_minor & 0xFF;
-	versioninfoBuffer[57] = (product_version_minor >> 8) & 0xFF;
-	versioninfoBuffer[58] = product_version_major & 0xFF;
-	versioninfoBuffer[59] = (product_version_major >> 8) & 0xFF;
-	versioninfoBuffer[60] = product_version_revision & 0xFF;
-	versioninfoBuffer[61] = (product_version_revision >> 8) & 0xFF;
-	versioninfoBuffer[62] = product_version_build & 0xFF;
-	versioninfoBuffer[63] = (product_version_build >> 8) & 0xFF;
-	
-	SecureZeroMemory(buffer, sizeof(char) * 260);
-	MultiByteToWideChar(CP_ACP, 0, company_name, lstrlen(company_name), (WCHAR*)buffer, 128);
-	for(i = 0; i < SIZE_TEXT; i++)
-	{
-		versioninfoBuffer[ADDR_COMPANY_NAME + i] = buffer[i];
-	}
-	
-	SecureZeroMemory(buffer, sizeof(char) * 260);
-	MultiByteToWideChar(CP_ACP, 0, fileDescription, lstrlen(fileDescription), (WCHAR*)buffer, 128);
-	for(i = 0; i < SIZE_TEXT; i++)
-	{
-		versioninfoBuffer[ADDR_FILE_DESCRIPTION + i] = buffer[i];
-	}
-	
-	SecureZeroMemory(buffer, sizeof(char) * 260);
-	MultiByteToWideChar(CP_ACP, 0, file_version, lstrlen(file_version), (WCHAR*)buffer, 128);
-	for(i = 0; i < SIZE_VERSION; i++)
-	{
-		versioninfoBuffer[ADDR_FILE_VERSION + i] = buffer[i];
-	}
-	
-	SecureZeroMemory(buffer, sizeof(char) * 260);
-	MultiByteToWideChar(CP_ACP, 0, internalName, lstrlen(internalName), (WCHAR*)buffer, 128);
-	for(i = 0; i < SIZE_TEXT; i++)
-	{
-		versioninfoBuffer[ADDR_INTERNAL_NAME + i] = buffer[i];
-	}
-	
-	SecureZeroMemory(buffer, sizeof(char) * 260);
-	MultiByteToWideChar(CP_ACP, 0, copyright, lstrlen(copyright), (WCHAR*)buffer, 128);
-	for(i = 0; i < SIZE_TEXT; i++)
-	{
-		versioninfoBuffer[ADDR_COPYRIGHT + i] = buffer[i];
-	}
-	
-	SecureZeroMemory(buffer, sizeof(char) * 260);
-	MultiByteToWideChar(CP_ACP, 0, original_filename, lstrlen(original_filename), (WCHAR*)buffer, 128);
-	for(i = 0; i < SIZE_TEXT; i++)
-	{
-		versioninfoBuffer[ADDR_ORIGINAL_FILENAME + i] = buffer[i];
-	}
-	
-	SecureZeroMemory(buffer, sizeof(char) * 260);
-	MultiByteToWideChar(CP_ACP, 0, product_name, lstrlen(product_name), (WCHAR*)buffer, 128);
-	for(i = 0; i < SIZE_TEXT; i++)
-	{
-		versioninfoBuffer[ADDR_PRODUCT_NAME + i] = buffer[i];
-	}
-	
-	SecureZeroMemory(buffer, sizeof(char) * 260);
-	MultiByteToWideChar(CP_ACP, 0, product_version, lstrlen(product_version), (WCHAR*)buffer, 128);
-	for(i = 0; i < SIZE_VERSION; i++)
-	{
-		versioninfoBuffer[ADDR_PRODUCT_VERSION + i] = buffer[i];
-	}
-	
-	SetResource(filename, (LPCTSTR)VS_VERSION_INFO, RT_VERSION, versioninfoBuffer, versioninfoSize);
-	
-	newVersion = (char*)HeapAlloc(GetProcessHeap(), 0, 128);
-	sprintf(newVersion, "%d.%d.%d.%d", file_version_major, file_version_minor, file_version_build, file_version_revision);
-
-	HeapFree(GetProcessHeap(), 0, versioninfoBuffer);
-
-	return newVersion;
-}
-
-char** ParseOption(int argc, char* argv[])
-{
-	char** opt = (char**)HeapAlloc(GetProcessHeap(), 0, 256 * 8);
-	
-	SecureZeroMemory(opt, 256 * 8);
-
-	if((argc > 1) && (*argv[1] != '-'))
-	{
-		opt[0] = argv[1];
-	}
-	while(*++argv)
-	{
-		if(*argv[0] == '-')
-		{
-			if(argv[1] == NULL)
-			{
-				opt[*(argv[0] + 1)] = (char*)"";
-			}
-			else
-			{
-				opt[*(argv[0] + 1)] = argv[1];
-			}
-		}
-	}
-	argv--;
-	if((opt[0] == NULL) && (*argv[0] != '-'))
-	{
-		opt[0] = argv[0];
-	}
-
-	return opt;
-}
-
-char* GetResource(LPCTSTR name, LPCTSTR type, DWORD* size)
-{
-	HRSRC hrsrc;
-
-	if((hrsrc = FindResource(NULL, name, type)) == NULL)
-	{
-		printf("Fail to FindResource: %s\n", name);
-		ExitProcess(0);
-	}
-	*size = SizeofResource(NULL, hrsrc);
-	return (char*)LockResource(LoadResource(NULL, hrsrc));
-}
-
-void SetResource(LPCTSTR filename, LPCTSTR rscName, LPCTSTR rscType, char* rscData, DWORD rscSize)
-{
-	HANDLE hRes;
-	BOOL   ret1;
-	BOOL   ret2;
-	int i;
-
-	for (i = 0; i < 100; i++)
-	{
-		ret1 = FALSE;
-		ret2 = FALSE;
-		hRes = BeginUpdateResource(filename, FALSE);
-		if (hRes != NULL)
-		{
-			ret1 = UpdateResource(hRes, rscType, rscName, MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL), rscData, rscSize);
-			ret2 = EndUpdateResource(hRes, FALSE);
-		}
-		if(ret1 && ret2)
-		{
-			break;
-		}
-		Sleep(100);
-	}
-	if(ret1 == FALSE || ret2 == FALSE)
-	{
-		printf("Failed to update resource: %s: %s\n", filename, rscName);
-		ExitProcess(0);
-	}
-	CloseHandle(hRes);
-}
-
-void CreateExeFile(LPCTSTR filename, char* data, DWORD size)
-{
-	HANDLE hFile;
-	DWORD writeSize;
-
-	if((hFile = CreateFile(filename, GENERIC_WRITE, 0, NULL, TRUNCATE_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)) == INVALID_HANDLE_VALUE)
-	{
-		if((hFile = CreateFile(filename, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL)) == INVALID_HANDLE_VALUE)
-		{
-			printf("Failed to create file: %s\n", filename);
-			ExitProcess(0);
-		}
-	}
-
-	while(size > 0)
-	{
-		if(WriteFile(hFile, data, size, &writeSize, NULL) == 0)
-		{
-			printf("Failed to write: %s\n", filename);
-			ExitProcess(0);
-		}
-		data += writeSize;
-		size -= writeSize;
-	}
-	CloseHandle(hFile);
-}
-
-char* GetFileData(LPCTSTR filename, DWORD* size)
-{
-	HANDLE hFile;
-	char* buf;
-	char* p;
-	DWORD r;
-	DWORD readSize;
-
-	if((hFile = CreateFile(filename, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)) == INVALID_HANDLE_VALUE)
-	{
-		printf("Failed to read file: %s\n", filename);
-		ExitProcess(0);
-	}
-	*size = GetFileSize(hFile, NULL);
-	p = buf = (char*)HeapAlloc(GetProcessHeap(), 0, *size);
-
-	r = *size;
-	while(r > 0)
-	{
-		if(ReadFile(hFile, p, r, &readSize, NULL) == 0)
-		{
-			printf("Failed to read: %s\n", filename);
-			HeapFree(GetProcessHeap(), 0, buf);
-			ExitProcess(0);
-		}
-		p += readSize;
-		r -= readSize;
-	}
-	CloseHandle(hFile);
-
-	return buf;
-}
-
-void SetApplicationIcon(LPCTSTR filename, LPCTSTR iconfile)
-{
-	void *pvFile;
-	DWORD nSize;
-	int f, z;
-	ICONDIR id, *pid;
-	GRPICONDIR *pgid;
-	HANDLE hResource;
-	BOOL ret1;
-	BOOL ret2;
-	BOOL ret3;
-	int i;
-	
-	//Delete default icon.
-	for(z = 0; z < 99; z++)
-	{
-		hResource = BeginUpdateResource(filename, FALSE);
-		ret1 = UpdateResource(hResource, RT_ICON, MAKEINTRESOURCE(z + 1), MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL), NULL, 0);
-		EndUpdateResource(hResource, FALSE);
-		if(ret1 == FALSE)
-		{
-			break;
-		}
-	}
-
-	//Delete default icon group.
-	{
-		hResource = BeginUpdateResource(filename, FALSE);
-		UpdateResource(hResource, RT_GROUP_ICON, MAKEINTRESOURCE(1), MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL), NULL, 0);
-		EndUpdateResource(hResource, FALSE);
-	}
-
-	if(!lstrlen(iconfile))
-	{
-		return;
-	}
-	if((f = _lopen(iconfile, OF_READ)) == -1)
-	{
-		return;
-	}
-	
-	for(i = 0; i < 100; i++)
-	{
-		ret1 = FALSE;
-		ret2 = FALSE;
-		ret3 = FALSE;
-		hResource = BeginUpdateResource(filename, FALSE);
-		
-		_lread(f, &id, sizeof(id));
-		_llseek(f, 0, SEEK_SET);
-		pid = (ICONDIR *)HeapAlloc(GetProcessHeap(), 0, sizeof(ICONDIR) + sizeof(ICONDIRENTRY) * (id.idCount - 1));
-		pgid = (GRPICONDIR *)HeapAlloc(GetProcessHeap(), 0, sizeof(GRPICONDIR) + sizeof(GRPICONDIRENTRY) * (id.idCount - 1));
-		_lread(f, pid, sizeof(ICONDIR) + sizeof(ICONDIRENTRY) * (id.idCount - 1));
-		memcpy(pgid, pid, sizeof(GRPICONDIR));
-		
-		for(z = 0; z < id.idCount; z++)
-		{
-			pgid->idEntries[z].common = pid->idEntries[z].common;
-			pgid->idEntries[z].nID = z + 1;
-			nSize = pid->idEntries[z].common.dwBytesInRes;
-			pvFile = HeapAlloc(GetProcessHeap(), 0, nSize);
-			if(!pvFile)
-			{
-				_lclose(f);
-				return;
-			}
-			_llseek(f, pid->idEntries[z].dwImageOffset, SEEK_SET);
-			_lread(f, pvFile, nSize);
-			ret1 = UpdateResource(hResource, RT_ICON, MAKEINTRESOURCE(z + 1), MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL), pvFile, nSize);
-			HeapFree(GetProcessHeap(), 0, pvFile);
-		}
-		nSize = sizeof(GRPICONDIR) + sizeof(GRPICONDIRENTRY) * (id.idCount - 1);
-		ret2 = UpdateResource(hResource, RT_GROUP_ICON, MAKEINTRESOURCE(1), MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL), pgid, nSize);
-		_lclose(f);
-		
-		ret3 = EndUpdateResource(hResource, FALSE);
-		if(ret1 && ret2 && ret3)
-		{
-			break;
-		}
-		Sleep(100);
-	}
-	if(ret1 == FALSE || ret2 == FALSE || ret3 == FALSE)
-	{
-		printf("Failed to set icon\n");
-		return;
-	}
-	CloseHandle(hResource);
-}
-
-DWORD GetTargetJavaRuntimeVersion(char* version)
-{
-	char* p = version;
-	DWORD major = 0;
-	DWORD minor = 0;
-	DWORD build = 0;
-	DWORD revision = 0;
-	
-	if(p != NULL)
-	{
-		major = atoi(p);
-		if((p = strstr(p, ".")) != NULL)
-		{
-			minor = atoi(++p);
-			if((p = strstr(p, ".")) != NULL)
-			{
-				build = atoi(++p);
-				if((p = strstr(p, ".")) != NULL)
-				{
-					revision = atoi(++p);
-				}
-			}
-		}
-		return major << 24 & 0xFF000000 | minor << 16 & 0x00FF0000 | build << 8 & 0x0000FF00 | revision & 0x000000FF;
-	}
-	return 0x00000000;
-}
-
-LPTSTR GetTargetJavaRuntimeVersionString(DWORD version)
-{
-	DWORD major = version >> 24 & 0xFF;
-	DWORD minor = version >> 16 & 0xFF;
-	DWORD build = version >> 8 & 0xFF;
-	DWORD revision = version & 0xFF;
-	LPTSTR buf = (LPTSTR)HeapAlloc(GetProcessHeap(), 0, 64);
-
-	*(DWORD*)buf = version;
-
-	//1.5, 1.6
-	if(major == 1 && (minor == 5 || minor == 6))
-	{
-		if(revision == 0)
-		{
-			sprintf(buf + 4, "Java %d.%d", minor, build);
-		}
-		else
-		{
-			sprintf(buf + 4, "Java %d.%d.%d", minor, build, revision);
-		}
-		return buf;
-	}
-
-	//1.2, 1.3, 1.4
-	if(major == 1 && (minor == 2 || minor == 3 || minor == 4))
-	{
-		if(revision == 0)
-		{
-			if(build == 0)
-			{
-				sprintf(buf + 4, "Java2 %d.%d", major, minor);
-			}
-			else
-			{
-				sprintf(buf + 4, "Java2 %d.%d.%d", major, minor, build);
-			}
-		}
-		else
-		{
-			sprintf(buf + 4, "Java2 %d.%d.%d.%d", major, minor, build, revision);
-		}
-		return buf;
-	}
-
-	//1.0, 1.1
-	if(major == 1 && (minor == 0 || minor == 1))
-	{
-		if(revision == 0)
-		{
-			if(build == 0)
-			{
-				sprintf(buf + 4, "Java %d.%d", major, minor);
-			}
-			else
-			{
-				sprintf(buf + 4, "Java %d.%d.%d", major, minor, build);
-			}
-		}
-		else
-		{
-			sprintf(buf + 4, "Java %d.%d.%d.%d", major, minor, build, revision);
-		}
-		return buf;
-	}
-
-	//other
-	if(revision == 0)
-	{
-		sprintf(buf + 4, "Java %d.%d.%d", major, minor, build);
-	}
-	else
-	{
-		sprintf(buf + 4, "Java %d.%d.%d.%d", major, minor, build, revision);
-	}
-	return buf;
-}
 
 void UsePack200(LPCTSTR exefile, LPCTSTR jarfile)
 {
+	/*
 	DWORD size;
 	char* buf;
 	jclass optimizerClass;
@@ -943,4 +567,585 @@ void UsePack200(LPCTSTR exefile, LPCTSTR jarfile)
 		buf = (char*)((*env)->GetByteArrayElements(env, splashImage, NULL));
 		SetResource(exefile, "SPLASH_IMAGE", RT_RCDATA, buf, size);
 	}
+	*/
+}
+
+
+static char** parse_opt(int argc, char* argv[])
+{
+	char** opt = (char**)HeapAlloc(GetProcessHeap(), 0, 256 * 8);
+
+	SecureZeroMemory(opt, 256 * 8);
+
+	if ((argc > 1) && (*argv[1] != '-'))
+	{
+		opt[0] = argv[1];
+	}
+	while (*++argv)
+	{
+		if (*argv[0] == '-')
+		{
+			if (argv[1] == NULL)
+			{
+				opt[*(argv[0] + 1)] = (char*)"";
+			}
+			else
+			{
+				opt[*(argv[0] + 1)] = argv[1];
+			}
+		}
+	}
+	argv--;
+	if ((opt[0] == NULL) && (*argv[0] != '-'))
+	{
+		opt[0] = argv[0];
+	}
+
+	return opt;
+}
+
+
+static DWORD get_version_revision(char* filename)
+{
+	/* GetFileVersionInfoSize, GetFileVersionInfo を使うと内部で LoadLibrary が使用されるらしく
+	* その後のリソース書き込みがうまくいかなくなるようです。なので、自力で EXEファイルから
+	* リビジョンナンバーを取り出すように変更しました。
+	*/
+	DWORD  revision = 0;
+	HANDLE hFile;
+	char   HEADER[] = "VS_VERSION_INFO";
+	size_t len;
+	BYTE*  buf = NULL;
+	DWORD  size;
+	unsigned int i;
+	size_t j;
+
+	buf = (BYTE*)malloc(8192);
+
+	hFile = CreateFile(filename, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (hFile == INVALID_HANDLE_VALUE)
+	{
+		goto EXIT;
+	}
+
+	SetFilePointer(hFile, -1 * 8192, 0, FILE_END);
+	ReadFile(hFile, buf, 8192, &size, NULL);
+	CloseHandle(hFile);
+
+	len = strlen(HEADER);
+	for (i = 0; i < size - len; i++)
+	{
+		for (j = 0; j < len; j++)
+		{
+			if (buf[i + j * 2] != HEADER[j]) break;
+		}
+		if (j == strlen(HEADER))
+		{
+			revision = ((buf[i + 47] << 8) & 0xFF00) | ((buf[i + 46]) & 0x00FF);
+		}
+	}
+
+EXIT:
+	if (buf != NULL)
+	{
+		free(buf);
+	}
+	return revision;
+}
+
+
+static BOOL create_exe_file(const char* filename, BYTE* image_buf, DWORD image_len, BOOL is_reverse)
+{
+	HANDLE hFile;
+	BYTE*  buf = NULL;
+	DWORD  write_size;
+
+	hFile = CreateFile(filename, GENERIC_WRITE, 0, NULL, TRUNCATE_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (hFile == INVALID_HANDLE_VALUE)
+	{
+		hFile = CreateFile(filename, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
+		if (hFile == INVALID_HANDLE_VALUE)
+		{
+			printf("Failed to create file: %s\n", filename);
+			return FALSE;
+		}
+	}
+
+	if (is_reverse)
+	{
+		DWORD i;
+		buf = (BYTE*)malloc(image_len);
+		for (i = 0; i < image_len; i++)
+		{
+			buf[i] = ~image_buf[image_len - 1 - i];
+		}
+		image_buf = buf;
+	}
+	else
+	{
+		buf = image_buf;
+	}
+
+	while (image_len > 0)
+	{
+		if (WriteFile(hFile, image_buf, image_len, &write_size, NULL) == 0)
+		{
+			printf("Failed to write: %s\n", filename);
+			return FALSE;
+		}
+		image_buf += write_size;
+		image_len -= write_size;
+	}
+	CloseHandle(hFile);
+
+EXIT:
+	if (is_reverse)
+	{
+		if (buf != NULL)
+		{
+			free(buf);
+		}
+	}
+
+	return TRUE;
+}
+
+
+static DWORD get_target_java_runtime_version(char* version)
+{
+	char* p = version;
+	DWORD major = 0;
+	DWORD minor = 0;
+	DWORD build = 0;
+	DWORD revision = 0;
+
+	if (p != NULL)
+	{
+		major = atoi(p);
+		if ((p = strstr(p, ".")) != NULL)
+		{
+			minor = atoi(++p);
+			if ((p = strstr(p, ".")) != NULL)
+			{
+				build = atoi(++p);
+				if ((p = strstr(p, ".")) != NULL)
+				{
+					revision = atoi(++p);
+				}
+			}
+		}
+		return major << 24 & 0xFF000000 | minor << 16 & 0x00FF0000 | build << 8 & 0x0000FF00 | revision & 0x000000FF;
+	}
+	return 0x00000000;
+}
+
+
+static char* get_target_java_runtime_version_string(DWORD version, char* buf)
+{
+	DWORD major = version >> 24 & 0xFF;
+	DWORD minor = version >> 16 & 0xFF;
+	DWORD build = version >> 8 & 0xFF;
+	DWORD revision = version & 0xFF;
+
+	*(DWORD*)buf = version;
+
+	//1.5, 1.6
+	if (major == 1 && (minor == 5 || minor == 6))
+	{
+		if (revision == 0)
+		{
+			sprintf(buf + 4, "Java %d.%d", minor, build);
+		}
+		else
+		{
+			sprintf(buf + 4, "Java %d.%d.%d", minor, build, revision);
+		}
+		return buf;
+	}
+
+	//1.2, 1.3, 1.4
+	if (major == 1 && (minor == 2 || minor == 3 || minor == 4))
+	{
+		if (revision == 0)
+		{
+			if (build == 0)
+			{
+				sprintf(buf + 4, "Java2 %d.%d", major, minor);
+			}
+			else
+			{
+				sprintf(buf + 4, "Java2 %d.%d.%d", major, minor, build);
+			}
+		}
+		else
+		{
+			sprintf(buf + 4, "Java2 %d.%d.%d.%d", major, minor, build, revision);
+		}
+		return buf;
+	}
+
+	//1.0, 1.1
+	if (major == 1 && (minor == 0 || minor == 1))
+	{
+		if (revision == 0)
+		{
+			if (build == 0)
+			{
+				sprintf(buf + 4, "Java %d.%d", major, minor);
+			}
+			else
+			{
+				sprintf(buf + 4, "Java %d.%d.%d", major, minor, build);
+			}
+		}
+		else
+		{
+			sprintf(buf + 4, "Java %d.%d.%d.%d", major, minor, build, revision);
+		}
+		return buf;
+	}
+
+	//other
+	if (revision == 0)
+	{
+		sprintf(buf + 4, "Java %d.%d.%d", major, minor, build);
+	}
+	else
+	{
+		sprintf(buf + 4, "Java %d.%d.%d.%d", major, minor, build, revision);
+	}
+	return buf;
+}
+
+
+static void set_resource(const char* filename, const char* rsc_name, const char* rsc_type, BYTE* rsc_data, DWORD rsc_size)
+{
+	HANDLE hRes;
+	BOOL   ret1;
+	BOOL   ret2;
+	int i;
+
+	for (i = 0; i < 100; i++)
+	{
+		ret1 = FALSE;
+		ret2 = FALSE;
+		hRes = BeginUpdateResource(filename, FALSE);
+		if (hRes != NULL)
+		{
+			ret1 = UpdateResource(hRes, rsc_type, rsc_name, MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL), rsc_data, rsc_size);
+			ret2 = EndUpdateResource(hRes, FALSE);
+		}
+		if (ret1 && ret2)
+		{
+			break;
+		}
+		Sleep(100);
+	}
+	if (ret1 == FALSE || ret2 == FALSE)
+	{
+		printf("Failed to update resource: %s: %s\n", filename, rsc_name);
+		ExitProcess(0);
+	}
+	CloseHandle(hRes);
+}
+
+
+static BYTE* get_jar_buf(const char* jar_file, DWORD* jar_len)
+{
+	HANDLE hFile;
+	char*  buf;
+	char*  p;
+	DWORD  r;
+	DWORD  read_size;
+
+	hFile = CreateFile(jar_file, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (hFile == INVALID_HANDLE_VALUE)
+	{
+		printf("Failed to read file: %s\n", jar_file);
+		buf = NULL;
+		goto EXIT;
+	}
+	*jar_len = GetFileSize(hFile, NULL);
+	p = buf = (BYTE*)malloc(*jar_len);
+
+	r = *jar_len;
+	while (r > 0)
+	{
+		if (ReadFile(hFile, p, r, &read_size, NULL) == 0)
+		{
+			printf("Failed to read: %s\n", jar_file);
+			free(buf);
+			buf = NULL;
+			goto EXIT;
+		}
+		p += read_size;
+		r -= read_size;
+	}
+	CloseHandle(hFile);
+
+EXIT:
+	return buf;
+}
+
+
+static void set_application_icon(const char* filename, const char* icon_file)
+{
+	void* pvFile;
+	DWORD nSize;
+	int f, z;
+	ICONDIR id, *pid;
+	GRPICONDIR *pgid;
+	HANDLE hResource;
+	BOOL ret1;
+	BOOL ret2;
+	BOOL ret3;
+	int i;
+
+	//Delete default icon.
+	for (z = 0; z < 99; z++)
+	{
+		hResource = BeginUpdateResource(filename, FALSE);
+		ret1 = UpdateResource(hResource, RT_ICON, MAKEINTRESOURCE(z + 1), MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL), NULL, 0);
+		EndUpdateResource(hResource, FALSE);
+		if (ret1 == FALSE)
+		{
+			break;
+		}
+	}
+
+	//Delete default icon group.
+	{
+		hResource = BeginUpdateResource(filename, FALSE);
+		UpdateResource(hResource, RT_GROUP_ICON, MAKEINTRESOURCE(1), MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL), NULL, 0);
+		EndUpdateResource(hResource, FALSE);
+	}
+
+	if (!strlen(icon_file))
+	{
+		return;
+	}
+	if ((f = _lopen(icon_file, OF_READ)) == -1)
+	{
+		return;
+	}
+
+	for (i = 0; i < 100; i++)
+	{
+		ret1 = FALSE;
+		ret2 = FALSE;
+		ret3 = FALSE;
+		hResource = BeginUpdateResource(filename, FALSE);
+
+		_lread(f, &id, sizeof(id));
+		_llseek(f, 0, SEEK_SET);
+		pid = (ICONDIR *)HeapAlloc(GetProcessHeap(), 0, sizeof(ICONDIR) + sizeof(ICONDIRENTRY) * (id.idCount - 1));
+		pgid = (GRPICONDIR *)HeapAlloc(GetProcessHeap(), 0, sizeof(GRPICONDIR) + sizeof(GRPICONDIRENTRY) * (id.idCount - 1));
+		_lread(f, pid, sizeof(ICONDIR) + sizeof(ICONDIRENTRY) * (id.idCount - 1));
+		memcpy(pgid, pid, sizeof(GRPICONDIR));
+
+		for (z = 0; z < id.idCount; z++)
+		{
+			pgid->idEntries[z].common = pid->idEntries[z].common;
+			pgid->idEntries[z].nID = z + 1;
+			nSize = pid->idEntries[z].common.dwBytesInRes;
+			pvFile = HeapAlloc(GetProcessHeap(), 0, nSize);
+			if (!pvFile)
+			{
+				_lclose(f);
+				return;
+			}
+			_llseek(f, pid->idEntries[z].dwImageOffset, SEEK_SET);
+			_lread(f, pvFile, nSize);
+			ret1 = UpdateResource(hResource, RT_ICON, MAKEINTRESOURCE(z + 1), MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL), pvFile, nSize);
+			HeapFree(GetProcessHeap(), 0, pvFile);
+		}
+		nSize = sizeof(GRPICONDIR) + sizeof(GRPICONDIRENTRY) * (id.idCount - 1);
+		ret2 = UpdateResource(hResource, RT_GROUP_ICON, MAKEINTRESOURCE(1), MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL), pgid, nSize);
+		_lclose(f);
+
+		ret3 = EndUpdateResource(hResource, FALSE);
+		if (ret1 && ret2 && ret3)
+		{
+			break;
+		}
+		Sleep(100);
+	}
+	if (ret1 == FALSE || ret2 == FALSE || ret3 == FALSE)
+	{
+		printf("Failed to set icon\n");
+		return;
+	}
+	CloseHandle(hResource);
+}
+
+
+static char* set_version_info(const char* filename, const char* version_number, DWORD previous_revision, char* file_description, char* copyright, char* company_name, char* product_name, char* product_version, char* original_filename, char* jar_file)
+{
+	int   i;
+	int   SIZE_VERSION = 48;
+	int   SIZE_TEXT = 256;
+	int   ADDR_COMPANY_NAME = 0x00B8;
+	int   ADDR_FILE_DESCRIPTION = 0x01E4;
+	int   ADDR_FILE_VERSION = 0x0308;
+	int   ADDR_INTERNAL_NAME = 0x0358;
+	int   ADDR_COPYRIGHT = 0x0480;
+	int   ADDR_ORIGINAL_FILENAME = 0x05AC;
+	int   ADDR_PRODUCT_NAME = 0x06D0;
+	int   ADDR_PRODUCT_VERSION = 0x07F8;
+	char* internal_name;
+	char  file_version[48];
+	char  buffer[260];
+	BYTE* version_info_buf = NULL;
+	DWORD version_info_len;
+	short file_version_major;
+	short file_version_minor;
+	short file_version_build;
+	short file_version_revision;
+	short product_version_major;
+	short product_version_minor;
+	short product_version_build;
+	short product_version_revision;
+	char* new_version;
+	RESOURCE res;
+
+	if (strrchr(jar_file, '\\') != NULL)
+	{
+		internal_name = strrchr(jar_file, '\\') + 1;
+	}
+	else
+	{
+		internal_name = jar_file;
+	}
+
+	strcpy(buffer, version_number);
+	strcat(buffer, ".0.0.0.0");
+	file_version_major = atoi(strtok(buffer, "."));
+	file_version_minor = atoi(strtok(NULL, "."));
+	file_version_build = atoi(strtok(NULL, "."));
+	file_version_revision = atoi(strtok(NULL, "."));
+
+	strcpy(buffer, product_version);
+	strcat(buffer, ".0.0.0.0");
+	product_version_major = atoi(strtok(buffer, "."));
+	product_version_minor = atoi(strtok(NULL, "."));
+	product_version_build = atoi(strtok(NULL, "."));
+	product_version_revision = atoi(strtok(NULL, "."));
+
+	// revison が明示的に指定されていなかった場合、既存ファイルから取得した値に 1　を加算して revision とする。
+	strcpy(buffer, version_number);
+	if (strtok(buffer, ".") != NULL)
+	{
+		if (strtok(NULL, ".") != NULL)
+		{
+			if (strtok(NULL, ".") != NULL)
+			{
+				if (strtok(NULL, ".") != NULL)
+				{
+					previous_revision = file_version_revision - 1;
+				}
+			}
+		}
+	}
+
+	file_version_revision = (short)previous_revision + 1;
+	// build 加算判定ここまで。
+	sprintf(file_version, "%d.%d.%d.%d", file_version_major, file_version_minor, file_version_build, file_version_revision);
+
+	GetResource("VERSION_INFO", &res);
+	version_info_len = res.len;
+	version_info_buf = (BYTE*)malloc(res.len);
+	memcpy(version_info_buf, res.buf, res.len);
+
+	//FILEVERSION
+	version_info_buf[48] = file_version_minor & 0xFF;
+	version_info_buf[49] = (file_version_minor >> 8) & 0xFF;
+	version_info_buf[50] = file_version_major & 0xFF;
+	version_info_buf[51] = (file_version_major >> 8) & 0xFF;
+	version_info_buf[52] = file_version_revision & 0xFF;
+	version_info_buf[53] = (file_version_revision >> 8) & 0xFF;
+	version_info_buf[54] = file_version_build & 0xFF;
+	version_info_buf[55] = (file_version_build >> 8) & 0xFF;
+	//PRODUCTVERSION
+	version_info_buf[56] = product_version_minor & 0xFF;
+	version_info_buf[57] = (product_version_minor >> 8) & 0xFF;
+	version_info_buf[58] = product_version_major & 0xFF;
+	version_info_buf[59] = (product_version_major >> 8) & 0xFF;
+	version_info_buf[60] = product_version_revision & 0xFF;
+	version_info_buf[61] = (product_version_revision >> 8) & 0xFF;
+	version_info_buf[62] = product_version_build & 0xFF;
+	version_info_buf[63] = (product_version_build >> 8) & 0xFF;
+
+	SecureZeroMemory(buffer, sizeof(char) * 260);
+	MultiByteToWideChar(CP_ACP, 0, company_name, (int)strlen(company_name), (WCHAR*)buffer, 128);
+	for (i = 0; i < SIZE_TEXT; i++)
+	{
+		version_info_buf[ADDR_COMPANY_NAME + i] = buffer[i];
+	}
+
+	SecureZeroMemory(buffer, sizeof(char) * 260);
+	MultiByteToWideChar(CP_ACP, 0, file_description, (int)strlen(file_description), (WCHAR*)buffer, 128);
+	for (i = 0; i < SIZE_TEXT; i++)
+	{
+		version_info_buf[ADDR_FILE_DESCRIPTION + i] = buffer[i];
+	}
+
+	SecureZeroMemory(buffer, sizeof(char) * 260);
+	MultiByteToWideChar(CP_ACP, 0, file_version, (int)strlen(file_version), (WCHAR*)buffer, 128);
+	for (i = 0; i < SIZE_VERSION; i++)
+	{
+		version_info_buf[ADDR_FILE_VERSION + i] = buffer[i];
+	}
+
+	SecureZeroMemory(buffer, sizeof(char) * 260);
+	MultiByteToWideChar(CP_ACP, 0, internal_name, (int)strlen(internal_name), (WCHAR*)buffer, 128);
+	for (i = 0; i < SIZE_TEXT; i++)
+	{
+		version_info_buf[ADDR_INTERNAL_NAME + i] = buffer[i];
+	}
+
+	SecureZeroMemory(buffer, sizeof(char) * 260);
+	MultiByteToWideChar(CP_ACP, 0, copyright, (int)strlen(copyright), (WCHAR*)buffer, 128);
+	for (i = 0; i < SIZE_TEXT; i++)
+	{
+		version_info_buf[ADDR_COPYRIGHT + i] = buffer[i];
+	}
+
+	SecureZeroMemory(buffer, sizeof(char) * 260);
+	MultiByteToWideChar(CP_ACP, 0, original_filename, (int)strlen(original_filename), (WCHAR*)buffer, 128);
+	for (i = 0; i < SIZE_TEXT; i++)
+	{
+		version_info_buf[ADDR_ORIGINAL_FILENAME + i] = buffer[i];
+	}
+
+	SecureZeroMemory(buffer, sizeof(char) * 260);
+	MultiByteToWideChar(CP_ACP, 0, product_name, (int)strlen(product_name), (WCHAR*)buffer, 128);
+	for (i = 0; i < SIZE_TEXT; i++)
+	{
+		version_info_buf[ADDR_PRODUCT_NAME + i] = buffer[i];
+	}
+
+	SecureZeroMemory(buffer, sizeof(char) * 260);
+	MultiByteToWideChar(CP_ACP, 0, product_version, (int)strlen(product_version), (WCHAR*)buffer, 128);
+	for (i = 0; i < SIZE_VERSION; i++)
+	{
+		version_info_buf[ADDR_PRODUCT_VERSION + i] = buffer[i];
+	}
+
+	set_resource(filename, (LPCTSTR)VS_VERSION_INFO, RT_VERSION, version_info_buf, version_info_len);
+
+	new_version = (char*)malloc(128);
+	sprintf(new_version, "%d.%d.%d.%d", file_version_major, file_version_minor, file_version_build, file_version_revision);
+
+	free(version_info_buf);
+
+	return new_version;
+}
+
+void OutputMessage(const char* text)
+{
+}
+
+UINT UncaughtException(const char* thread, const char* message, const char* trace)
+{
+	return 0;
 }

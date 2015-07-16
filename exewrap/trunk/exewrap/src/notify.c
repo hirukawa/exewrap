@@ -3,22 +3,25 @@
 #include <stdio.h>
 
 #include "include\notify.h"
+#include "include\loader.h"
 
-#define WM_APP_NOTIFY         (WM_APP + 0x702)
+#define WM_APP_NOTIFY (WM_APP + 0x702)
 
-HANDLE g_event = NULL;
+HANDLE        NotifyExec(DWORD(WINAPI *start_address)(void*), int argc, char* argv[]);
+void          NotifyClose();
 
-static char* create_arglist(int argc, char* argv[]);
-static DWORD WINAPI listener(void* arglist);
-static char* GetModuleSharedMemoryName();
+static char*  create_arglist(int argc, char* argv[]);
+static DWORD  WINAPI listener(void* arglist);
 
 static HANDLE shared_memory_handle = NULL;
 static HANDLE listener_thread_handle = NULL;
 static DWORD  listener_thread_id = 0;
 
 DWORD (WINAPI *p_callback_function)(void* x);
+HANDLE g_event = NULL;
 
-HANDLE notify_exec(DWORD (WINAPI *_p_callback_function)(void*), int argc, char* argv[])
+
+HANDLE NotifyExec(DWORD (WINAPI *_p_callback_function)(void*), int argc, char* argv[])
 {
 	DWORD dwReturn;
 	int len = 2048;
@@ -69,15 +72,14 @@ TRY_CREATE_SHARED_MEMORY:
 	{
 		p_callback_function = _p_callback_function;
 		listener_thread_handle = (HANDLE)_beginthreadex(NULL, 0, listener, NULL, 0, &listener_thread_id);
-		//listener_thread_handle = CreateThread(NULL, 0, listener, NULL, 0, &listener_thread_id);
-		//_beginthread(listener, 0, NULL);
 	}
 	HeapFree(GetProcessHeap(), 0, synchronize_mutex_name);
 	
 	return synchronize_mutex_handle;
 }
 
-void notify_close()
+
+void NotifyClose()
 {
 	if(listener_thread_id != 0)
 	{
@@ -101,6 +103,7 @@ void notify_close()
 	}
 }
 
+
 static char* create_arglist(int argc, char* argv[])
 {
 	int size = 1;
@@ -119,6 +122,7 @@ static char* create_arglist(int argc, char* argv[])
 	}
 	return buf;
 }
+
 
 static DWORD WINAPI listener(void* arglist)
 {
@@ -148,28 +152,9 @@ static DWORD WINAPI listener(void* arglist)
 			DWORD threadId;
 
 			hThread = (HANDLE)_beginthreadex(NULL, 0, p_callback_function, shared_memory_handle, 0, &threadId);
-			//hThread = CreateThread(NULL, 0, p_callback_function, shared_memory_handle, 0, &threadId);
 			CloseHandle(hThread);
 		}
 	}
 
 	return 0;
-}
-
-char* GetModuleObjectName(const char* prefix)
-{
-	char* objectName = (char*)HeapAlloc(GetProcessHeap(), 0, MAX_PATH + 32);
-	char* moduleFileName = (char*)HeapAlloc(GetProcessHeap(), 0, MAX_PATH);
-
-	GetModuleFileName(NULL, moduleFileName, MAX_PATH);
-	lstrcpy(objectName, "EXEWRAP:");
-	if(prefix != NULL)
-	{
-		lstrcat(objectName, prefix);
-	}
-	lstrcat(objectName, ":");
-	lstrcat(objectName, (char*)(strrchr(moduleFileName, '\\') + 1));
-
-	HeapFree(GetProcessHeap(), 0, moduleFileName);
-	return objectName;
 }

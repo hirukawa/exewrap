@@ -5,9 +5,8 @@
 extern "C" {
 #endif
 
-extern LPSTR GetModuleObjectName(LPCSTR prefix);
-extern HANDLE notify_exec(DWORD (WINAPI *start_address)(void*), int argc, char* argv[]);
-extern void notify_close();
+extern HANDLE NotifyExec(DWORD (WINAPI *start_address)(void*), int argc, char* argv[]);
+extern void   NotifyClose();
 
 #ifdef __cplusplus
 }

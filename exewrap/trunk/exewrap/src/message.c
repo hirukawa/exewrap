@@ -73,11 +73,20 @@ static void init_message()
 	"Failed to create the Java Virtual Machine. Failed to load jvm.dll.\n"
 	"%d-bit Java Virtual Machine required.";
 
+	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_ERR_UNCAUGHT_EXCEPTION] =
+	"Uncaught exception occured.\n";
+
+	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_ERR_RESOURCE_NOT_FOUND] =
+	"Resource not found: %s";
+
 	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_ERR_TARGET_VERSION] =
 	"Java %s or higher is required to run this program.";
 
 	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_ERR_DEFINE_CLASS] =
 	"Class not found: %s";
+
+	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_ERR_GET_CONSTRUCTOR] =
+	"Constructor not found: %s";
 
 	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_ERR_GET_METHOD] =
 	"Method not found: %s";
@@ -104,18 +113,21 @@ static void init_message()
 	"The service could not be started. Requires to define a method within main class: public static void stop()";
 
 	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_ERR_SERVICE_ABORT] =
-	"The %s service was terminated abnormally.";
+	"%s service was terminated abnormally.";
 
-	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_SUCCESS_SERVICE_INSTALL] =
+	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_ERR_SERVICE_NOT_STOPPED] =
+	"%s service can't be deleted because it is not stopped.";
+
+	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_SUCCESS_SERVICE_INSTALL] =
 	"%s service installed.";
 
-	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_SUCCESS_SERVICE_REMOVE] =
+	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_SUCCESS_SERVICE_REMOVE] =
 	"%s service was removed.";
 
-	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_SERVICE_STARTING] =
+	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_SERVICE_STARTING] =
 	"%s service is starting.";
 
-	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_SERVICE_STOPING] =
+	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_SERVICE_STOPING] =
 	"%s service is stopping.";
 
 	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_SUCCESS_SERVICE_START] =
@@ -158,11 +170,20 @@ static void init_message()
 	"JavaVMを作成できませんでした。jvm.dllをロードできませんでした。\n"
 	"このプログラムの実行には %d-bit JavaVM が必要です。";
 
+	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_ERR_UNCAUGHT_EXCEPTION] =
+	"補足されない例外が発生しました。.\n";
+
+	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_ERR_RESOURCE_NOT_FOUND] =
+	"リソースが見つかりません: %s";
+
 	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_ERR_TARGET_VERSION] =
 	"このプログラムの実行には Java %s 以上が必要です。";
 
 	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_ERR_DEFINE_CLASS] =
 	"クラスが見つかりません: %s";
+
+	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_ERR_GET_CONSTRUCTOR] =
+	"コンストラクターが見つかりません: %s";
 
 	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_ERR_GET_METHOD] =
 	"メソッドが見つかりません: %s";
@@ -190,6 +211,9 @@ static void init_message()
 
 	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_ERR_SERVICE_ABORT] =
 	"%s サービスは異常終了しました。";
+
+	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_ERR_SERVICE_NOT_STOPPED] =
+	"%s サービスが停止していないため、削除できません。";
 
 	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_SUCCESS_SERVICE_INSTALL] =
 	"%s サービスをインストールしました。";

@@ -465,7 +465,7 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 
 	if(relative_classpath != NULL)
 	{
-		while((token = strtok(relative_classpath, ";")) != NULL)
+		while((token = strtok(relative_classpath, " ")) != NULL)
 		{
 			if(strstr(token, ":") == NULL)
 			{
@@ -670,9 +670,17 @@ char* GetModulePath(char* buf, DWORD size)
 
 char* GetModuleVersion(char* buf)
 {
-	HRSRC hrsrc = FindResource(NULL, (char*)VS_VERSION_INFO, RT_VERSION);
-	VS_FIXEDFILEINFO* verInfo = (VS_FIXEDFILEINFO*)((char*)LockResource(LoadResource(NULL, hrsrc)) + 40);
+	HRSRC hrsrc;
+	VS_FIXEDFILEINFO* verInfo;
 
+	hrsrc = FindResource(NULL, (char*)VS_VERSION_INFO, RT_VERSION);
+	if (hrsrc == NULL)
+	{
+		*buf = '\0';
+		return buf;
+	}
+
+	verInfo = (VS_FIXEDFILEINFO*)((char*)LockResource(LoadResource(NULL, hrsrc)) + 40);
 	sprintf(buf, "%d.%d.%d.%d",
 		verInfo->dwFileVersionMS >> 16,
 		verInfo->dwFileVersionMS & 0xFFFF,
