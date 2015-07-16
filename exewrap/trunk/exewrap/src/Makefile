@@ -94,7 +94,6 @@ $(OBJ)\image_console.exe : $(OBJ) $(OBJ)\image_console.res $(OBJ)\image_console.
 	$(OBJ)\bindres.exe $(OBJ)\image_console.exe URL_STREAM_HANDLER       $(OBJ)\exewrap\core\URLStreamHandler.class
 	$(OBJ)\bindres.exe $(OBJ)\image_console.exe EXEWRAP_CLASS_LOADER     $(OBJ)\exewrap\core\ExewrapClassLoader.class
 	$(OBJ)\bindres.exe $(OBJ)\image_console.exe UTIL_JAR                 $(OBJ)\util.jar
-#	$(OBJ)\bindres.exe $(OBJ)\image_console.exe PACK_GZ ..\helloworld.pack.gz
 
 $(OBJ)\image_console.obj : $(OBJ) image_console.c
 	$(CC) $(CFLAGS) $(INC) /Fo$(OBJ)\image_console.obj image_console.c
@@ -113,7 +112,6 @@ $(OBJ)\image_gui.exe : $(OBJ) $(OBJ)\image_gui.res $(OBJ)\image_gui.obj \
 	$(OBJ)\bindres.exe $(OBJ)\image_gui.exe URL_STREAM_HANDLER       $(OBJ)\exewrap\core\URLStreamHandler.class
 	$(OBJ)\bindres.exe $(OBJ)\image_gui.exe EXEWRAP_CLASS_LOADER     $(OBJ)\exewrap\core\ExewrapClassLoader.class
 	$(OBJ)\bindres.exe $(OBJ)\image_gui.exe UTIL_JAR                 $(OBJ)\util.jar
-	$(OBJ)\bindres.exe $(OBJ)\image_gui.exe JAR ..\samples\Sample04.jar
 
 $(OBJ)\image_gui.obj : $(OBJ) image_gui.c
 	$(CC) $(CFLAGS) $(INC) /Fo$(OBJ)\image_gui.obj image_gui.c
@@ -132,7 +130,6 @@ $(OBJ)\image_service.exe : $(OBJ) $(OBJ)\image_service.res $(OBJ)\image_service.
 	$(OBJ)\bindres.exe $(OBJ)\image_service.exe URL_STREAM_HANDLER       $(OBJ)\exewrap\core\URLStreamHandler.class
 	$(OBJ)\bindres.exe $(OBJ)\image_service.exe EXEWRAP_CLASS_LOADER     $(OBJ)\exewrap\core\ExewrapClassLoader.class
 	$(OBJ)\bindres.exe $(OBJ)\image_service.exe UTIL_JAR                 $(OBJ)\util.jar
-	$(OBJ)\bindres.exe $(OBJ)\image_service.exe JAR ..\samples\ServiceSample.jar
 
 $(OBJ)\image_service.obj : $(OBJ) image_service.c
 	$(CC) $(CFLAGS) $(INC) /Fo$(OBJ)\image_service.obj image_service.c
