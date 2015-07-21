@@ -7,9 +7,9 @@
 
 #include "include/jvm.h"
 
-void    InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useServerVM);
+void    InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useServerVM, BOOL useSideBySideJRE);
 int     GetProcessArchitecture();
-JNIEnv* CreateJavaVM(LPTSTR vm_args_opt, BOOL useServerVM, int* err);
+JNIEnv* CreateJavaVM(LPTSTR vm_args_opt, BOOL useServerVM, BOOL useSideBySideJRE, int* err);
 void    DestroyJavaVM();
 JNIEnv* AttachJavaVM();
 void    DetachJavaVM();
@@ -34,16 +34,16 @@ typedef jint (WINAPI* JNICreateJavaVM)(JavaVM**, void**, JavaVMInitArgs*);
 
 JavaVM* jvm = NULL;
 JNIEnv* env = NULL;
-DWORD javaRuntimeVersion = 0xFFFFFFFF;
+DWORD   javaRuntimeVersion = 0xFFFFFFFF;
 
-TCHAR   opt_app_path[MAX_PATH + 32];
-TCHAR   opt_app_name[MAX_PATH + 32];
-TCHAR	opt_app_version[64];
-TCHAR   opt_policy_path[MAX_PATH + 32];
+char    opt_app_path[MAX_PATH + 32];
+char    opt_app_name[MAX_PATH + 32];
+char	opt_app_version[64];
+char    opt_policy_path[MAX_PATH + 32];
 BOOL    path_initialized = FALSE;
-TCHAR   binpath[MAX_PATH];
-TCHAR   jvmpath[MAX_PATH];
-TCHAR   extpath[MAX_PATH];
+char    binpath[MAX_PATH];
+char    jvmpath[MAX_PATH];
+char    extpath[MAX_PATH];
 char*   classpath = NULL;
 char*   extdirs = NULL;
 char*	libpath = NULL;
@@ -57,24 +57,24 @@ int GetProcessArchitecture()
 	return sizeof(int*) * 8;
 }
 
-JNIEnv* CreateJavaVM(LPTSTR vm_args_opt, BOOL useServerVM, int* err)
+JNIEnv* CreateJavaVM(LPTSTR vm_args_opt, BOOL useServerVM, BOOL useSideBySideJRE, int* err)
 {
 	JNIGetDefaultJavaVMInitArgs getDefaultJavaVMInitArgs;
 	JNICreateJavaVM createJavaVM;
 	JavaVMOption options[64];
 	JavaVMInitArgs vm_args;
-	char** argv;
+	char** argv = NULL;
 	int argc;
 	int i;
 	int result;
 
-	if(!path_initialized)
+	if (!path_initialized)
 	{
-		InitializePath(NULL, "lib", useServerVM);
+		InitializePath(NULL, "lib", useServerVM, useSideBySideJRE);
 	}
 
 	jvmdll = LoadLibrary("jvm.dll");
-	if(jvmdll == NULL)
+	if (jvmdll == NULL)
 	{
 		if(err != NULL)
 		{
@@ -119,11 +119,14 @@ JNIEnv* CreateJavaVM(LPTSTR vm_args_opt, BOOL useServerVM, int* err)
 	}
 
 EXIT:
-	for (i = 0; i < argc; i++)
+	if (argv != NULL)
 	{
-		HeapFree(GetProcessHeap(), 0, argv[i]);
+		for (i = 0; i < argc; i++)
+		{
+			HeapFree(GetProcessHeap(), 0, argv[i]);
+		}
+		HeapFree(GetProcessHeap(), 0, argv);
 	}
-	HeapFree(GetProcessHeap(), 0, argv);
 
 	return env;
 }
@@ -274,7 +277,7 @@ char* GetShiftJIS(JNIEnv* _env, jstring src)
 	return ret;
 }
 
-void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useServerVM) {
+void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useServerVM, BOOL useSideBySideJRE) {
 	char modulePath[_MAX_PATH];
 	char* buffer;
 	char* token;
@@ -332,7 +335,7 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 	}
 
 	// Find local JRE
-	if (jvmpath[0] == 0)
+	if (useSideBySideJRE && jvmpath[0] == 0)
 	{
 		GetModulePath(jre1, MAX_PATH);
 		lstrcpy(search, jre1);
@@ -366,7 +369,7 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 		}
 	}
 
-	if (jvmpath[0] == 0)
+	if (useSideBySideJRE && jvmpath[0] == 0)
 	{
 		GetModulePath(jre2, MAX_PATH);
 		lstrcpy(search, jre2);

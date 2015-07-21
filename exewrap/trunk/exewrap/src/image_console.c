@@ -10,9 +10,14 @@
 #include "include/loader.h"
 #include "include/notify.h"
 #include "include/message.h"
+#include "include/trace.h"
 
+void    OutputConsole(BYTE* buf, DWORD len);
 void    OutputMessage(const char* text);
 UINT    UncaughtException(const char* thread, const char* message, const char* trace);
+
+static HANDLE hConOut = NULL;
+
 
 int main(int argc, char* argv[])
 {
@@ -20,6 +25,7 @@ int main(int argc, char* argv[])
 	char*       relative_classpath;
 	char*       relative_extdirs;
 	BOOL        use_server_vm;
+	BOOL        use_side_by_side_jre;
 	HANDLE      synchronize_mutex_handle = NULL;
 	char*       ext_flags;
 	char*       vm_args_opt;
@@ -27,13 +33,20 @@ int main(int argc, char* argv[])
 	RESOURCE    res;
 	LOAD_RESULT result;
 
+	utilities[0] = '\0';
+	#ifdef TRACE
+	StartTrace(TRUE);
+	strcat(utilities, UTIL_CONSOLE_OUTPUT_STREAM);
+	#endif
+
 	result.msg = malloc(2048);
 
 	relative_classpath = (char*)GetResource("CLASS_PATH", NULL);
 	relative_extdirs = (char*)GetResource("EXTDIRS", NULL);
 	ext_flags = (char*)GetResource("EXTFLAGS", NULL);
 	use_server_vm = (ext_flags != NULL && strstr(ext_flags, "SERVER") != NULL);
-	InitializePath(relative_classpath, relative_extdirs, use_server_vm);
+	use_side_by_side_jre = (ext_flags == NULL) || (strstr(ext_flags, "NOSIDEBYSIDE") == NULL);
+	InitializePath(relative_classpath, relative_extdirs, use_server_vm, use_side_by_side_jre);
 
 	if (ext_flags != NULL && strstr(ext_flags, "SHARE") != NULL)
 	{
@@ -54,7 +67,7 @@ int main(int argc, char* argv[])
 	}
 
 	vm_args_opt = (char*)GetResource("VMARGS", NULL);
-	CreateJavaVM(vm_args_opt, use_server_vm, &err);
+	CreateJavaVM(vm_args_opt, use_server_vm, use_side_by_side_jre, &err);
 	if (err != JNI_OK)
 	{
 		OutputMessage(GetJniErrorMessage(err, &result.msg_id, result.msg));
@@ -75,7 +88,6 @@ int main(int argc, char* argv[])
 		}
 	}
 
-	utilities[0] = '\0';
 	if (ext_flags == NULL || strstr(ext_flags, "IGNORE_UNCAUGHT_EXCEPTION") == NULL)
 	{
 		strcat(utilities, UTIL_UNCAUGHT_EXCEPTION_HANDLER);
@@ -117,7 +129,30 @@ EXIT:
 
 	NotifyClose();
 
+	#ifdef TRACE
+	StopTrace();
+	#endif
+
 	return result.msg_id;
+}
+
+void OutputConsole(BYTE* buf, DWORD len)
+{
+	DWORD written;
+
+	if (hConOut == INVALID_HANDLE_VALUE)
+	{
+		return;
+	}
+	if (hConOut == NULL)
+	{
+		hConOut = CreateFile("CONOUT$", GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+		if (hConOut == INVALID_HANDLE_VALUE)
+		{
+			return;
+		}
+	}
+	WriteConsole(hConOut, buf, len, &written, NULL);
 }
 
 void OutputMessage(const char* text)
