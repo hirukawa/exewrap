@@ -7,7 +7,7 @@
 #define MSG_LANG_ID_EN 0
 #define MSG_LANG_ID_JA 1
 
-#define MSG_ID_COUNT 31
+#define MSG_ID_COUNT 32
 #define MSG_ID_ERR_CREATE_JVM_UNKNOWN            1
 #define MSG_ID_ERR_CREATE_JVM_EDETACHED          2
 #define MSG_ID_ERR_CREATE_JVM_EVERSION           3
@@ -25,20 +25,21 @@
 #define MSG_ID_ERR_FIND_CLASSLOADER              15
 #define MSG_ID_ERR_REGISTER_NATIVE               16
 #define MSG_ID_ERR_LOAD_MAIN_CLASS               17
-#define MSG_ID_ERR_FIND_MAIN_METHOD              18
-#define MSG_ID_ERR_FIND_METHOD_SERVICE_START     19
-#define MSG_ID_ERR_FIND_METHOD_SERVICE_STOP      20
-#define MSG_ID_ERR_SERVICE_ABORT                 21
-#define MSG_ID_ERR_SERVICE_NOT_STOPPED           22
-#define MSG_ID_SUCCESS_SERVICE_INSTALL           23
-#define MSG_ID_SUCCESS_SERVICE_REMOVE            24
-#define MSG_ID_SERVICE_STARTING                  25
-#define MSG_ID_SERVICE_STOPING                   26
-#define MSG_ID_SUCCESS_SERVICE_START             27
-#define MSG_ID_SUCCESS_SERVICE_STOP              28
-#define MSG_ID_CTRL_SERVICE_STOP                 29
-#define MSG_ID_CTRL_SERVICE_TERMINATE            30
-#define MSG_ID_CTRL_BREAK                        31
+#define MSG_ID_ERR_FIND_MAIN_CLASS               18
+#define MSG_ID_ERR_FIND_MAIN_METHOD              19
+#define MSG_ID_ERR_FIND_METHOD_SERVICE_START     20
+#define MSG_ID_ERR_FIND_METHOD_SERVICE_STOP      21
+#define MSG_ID_ERR_SERVICE_ABORT                 22
+#define MSG_ID_ERR_SERVICE_NOT_STOPPED           23
+#define MSG_ID_SUCCESS_SERVICE_INSTALL           24
+#define MSG_ID_SUCCESS_SERVICE_REMOVE            25
+#define MSG_ID_SERVICE_STARTING                  26
+#define MSG_ID_SERVICE_STOPING                   27
+#define MSG_ID_SUCCESS_SERVICE_START             28
+#define MSG_ID_SUCCESS_SERVICE_STOP              29
+#define MSG_ID_CTRL_SERVICE_STOP                 30
+#define MSG_ID_CTRL_SERVICE_TERMINATE            31
+#define MSG_ID_CTRL_BREAK                        32
 
 extern const char* get_message(int msg_id);
 

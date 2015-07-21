@@ -19,6 +19,7 @@ char*         GetModuleObjectName(const char* prefix);
 BYTE*         GetResource(LPCTSTR name, RESOURCE* resource);
 char*         GetWinErrorMessage(DWORD err, int* exit_code, char* buf);
 char*         GetJniErrorMessage(int err, int* exit_code, char* buf);
+void JNICALL  JNI_WriteConsole(JNIEnv *env, jobject clazz, jbyteArray b, jint off, jint len);
 void JNICALL  JNI_WriteEventLog(JNIEnv *env, jobject clazz, jint logType, jstring message);
 void JNICALL  JNI_UncaughtException(JNIEnv *env, jobject clazz, jstring thread, jstring message, jstring trace);
 
@@ -26,13 +27,14 @@ static jint   register_native(JNIEnv* env, jclass cls, const char* name, const c
 static void   print_stack_trace(const char* text);
 static char** split_args(char* buffer, int* p_argc);
 
+extern void   OutputConsole(BYTE* buf, DWORD len);
 extern void   OutputMessage(const char* text);
 extern UINT   UncaughtException(const char* thread, const char* message, const char* trace);
 
-jclass    ExewrapClassLoader = NULL;
-jobject   exewrapClassLoader = NULL;
-jclass    MainClass = NULL;
-jmethodID MainClass_main = NULL;
+static jclass    ExewrapClassLoader = NULL;
+static jobject   exewrapClassLoader = NULL;
+static jclass    MainClass = NULL;
+static jmethodID MainClass_main = NULL;
 
 BOOL LoadMainClass(int argc, char* argv[], char* utilities, LOAD_RESULT* result)
 {
@@ -328,6 +330,12 @@ BOOL LoadMainClass(int argc, char* argv[], char* utilities, LOAD_RESULT* result)
 		goto EXIT;
 	}
 	// register native methods
+	if (register_native(env, ExewrapClassLoader, "WriteConsole", "([BII)V", JNI_WriteConsole) != 0)
+	{
+		result->msg_id = MSG_ID_ERR_REGISTER_NATIVE;
+		sprintf(result->msg, _(MSG_ID_ERR_REGISTER_NATIVE), "WriteConsole");
+		goto EXIT;
+	}
 	if (register_native(env, ExewrapClassLoader, "WriteEventLog", "(ILjava/lang/String;)V", JNI_WriteEventLog) != 0)
 	{
 		result->msg_id = MSG_ID_ERR_REGISTER_NATIVE;
@@ -417,6 +425,11 @@ BOOL LoadMainClass(int argc, char* argv[], char* utilities, LOAD_RESULT* result)
 	return TRUE;
 
 EXIT:
+	if ((*env)->ExceptionCheck(env) == JNI_TRUE)
+	{
+		(*env)->ExceptionDescribe(env);
+		(*env)->ExceptionClear(env);
+	}
 
 	return FALSE;
 }
@@ -677,6 +690,17 @@ char* GetJniErrorMessage(int err, int* exit_code, char* buf)
 		break;
 	}
 	return buf;
+}
+
+
+void JNICALL JNI_WriteConsole(JNIEnv *env, jobject clazz, jbyteArray b, jint off, jint len)
+{
+	jboolean isCopy;
+	BYTE*    buf;
+
+	buf = (*env)->GetByteArrayElements(env, b, &isCopy);
+	OutputConsole(buf, len);
+	(*env)->ReleaseByteArrayElements(env, b, buf, 0);
 }
 
 

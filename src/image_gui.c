@@ -20,7 +20,9 @@
 #include "include/loader.h"
 #include "include/notify.h"
 #include "include/message.h"
+#include "include/trace.h"
 
+void OutputConsole(BYTE* buf, DWORD len);
 void OutputMessage(const char* text);
 UINT UncaughtException(const char* thread, const char* message, const char* trace);
 
@@ -32,6 +34,7 @@ typedef int(*SplashLoadMemory_t)(void* pdata, int size);
 SplashInit_t       SplashInit;
 SplashLoadMemory_t SplashLoadMemory;
 HMODULE            splashscreendll;
+static HANDLE      hConOut = NULL;
 
 
 INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine, INT nCmdShow)
@@ -42,14 +45,28 @@ INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine,
 	char*       relative_classpath;
 	char*       relative_extdirs;
 	BOOL        use_server_vm;
+	BOOL        use_side_by_side_jre;
 	HANDLE      synchronize_mutex_handle = NULL;
 	char*       ext_flags;
 	BYTE*       splash_screen_image = NULL;
 	char*       splash_screen_name = NULL;
-	char*       vm_args_opt;
+	char*       vm_args_opt = NULL;
 	char        utilities[128];
 	RESOURCE    res;
 	LOAD_RESULT result;
+
+	utilities[0] = '\0';
+	#ifdef TRACE
+	{
+		const char* filename = StartTrace(FALSE);
+		vm_args_opt = (char*)malloc(1024);
+		sprintf(vm_args_opt, "-XX:+UnlockDiagnosticVMOptions -XX:+LogVMOutput -XX:LogFile=\"%s\" ", filename);
+		if (GetResource("VMARGS", &res) != NULL)
+		{
+			strcat(vm_args_opt, res.buf);
+		}
+	}
+	#endif
 
 	argv = get_args(&argc);
 	result.msg = malloc(2048);
@@ -58,7 +75,8 @@ INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine,
 	relative_extdirs = (char*)GetResource("EXTDIRS", NULL);
 	ext_flags = (char*)GetResource("EXTFLAGS", NULL);
 	use_server_vm = (ext_flags != NULL && strstr(ext_flags, "SERVER") != NULL);
-	InitializePath(relative_classpath, relative_extdirs, use_server_vm);
+	use_side_by_side_jre = (ext_flags == NULL) || (strstr(ext_flags, "NOSIDEBYSIDE") == NULL);
+	InitializePath(relative_classpath, relative_extdirs, use_server_vm, use_side_by_side_jre);
 
 	if (ext_flags != NULL && strstr(ext_flags, "SHARE") != NULL)
 	{
@@ -97,8 +115,11 @@ INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine,
 		}
 	}
 
-	vm_args_opt = (char*)GetResource("VMARGS", NULL);
-	CreateJavaVM(vm_args_opt, use_server_vm, &err);
+	if (vm_args_opt == NULL)
+	{
+		vm_args_opt = (char*)GetResource("VMARGS", NULL);
+	}
+	CreateJavaVM(vm_args_opt, use_server_vm, use_side_by_side_jre, &err);
 	if (err != JNI_OK)
 	{
 		OutputMessage(GetJniErrorMessage(err, &result.msg_id, result.msg));
@@ -119,7 +140,6 @@ INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine,
 		}
 	}
 
-	utilities[0] = '\0';
 	if (ext_flags == NULL || strstr(ext_flags, "IGNORE_UNCAUGHT_EXCEPTION") == NULL)
 	{
 		strcat(utilities, UTIL_UNCAUGHT_EXCEPTION_HANDLER);
@@ -184,7 +204,16 @@ EXIT:
 
 	NotifyClose();
 
+	#ifdef TRACE
+	StopTrace();
+	#endif
+
 	return result.msg_id;
+}
+
+
+void OutputConsole(BYTE* buf, DWORD len)
+{
 }
 
 
@@ -207,10 +236,9 @@ void OutputMessage(const char* text)
 
 UINT UncaughtException(const char* thread, const char* message, const char* trace)
 {
-	char* buf;
-	
-	buf = malloc(16 * 1024);
-	sprintf(buf, "Exception in thread \"%s\" %s", thread, trace);
+	//for message box
+	char* buf = (char*)malloc(strlen(thread) + strlen(message) + 64);
+	sprintf(buf, "Exception in thread \"%s\"\r\n%s", thread, message);
 	OutputMessage(buf);
 	free(buf);
 

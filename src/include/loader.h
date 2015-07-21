@@ -8,6 +8,7 @@
 #define UTIL_FILE_LOG_STREAM            "FileLogStream;"
 #define UTIL_EVENT_LOG_STREAM           "EventLogStream;"
 #define UTIL_EVENT_LOG_HANDLER          "EventLogHandler;"
+#define UTIL_CONSOLE_OUTPUT_STREAM      "ConsoleOutputStream;"
 
 typedef struct _RESOURCE {
 	BYTE* buf;

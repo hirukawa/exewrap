@@ -68,6 +68,9 @@ public class ExewrapClassLoader extends ClassLoader {
 		if(utilities.contains("EventLogHandler;")) {
 			Class.forName("exewrap.util.EventLogHandler", true, this);
 		}
+		if(utilities.contains("ConsoleOutputStream;")) {
+			Class.forName("exewrap.util.ConsoleOutputStream", true, this);
+		}
 	}
 	
 	public Class<?> getMainClass(String mainClassName) throws ClassNotFoundException {
@@ -166,6 +169,7 @@ public class ExewrapClassLoader extends ClassLoader {
 		return buf.toByteArray();
 	}
 
+	public static native void WriteConsole(byte[] b, int off, int len);
 	public static native void WriteEventLog(int type, String message);
 	public static native void UncaughtException(String thread, String message, String trace);
 }

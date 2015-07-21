@@ -103,6 +103,9 @@ static void init_message()
 	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_ERR_LOAD_MAIN_CLASS] =
 	"Failed to load the Main Class.";
 
+	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_ERR_FIND_MAIN_CLASS] =
+	"Main class not found.";
+
 	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_ERR_FIND_MAIN_METHOD] =
 	"Main method is not implemented.";
 
@@ -199,6 +202,9 @@ static void init_message()
 
 	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_ERR_LOAD_MAIN_CLASS] =
 	"メインクラスのロードに失敗しました。";
+
+	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_ERR_FIND_MAIN_CLASS] =
+	"メインクラスが見つかりません。";
 
 	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_ERR_FIND_MAIN_METHOD] =
 	"mainメソッドが実装されていません。";

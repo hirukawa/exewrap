@@ -16,6 +16,7 @@
 #define DEFAULT_VERSION         "0.0"
 #define DEFAULT_PRODUCT_VERSION "0.0"
 
+void    OutputConsole(BYTE* buf, DWORD len);
 void    OutputMessage(const char* text);
 UINT    UncaughtException(const char* thread, const char* message, const char* trace);
 
@@ -49,6 +50,8 @@ int main(int argc, char* argv[])
 	BOOL     enable_java = FALSE;
 	BYTE*    jar_buf;
 	DWORD    jar_len;
+	char*    ext_flags = NULL;
+	char*    vmargs = NULL;
 	char*    version_number;
 	char*    file_description;
 	char*    copyright;
@@ -69,7 +72,16 @@ int main(int argc, char* argv[])
 	{
 		int bits = GetProcessArchitecture();
 
-		printf("exewrap 1.0.4 for %s (%d-bit)\r\n"
+		if (strrchr(argv[0], '\\') > 0)
+		{
+			exe_file = strrchr(argv[0], '\\') + 1;
+		}
+		else
+		{
+			exe_file = argv[0];
+		}
+
+		printf("exewrap 1.1.0 for %s (%d-bit)\r\n"
 			   "Native executable java application wrapper.\r\n"
 			   "Copyright (C) 2005-2015 HIRUKAWA Ryo. All rights reserved.\r\n"
 			   "\r\n"
@@ -80,6 +92,8 @@ int main(int argc, char* argv[])
 			   "  -A <architecture>   \t select exe-file architecture. (default %s)\r\n"
 			   "  -t <version>        \t set target java runtime version. (default 1.5)\r\n"
 			   "  -2                  \t disable Pack200.\r\n"
+			   "  -T                  \t enable trace for to shrink JRE.\r\n"
+			   "  -M <main-class>     \t set main-class.\r\n"
 			   "  -L <ext-dirs>       \t set ext-dirs.\r\n"
 			   "  -e <ext-flags>      \t set extended flags.\r\n"
 			   "  -a <vm-args>        \t set Java VM arguments.\r\n"
@@ -92,7 +106,7 @@ int main(int argc, char* argv[])
 			   "  -V <product-version>\t set product version.\r\n"
 			   "  -j <jar-file>       \t input jar-file.\r\n"
 			   "  -o <exe-file>       \t output exe-file.\r\n"
-			, (bits == 64 ? "x64" : "x86"), bits, argv[0], (bits == 64 ? "x64" : "x86"));
+			, (bits == 64 ? "x64" : "x86"), bits, exe_file, (bits == 64 ? "x64" : "x86"));
 
 		return 0;
 	}
@@ -131,11 +145,23 @@ int main(int argc, char* argv[])
 		strcat(exe_file, ".exe");
 	}
 
-	if(GetFullPathName(exe_file, _MAX_PATH, buf, &ptr) == 0)
+	if (GetFullPathName(exe_file, _MAX_PATH, buf, &ptr) == 0)
 	{
 		printf("Invalid path: %s\n", exe_file);
+		return 2;
 	}
 	strcpy(exe_file, buf);
+
+	if (strrchr(strrchr(exe_file, '\\') + 1, '.') == NULL)
+	{
+		*strrchr(strrchr(exe_file, '\\' + 1), '.') = '\0';
+		strcat(exe_file, ".exe");
+	}
+	if (opt['T'])
+	{
+		*strrchr(exe_file, '.') = '\0';
+		strcat(exe_file, ".TRACE.exe");
+	}
 
 	if(opt['A'])
 	{
@@ -156,15 +182,15 @@ int main(int argc, char* argv[])
 
 	if(opt['g'])
 	{
-		sprintf(image_name, "IMAGE_GUI_%d", architecture_bits);
+		sprintf(image_name, "IMAGE%s_GUI_%d", (opt['T'] ? "_TRACE" : ""), architecture_bits);
 	}
 	else if(opt['s'])
 	{
-		sprintf(image_name, "IMAGE_SERVICE_%d", architecture_bits);
+		sprintf(image_name, "IMAGE%s_SERVICE_%d", (opt['T'] ? "_TRACE" : ""), architecture_bits);
 	}
 	else
 	{
-		sprintf(image_name, "IMAGE_CONSOLE_%d", architecture_bits);
+		sprintf(image_name, "IMAGE%s_CONSOLE_%d", (opt['T'] ? "_TRACE" : ""), architecture_bits);
 	}
 
 	GetResource(image_name, &res);
@@ -202,7 +228,7 @@ int main(int argc, char* argv[])
 		set_resource(exe_file, "EXTDIRS", RT_RCDATA, opt['L'], (DWORD)strlen(opt['L']) + 1);
 	}
 
-	enable_java = CreateJavaVM(NULL, FALSE, NULL) != NULL;
+	enable_java = CreateJavaVM(NULL, FALSE, FALSE, NULL) != NULL;
 	if (enable_java)
 	{
 		LOAD_RESULT result;
@@ -221,8 +247,11 @@ int main(int argc, char* argv[])
 		BYTE*       splash_screen_image;
 		BYTE*       bytes;
 
+		result.msg = (char*)malloc(2048);
+
 		if (LoadMainClass(argc, argv, NULL, &result) == FALSE)
 		{
+			printf("ERROR: LoadMainClass: tool.jar exewrap.tool.JarProcessor\n");
 			goto EXIT;
 		}
 		JarProcessor = result.MainClass;
@@ -289,10 +318,19 @@ int main(int argc, char* argv[])
 			goto EXIT;
 		}
 
-		main_class = GetShiftJIS(env, (*env)->CallObjectMethod(env, jarProcessor, jarProcessor_getMainClass));
+		if (opt['M'])
+		{
+			main_class = opt['M'];
+		}
+		else
+		{
+			main_class = GetShiftJIS(env, (*env)->CallObjectMethod(env, jarProcessor, jarProcessor_getMainClass));
+		}
 		if (main_class == NULL)
 		{
-
+			result.msg_id = MSG_ID_ERR_LOAD_MAIN_CLASS;
+			printf(_(MSG_ID_ERR_LOAD_MAIN_CLASS));
+			goto EXIT;
 		}
 		set_resource(exe_file, "MAIN_CLASS", RT_RCDATA, main_class, (DWORD)strlen(main_class) + 1);
 
@@ -338,51 +376,52 @@ int main(int argc, char* argv[])
 		}
 		printf("Pack200: disable / JavaVM (%d-bit) not found.\r\n", GetProcessArchitecture());
 	}
-	/*
-	if(target_version >= 0x01050000 && enable_java && !disable_pack200)
+	
+	ext_flags = (char*)malloc(1024);
+	ext_flags[0] = '\0';
+	if (opt['T'])
 	{
-		jar_buf = get_jar_buf(jar_file, &jar_len);
-		if (jar_buf == NULL)
-		{
-			goto EXIT;
-		}
-		UsePack200(exe_file, jar_file);
-		classBuffer = GetResource("PACK_LOADER", RT_RCDATA, &classSize);
-		SetResource(exefile, "PACK_LOADER", RT_RCDATA, classBuffer, classSize);
-		printf("Pack200: enable\r\n");
+		strcat(ext_flags, "NOSIDEBYSIDE;");
 	}
-	if(classBuffer == NULL)
+	if (opt['e'] && *opt['e'] != '-' && *opt['e'] != '\0')
 	{
-		jarBuffer = GetFileData(jarfile, &jarSize);
-		SetResource(exefile, "JAR", RT_RCDATA, jarBuffer, jarSize);
-		HeapFree(GetProcessHeap(), 0, jarBuffer);
-		classBuffer = GetResource("CLASSIC_LOADER", RT_RCDATA, &classSize);
-		SetResource(exefile, "CLASSIC_LOADER", RT_RCDATA, classBuffer, classSize);
-		if(!enableJava)
+		strcat(ext_flags, opt['e']);
+	}
+	set_resource(exe_file, "EXTFLAGS", RT_RCDATA, ext_flags, (DWORD)strlen(ext_flags) + 1);
+	free(ext_flags);
+
+	if (opt['T'])
+	{
+		if (vmargs == NULL)
 		{
-			printf("Pack200: disable / JavaVM (%d-bit) not found.\r\n", GetProcessArchitecture());
-		}
-		else if(targetVersion < 0x01050000)
-		{
-			printf("Pack200: disable / Target version is lower than 1.5\r\n");
+			vmargs = (char*)malloc(2048);
+			vmargs[0] = '\0';
 		}
 		else
 		{
-			printf("Pack200: disable\r\n");
+			strcat(vmargs, " ");
 		}
+		strcat(vmargs, "-XX:+TraceClassLoading");
 	}
-	*/
-	
-	if(opt['e'] && *opt['e'] != '-' && *opt['e'] != '\0')
-	{
-		set_resource(exe_file, "EXTFLAGS", RT_RCDATA, opt['e'], (DWORD)strlen(opt['e']) + 1);
-	}
-	
 	if(opt['a'] && *opt['a'] != '\0')
 	{
-		set_resource(exe_file, "VMARGS", RT_RCDATA, opt['a'], (DWORD)strlen(opt['a']) + 1);
+		if (vmargs == NULL)
+		{
+			vmargs = (char*)malloc(2048);
+			vmargs[0] = '\0';
+		}
+		else
+		{
+			strcat(vmargs, " ");
+		}
+		strcat(vmargs, opt['a']);
 	}
-	
+	if (vmargs != NULL)
+	{
+		set_resource(exe_file, "VMARGS", RT_RCDATA, vmargs, (DWORD)strlen(vmargs) + 1);
+		free(vmargs);
+	}
+
 	if(opt['i'] && *opt['i'] != '-' && *opt['i'] != '\0')
 	{
 		set_application_icon(exe_file, opt['i']);
@@ -583,7 +622,7 @@ static char** parse_opt(int argc, char* argv[])
 	}
 	while (*++argv)
 	{
-		if (*argv[0] == '-')
+		if (*argv[0] == '-' && *(argv[0] + 1) != '\0' && *(argv[0] + 2) == '\0')
 		{
 			if (argv[1] == NULL)
 			{
@@ -656,6 +695,7 @@ EXIT:
 
 static BOOL create_exe_file(const char* filename, BYTE* image_buf, DWORD image_len, BOOL is_reverse)
 {
+	BOOL   ret = FALSE;
 	HANDLE hFile;
 	BYTE*  buf = NULL;
 	DWORD  write_size;
@@ -667,7 +707,7 @@ static BOOL create_exe_file(const char* filename, BYTE* image_buf, DWORD image_l
 		if (hFile == INVALID_HANDLE_VALUE)
 		{
 			printf("Failed to create file: %s\n", filename);
-			return FALSE;
+			goto EXIT;
 		}
 	}
 
@@ -691,12 +731,14 @@ static BOOL create_exe_file(const char* filename, BYTE* image_buf, DWORD image_l
 		if (WriteFile(hFile, image_buf, image_len, &write_size, NULL) == 0)
 		{
 			printf("Failed to write: %s\n", filename);
-			return FALSE;
+			goto EXIT;
 		}
 		image_buf += write_size;
 		image_len -= write_size;
 	}
 	CloseHandle(hFile);
+
+	ret = TRUE;
 
 EXIT:
 	if (is_reverse)
@@ -707,7 +749,7 @@ EXIT:
 		}
 	}
 
-	return TRUE;
+	return ret;
 }
 
 
@@ -1141,9 +1183,16 @@ static char* set_version_info(const char* filename, const char* version_number, 
 	return new_version;
 }
 
+
+void OutputConsole(BYTE* buf, DWORD len)
+{
+}
+
+
 void OutputMessage(const char* text)
 {
 }
+
 
 UINT UncaughtException(const char* thread, const char* message, const char* trace)
 {

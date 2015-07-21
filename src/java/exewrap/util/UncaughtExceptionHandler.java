@@ -12,6 +12,7 @@ public class UncaughtExceptionHandler implements java.lang.Thread.UncaughtExcept
 	}
 	
 	public void uncaughtException(Thread t, Throwable e) {
+		e.printStackTrace();
 		ExewrapClassLoader.UncaughtException(t.getName(), e.toString(), getStackTrace(e));
 	}
 	

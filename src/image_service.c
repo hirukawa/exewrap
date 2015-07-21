@@ -20,7 +20,7 @@
 #define SERVICE_START_BY_SCM       32
 #define SHOW_HELP_MESSAGE          64
 
-
+void    OutputConsole(BYTE* buf, DWORD len);
 void    OutputMessage(const char* text);
 UINT    UncaughtException(const char* thread, const char* message, const char* trace);
 
@@ -49,6 +49,7 @@ static int       ARG_COUNT;
 static char**    ARG_VALUE;
 static jclass    MainClass;
 static jmethodID MainClass_stop;
+static HANDLE    hConOut = NULL;
 
 
 static int service_main(int argc, char* argv[])
@@ -59,6 +60,7 @@ static int service_main(int argc, char* argv[])
 	char*        relative_classpath;
 	char*        relative_extdirs;
 	BOOL         use_server_vm;
+	BOOL        use_side_by_side_jre;
 	char*        ext_flags;
 	char*        vm_args_opt;
 	char         utilities[128];
@@ -67,6 +69,12 @@ static int service_main(int argc, char* argv[])
 	jmethodID    MainClass_start;
 	jobjectArray MainClass_start_args;
 	int          i;
+
+	utilities[0] = '\0';
+	#ifdef TRACE
+	StartTrace(TRUE);
+	strcat(utilities, UTIL_CONSOLE_OUTPUT_STREAM);
+	#endif
 
 	service_name = get_service_name(NULL);
 	is_service = (flags & SERVICE_START_BY_SCM);
@@ -77,10 +85,11 @@ static int service_main(int argc, char* argv[])
 	relative_extdirs = (char*)GetResource("EXTDIRS", NULL);
 	ext_flags = (char*)GetResource("EXTFLAGS", NULL);
 	use_server_vm = (ext_flags != NULL && strstr(ext_flags, "SERVER") != NULL);
-	InitializePath(relative_classpath, relative_extdirs, use_server_vm);
+	use_side_by_side_jre = (ext_flags == NULL) || (strstr(ext_flags, "NOSIDEBYSIDE") == NULL);
+	InitializePath(relative_classpath, relative_extdirs, use_server_vm, use_side_by_side_jre);
 
 	vm_args_opt = (char*)GetResource("VMARGS", NULL);
-	CreateJavaVM(vm_args_opt, use_server_vm, &err);
+	CreateJavaVM(vm_args_opt, use_server_vm, use_side_by_side_jre, &err);
 	if (err != JNI_OK)
 	{
 		OutputMessage(GetWinErrorMessage(err, &result.msg_id, result.msg));
@@ -226,7 +235,16 @@ EXIT:
 		}
 	}
 
+	#ifdef TRACE
+	StopTrace();
+	#endif
+
 	return result.msg_id;
+}
+
+
+void OutputConsole(BYTE* buf, DWORD len)
+{
 }
 
 
@@ -246,16 +264,15 @@ void OutputMessage(const char* text)
 
 UINT UncaughtException(const char* thread, const char* message, const char* trace)
 {
-	if (thread != NULL)
+	BOOL is_service = (flags & SERVICE_START_BY_SCM);
+
+	if (is_service)
 	{
-		char* buf = malloc(32 + strlen(thread));
-		sprintf(buf, "Exception in thread \"%s\"", thread);
-		OutputMessage(buf);
+		char* buf = (char*)malloc(strlen(thread) + strlen(message) + strlen(trace) + 64);
+
+		sprintf(buf, "Exception in thread \"%s\" %s", thread, trace);
+		WriteEventLog(EVENTLOG_ERROR_TYPE, buf);
 		free(buf);
-	}
-	if (trace != NULL)
-	{
-		OutputMessage(trace);
 	}
 	return MSG_ID_ERR_UNCAUGHT_EXCEPTION;
 }
