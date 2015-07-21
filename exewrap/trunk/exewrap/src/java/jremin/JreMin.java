@@ -138,7 +138,7 @@ public class JreMin {
 			System.out.println("JRE not found.");
 			return;
 		}
-		File target = new File(jre.getName());
+		File target = new File(jre.getName() + "_min");
 
 		Set<String> appends = new HashSet<String>();
 		
