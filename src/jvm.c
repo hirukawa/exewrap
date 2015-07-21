@@ -25,6 +25,7 @@ BOOL    IsDirectory(LPTSTR path);
 char*   GetSubDirs(char* dir);
 char*   AddSubDirs(char* buf, char* dir, int* size);
 char**  GetArgsOpt(char* vm_args_opt, int* argc);
+int     GetArchitectureBits(const char* jvmpath);
 static  LPWSTR A2W(LPCSTR s);
 static  LPSTR W2A(LPCWSTR s);
 
@@ -356,14 +357,21 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 			FindClose(hSearch);
 			if (found)
 			{
-				SetEnvironmentVariable("JAVA_HOME", jre1);
-				lstrcpy(binpath, jre1);
-				lstrcat(binpath, "\\bin");
-				lstrcpy(extpath, jre1);
-				lstrcat(extpath, "\\lib\\ext");
-				if (FindJavaVM(jvmpath, jre1, useServerVM) == FALSE)
+				if (FindJavaVM(jvmpath, jre1, useServerVM))
 				{
-					jvmpath[0] = '\0';
+					int bits = GetArchitectureBits(jvmpath);
+					if (bits == 0 || bits == GetProcessArchitecture())
+					{
+						SetEnvironmentVariable("JAVA_HOME", jre1);
+						lstrcpy(binpath, jre1);
+						lstrcat(binpath, "\\bin");
+						lstrcpy(extpath, jre1);
+						lstrcat(extpath, "\\lib\\ext");
+					}
+					else
+					{
+						jvmpath[0] = '\0';
+					}
 				}
 			}
 		}
@@ -390,14 +398,21 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 			FindClose(hSearch);
 			if (found)
 			{
-				SetEnvironmentVariable("JAVA_HOME", jre2);
-				lstrcpy(binpath, jre2);
-				lstrcat(binpath, "\\bin");
-				lstrcpy(extpath, jre2);
-				lstrcat(extpath, "\\lib\\ext");
 				if (FindJavaVM(jvmpath, jre2, useServerVM) == FALSE)
 				{
-					jvmpath[0] = '\0';
+					int bits = GetArchitectureBits(jvmpath);
+					if (bits == 0 || bits == GetProcessArchitecture())
+					{
+						SetEnvironmentVariable("JAVA_HOME", jre2);
+						lstrcpy(binpath, jre2);
+						lstrcat(binpath, "\\bin");
+						lstrcpy(extpath, jre2);
+						lstrcat(extpath, "\\lib\\ext");
+					}
+					else
+					{
+						jvmpath[0] = '\0';
+					}
 				}
 			}
 		}
@@ -787,6 +802,67 @@ char** GetArgsOpt(char* vm_args_opt, int* argc)
 	return (LPTSTR*)argvA;
 }
 
+int GetArchitectureBits(const char* jvmpath)
+{
+	int bits = 0;
+	char*  file = NULL;
+	HANDLE hFile = NULL;
+	BYTE*  buf = NULL;
+	DWORD size = 512;
+	DWORD read_size;
+	UINT  i;
+
+	file = (char*)malloc(1024);
+	sprintf(file, "%s\\jvm.dll", jvmpath);
+
+	buf = (BYTE*)malloc(size);
+
+	hFile = CreateFile(file, GENERIC_READ, FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (hFile == INVALID_HANDLE_VALUE)
+	{
+		goto EXIT;
+	}
+
+	if (ReadFile(hFile, buf, size, &read_size, NULL) == 0)
+	{
+		goto EXIT;
+	}
+	CloseHandle(hFile);
+	hFile = NULL;
+
+	for (i = 0; i < size - 6; i++)
+	{
+		if (buf[i + 0] == 'P' && buf[i + 1] == 'E' && buf[i + 2] == 0x00 && buf[i + 3] == 0x00)
+		{
+			if (buf[i + 4] == 0x4C && buf[i + 5] == 0x01)
+			{
+				bits = 32;
+				goto EXIT;
+			}
+			if (buf[i + 4] == 0x64 && buf[i + 5] == 0x86)
+			{
+				bits = 64;
+				goto EXIT;
+			}
+		}
+	}
+
+EXIT:
+	if (hFile != NULL)
+	{
+		CloseHandle(hFile);
+	}
+	if (buf != NULL)
+	{
+		free(buf);
+	}
+	if (file != NULL)
+	{
+		free(file);
+	}
+
+	return bits;
+}
 
 static LPWSTR A2W(LPCSTR s)
 {
