@@ -1,0 +1,2 @@
+Premain-Class: jremin.agent.Agent
+Main-Class: jremin.agent.Agent
