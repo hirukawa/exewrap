@@ -51,7 +51,7 @@ BOOL LoadMainClass(int argc, char* argv[], char* utilities, LOAD_RESULT* result)
 	jclass       URLConnection;
 	jclass       URLStreamHandler;
 	jmethodID    ExewrapClassLoader_init;
-	jmethodID    exewrapClassLoader_registerSystemClassLoader;
+	jmethodID    exewrapClassLoader_register;
 	jmethodID    exewrapClassLoader_loadUtilities;
 	jmethodID    exewrapClassLoader_getMainClass;
 
@@ -364,11 +364,11 @@ BOOL LoadMainClass(int argc, char* argv[], char* utilities, LOAD_RESULT* result)
 		sprintf(result->msg, _(MSG_ID_ERR_NEW_OBJECT), "exewrap.core.ExewrapClassLoader(java.lang.ClassLoader, java.util.jar.JarInputStream[])");
 		goto EXIT;
 	}
-	exewrapClassLoader_registerSystemClassLoader = (*env)->GetMethodID(env, ExewrapClassLoader, "registerSystemClassLoader", "()V");
-	if (exewrapClassLoader_registerSystemClassLoader == NULL)
+	exewrapClassLoader_register = (*env)->GetMethodID(env, ExewrapClassLoader, "register", "()V");
+	if (exewrapClassLoader_register == NULL)
 	{
 		result->msg_id = MSG_ID_ERR_GET_METHOD;
-		sprintf(result->msg, _(MSG_ID_ERR_GET_METHOD), "exewrap.core.ExewrapClassLoader.registerSystemClassLoader()");
+		sprintf(result->msg, _(MSG_ID_ERR_GET_METHOD), "exewrap.core.ExewrapClassLoader.register()");
 		goto EXIT;
 	}
 	exewrapClassLoader_loadUtilities = (*env)->GetMethodID(env, ExewrapClassLoader, "loadUtilities", "(Ljava/lang/String;)V");
@@ -379,8 +379,8 @@ BOOL LoadMainClass(int argc, char* argv[], char* utilities, LOAD_RESULT* result)
 		goto EXIT;
 	}
 
-	// exewrapClassLoader.registerSystemClassLoader();
-	(*env)->CallObjectMethod(env, exewrapClassLoader, exewrapClassLoader_registerSystemClassLoader);
+	// exewrapClassLoader.register();
+	(*env)->CallObjectMethod(env, exewrapClassLoader, exewrapClassLoader_register);
 
 	// exewrapClassLoader.loadUtilities();
 	{
