@@ -46,7 +46,9 @@ public class ExewrapClassLoader extends ClassLoader {
 		this.context = new URL("jar:file:/" + path.replace('\\', '/') + '/' + name + "!/");
 	}
 	
-	public void registerSystemClassLoader() throws NoSuchFieldException, SecurityException, IllegalArgumentException, IllegalAccessException {
+	public void register() throws NoSuchFieldException, SecurityException, IllegalArgumentException, IllegalAccessException {
+		Thread.currentThread().setContextClassLoader(this);
+		
 		Field scl = ClassLoader.class.getDeclaredField("scl");
 		scl.setAccessible(true);
 		scl.set(null, this);

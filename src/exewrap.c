@@ -81,7 +81,7 @@ int main(int argc, char* argv[])
 			exe_file = argv[0];
 		}
 
-		printf("exewrap 1.1.0 for %s (%d-bit)\r\n"
+		printf("exewrap 1.1.1 for %s (%d-bit)\r\n"
 			   "Native executable java application wrapper.\r\n"
 			   "Copyright (C) 2005-2015 HIRUKAWA Ryo. All rights reserved.\r\n"
 			   "\r\n"
