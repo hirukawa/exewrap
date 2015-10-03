@@ -81,7 +81,7 @@ int main(int argc, char* argv[])
 			exe_file = argv[0];
 		}
 
-		printf("exewrap 1.1.1 for %s (%d-bit)\r\n"
+		printf("exewrap 1.1.2 for %s (%d-bit)\r\n"
 			   "Native executable java application wrapper.\r\n"
 			   "Copyright (C) 2005-2015 HIRUKAWA Ryo. All rights reserved.\r\n"
 			   "\r\n"
@@ -226,6 +226,10 @@ int main(int argc, char* argv[])
 	if(opt['L'] && *opt['L'] != '-' && *opt['L'] != '\0')
 	{
 		set_resource(exe_file, "EXTDIRS", RT_RCDATA, opt['L'], (DWORD)strlen(opt['L']) + 1);
+	}
+	else
+	{
+		set_resource(exe_file, "EXTDIRS", RT_RCDATA, "lib", 4);
 	}
 
 	enable_java = CreateJavaVM(NULL, FALSE, FALSE, NULL) != NULL;
