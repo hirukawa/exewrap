@@ -227,21 +227,21 @@ public class JreMin {
 		while((entryIn = jarIn.getNextJarEntry()) != null) {
 			String name = entryIn.getName();
 			String pkg = null;
+			boolean required = false;;
 			int i = name.lastIndexOf('/');
 			if(i > 0) {
 				pkg = name.substring(0, i);
-			}
-			boolean required = false;;
-			for(String p : requirePackages) {
-				if(p.endsWith("/*")) {
-					p = p.substring(0, p.length() - 2);
-					if(pkg.startsWith(p)) {
+				for(String p : requirePackages) {
+					if(p.endsWith("/*")) {
+						p = p.substring(0, p.length() - 2);
+						if(pkg.startsWith(p)) {
+							required = true;
+							break;
+						}
+					} else if(p.equals(pkg)) {
 						required = true;
 						break;
 					}
-				} else if(p.equals(pkg)) {
-					required = true;
-					break;
 				}
 			}
 			

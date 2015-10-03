@@ -13,17 +13,18 @@ BITS=64
 BIN=..\bin\x64
 OBJ=..\obj\x64
 CRT=..\lib\crt\amd64
+TARGET_VER=,5.02
 !else
 ARCHITECTURE=x86
 BITS=32
 BIN=..\bin\x86
 OBJ=..\obj\x86
 CRT=..\lib\crt
+TARGET_VER=,5.01
 !endif
 
 CFLAGS=\
 	/nologo\
-	/DEBUG\
 	/MD\
 	/W3\
 	/O1\
@@ -69,7 +70,7 @@ $(BIN)\exewrap.exe : $(BIN) $(OBJ) $(OBJ)\exewrap.res $(OBJ)\exewrap.obj \
 		$(OBJ)\image_console.exe $(OBJ)\image_gui.exe $(OBJ)\image_service.exe \
 		$(OBJ)\image_console_trace.exe \
 		$(OBJ)\bindres.exe $(OBJ)\exewrap\core\ByteBufferInputStream.class $(OBJ)\exewrap\core\ExewrapClassLoader.class $(OBJ)\tool.jar
-	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE /MANIFEST:EMBED /OUT:$(BIN)\exewrap.exe $(OBJ)\exewrap.res $(OBJ)\exewrap.obj \
+	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE$(TARGET_VER) /MANIFEST:EMBED /OUT:$(BIN)\exewrap.exe $(OBJ)\exewrap.res $(OBJ)\exewrap.obj \
 		$(OBJ)\jvm.obj $(OBJ)\loader.obj $(OBJ)\message.obj $(OBJ)\eventlog.obj $(LIBS)
 	$(OBJ)\bindres.exe $(BIN)\exewrap.exe VERSION_INFO              resources\versioninfo.bin
 	$(OBJ)\bindres.exe -r $(BIN)\exewrap.exe IMAGE_CONSOLE_32       $(OBJ)\..\x86\image_console.exe
@@ -101,7 +102,7 @@ $(OBJ)\exewrap.res : $(OBJ) resources\exewrap.rc
 $(OBJ)\image_console.exe : $(OBJ) $(OBJ)\image_console.res $(OBJ)\image_console.obj \
 		$(OBJ)\jvm.obj $(OBJ)\loader.obj $(OBJ)\message.obj $(OBJ)\notify.obj $(OBJ)\eventlog.obj \
 		$(OBJ)\bindres.exe $(OBJ)\exewrap\core\ByteBufferInputStream.class $(OBJ)\exewrap\core\PackInputStream.class $(OBJ)\exewrap\core\ExewrapClassLoader.class $(OBJ)\exewrap\core\URLConnection.class $(OBJ)\exewrap\core\URLStreamHandler.class $(OBJ)\util.jar
-	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE /MANIFEST:EMBED /OUT:$(OBJ)\image_console.exe $(OBJ)\image_console.obj \
+	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE$(TARGET_VER) /MANIFEST:EMBED /OUT:$(OBJ)\image_console.exe $(OBJ)\image_console.obj \
 		$(OBJ)\jvm.obj $(OBJ)\loader.obj $(OBJ)\message.obj $(OBJ)\notify.obj $(OBJ)\eventlog.obj $(LIBS)
 	$(OBJ)\bindres.exe $(OBJ)\image_console.exe BYTE_BUFFER_INPUT_STREAM $(OBJ)\exewrap\core\ByteBufferInputStream.class
 	$(OBJ)\bindres.exe $(OBJ)\image_console.exe PACK_INPUT_STREAM        $(OBJ)\exewrap\core\PackInputStream.class
@@ -114,7 +115,7 @@ $(OBJ)\image_console_trace.exe : $(OBJ) $(OBJ)\image_console.res $(OBJ)\image_co
 		$(OBJ)\buffer.obj $(OBJ)\hde$(BITS).obj $(OBJ)\hook.obj $(OBJ)\trampoline.obj \
 		$(OBJ)\jvm.obj $(OBJ)\loader.obj $(OBJ)\message.obj $(OBJ)\notify.obj $(OBJ)\eventlog.obj \
 		$(OBJ)\bindres.exe $(OBJ)\exewrap\core\ByteBufferInputStream.class $(OBJ)\exewrap\core\PackInputStream.class $(OBJ)\exewrap\core\ExewrapClassLoader.class $(OBJ)\exewrap\core\URLConnection.class $(OBJ)\exewrap\core\URLStreamHandler.class $(OBJ)\util.jar
-	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE /MANIFEST:EMBED /OUT:$(OBJ)\image_console_trace.exe $(OBJ)\image_console_trace.obj $(OBJ)\trace.obj \
+	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE$(TARGET_VER) /MANIFEST:EMBED /OUT:$(OBJ)\image_console_trace.exe $(OBJ)\image_console_trace.obj $(OBJ)\trace.obj \
 		$(OBJ)\buffer.obj $(OBJ)\hde$(BITS).obj $(OBJ)\hook.obj $(OBJ)\trampoline.obj \
 		$(OBJ)\jvm.obj $(OBJ)\loader.obj $(OBJ)\message.obj $(OBJ)\notify.obj  $(OBJ)\eventlog.obj $(LIBS)
 	$(OBJ)\bindres.exe $(OBJ)\image_console_trace.exe BYTE_BUFFER_INPUT_STREAM $(OBJ)\exewrap\core\ByteBufferInputStream.class
@@ -149,7 +150,7 @@ $(OBJ)\image_gui_trace.exe : $(OBJ) $(OBJ)\image_gui.res $(OBJ)\image_gui_trace.
 		$(OBJ)\buffer.obj $(OBJ)\hde$(BITS).obj $(OBJ)\hook.obj $(OBJ)\trampoline.obj \
 		$(OBJ)\jvm.obj $(OBJ)\loader.obj $(OBJ)\message.obj $(OBJ)\notify.obj $(OBJ)\eventlog.obj \
 		$(OBJ)\bindres.exe $(OBJ)\exewrap\core\ByteBufferInputStream.class $(OBJ)\exewrap\core\PackInputStream.class $(OBJ)\exewrap\core\ExewrapClassLoader.class $(OBJ)\exewrap\core\URLConnection.class $(OBJ)\exewrap\core\URLStreamHandler.class $(OBJ)\util.jar
-	$(LINK) $(LDFLAGS) /SUBSYSTEM:WINDOWS /MANIFEST:EMBED /OUT:$(OBJ)\image_gui_trace.exe $(OBJ)\image_gui.res $(OBJ)\image_gui_trace.obj $(OBJ)\trace.obj \
+	$(LINK) $(LDFLAGS) /SUBSYSTEM:WINDOWS$(TARGET_VER) /MANIFEST:EMBED /OUT:$(OBJ)\image_gui_trace.exe $(OBJ)\image_gui.res $(OBJ)\image_gui_trace.obj $(OBJ)\trace.obj \
 		$(OBJ)\buffer.obj $(OBJ)\hde$(BITS).obj $(OBJ)\hook.obj $(OBJ)\trampoline.obj \
 		$(OBJ)\jvm.obj $(OBJ)\loader.obj $(OBJ)\message.obj $(OBJ)\notify.obj $(OBJ)\eventlog.obj $(LIBS)
 	$(OBJ)\bindres.exe $(OBJ)\image_gui_trace.exe BYTE_BUFFER_INPUT_STREAM $(OBJ)\exewrap\core\ByteBufferInputStream.class
@@ -171,7 +172,7 @@ $(OBJ)\image_gui_trace.obj : $(OBJ) image_gui.c
 $(OBJ)\image_service.exe : $(OBJ) $(OBJ)\image_service.res $(OBJ)\image_service.obj \
 		$(OBJ)\jvm.obj $(OBJ)\loader.obj $(OBJ)\message.obj $(OBJ)\eventlog.obj \
 		$(OBJ)\bindres.exe $(OBJ)\exewrap\core\ByteBufferInputStream.class $(OBJ)\exewrap\core\PackInputStream.class $(OBJ)\exewrap\core\ExewrapClassLoader.class $(OBJ)\exewrap\core\URLConnection.class $(OBJ)\exewrap\core\URLStreamHandler.class $(OBJ)\util.jar
-	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE /MANIFEST:EMBED /OUT:$(OBJ)\image_service.exe $(OBJ)\image_service.res $(OBJ)\image_service.obj \
+	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE$(TARGET_VER) /MANIFEST:EMBED /OUT:$(OBJ)\image_service.exe $(OBJ)\image_service.res $(OBJ)\image_service.obj \
 		$(OBJ)\jvm.obj $(OBJ)\loader.obj $(OBJ)\message.obj $(OBJ)\eventlog.obj $(LIBS)
 	$(OBJ)\bindres.exe $(OBJ)\image_service.exe BYTE_BUFFER_INPUT_STREAM $(OBJ)\exewrap\core\ByteBufferInputStream.class
 	$(OBJ)\bindres.exe $(OBJ)\image_service.exe PACK_INPUT_STREAM        $(OBJ)\exewrap\core\PackInputStream.class
@@ -184,7 +185,7 @@ $(OBJ)\image_service_trace.exe : $(OBJ) $(OBJ)\image_service.res $(OBJ)\image_se
 		$(OBJ)\buffer.obj $(OBJ)\hde$(BITS).obj $(OBJ)\hook.obj $(OBJ)\trampoline.obj \
 		$(OBJ)\jvm.obj $(OBJ)\loader.obj $(OBJ)\message.obj $(OBJ)\eventlog.obj \
 		$(OBJ)\bindres.exe $(OBJ)\exewrap\core\ByteBufferInputStream.class $(OBJ)\exewrap\core\PackInputStream.class $(OBJ)\exewrap\core\ExewrapClassLoader.class $(OBJ)\exewrap\core\URLConnection.class $(OBJ)\exewrap\core\URLStreamHandler.class $(OBJ)\util.jar
-	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE /MANIFEST:EMBED /OUT:$(OBJ)\image_service_trace.exe $(OBJ)\image_service.res $(OBJ)\image_service_trace.obj $(OBJ)\trace.obj \
+	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE$(TARGET_VER) /MANIFEST:EMBED /OUT:$(OBJ)\image_service_trace.exe $(OBJ)\image_service.res $(OBJ)\image_service_trace.obj $(OBJ)\trace.obj \
 		$(OBJ)\buffer.obj $(OBJ)\hde$(BITS).obj $(OBJ)\hook.obj $(OBJ)\trampoline.obj \
 		$(OBJ)\jvm.obj $(OBJ)\loader.obj $(OBJ)\message.obj $(OBJ)\eventlog.obj $(LIBS)
 	$(OBJ)\bindres.exe $(OBJ)\image_service_trace.exe BYTE_BUFFER_INPUT_STREAM $(OBJ)\exewrap\core\ByteBufferInputStream.class
@@ -222,7 +223,7 @@ $(OBJ)\trace.obj : $(OBJ) trace.c
 	$(CC) $(CFLAGS) $(INC) /Fo$(OBJ)\trace.obj trace.c
 
 $(OBJ)\bindres.exe : $(OBJ) $(OBJ)\bindres.obj
-	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE /OUT:$(OBJ)\bindres.exe $(OBJ)\bindres.obj $(LIBS)
+	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE$(TARGET_VER) /OUT:$(OBJ)\bindres.exe $(OBJ)\bindres.obj $(LIBS)
 
 $(OBJ)\bindres.obj : $(OBJ) bindres.c
 	$(CC) $(CFLAGS) $(INC) /Fo$(OBJ)\bindres.obj bindres.c
