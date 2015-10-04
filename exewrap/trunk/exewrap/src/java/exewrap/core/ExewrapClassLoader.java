@@ -21,6 +21,12 @@ public class ExewrapClassLoader extends ClassLoader {
 	private Queue<JarInputStream> inputs = new LinkedList<JarInputStream>();
 	private JarInputStream in;
 	private String mainClassName;
+	private String specTitle;
+	private String specVersion;
+	private String specVendor;
+	private String implTitle;
+	private String implVersion;
+	private String implVendor;
 	private URL context;
 	
 	public ExewrapClassLoader(ClassLoader parent, JarInputStream[] inputs) throws MalformedURLException {
@@ -29,6 +35,12 @@ public class ExewrapClassLoader extends ClassLoader {
 			Manifest manifest = in.getManifest();
 			if(manifest != null) {
 				this.mainClassName = manifest.getMainAttributes().getValue(Name.MAIN_CLASS);
+				this.specTitle = manifest.getMainAttributes().getValue(Name.SPECIFICATION_TITLE);
+				this.specVersion = manifest.getMainAttributes().getValue(Name.SPECIFICATION_VERSION);
+				this.specVendor = manifest.getMainAttributes().getValue(Name.SPECIFICATION_VENDOR);
+				this.implTitle = manifest.getMainAttributes().getValue(Name.IMPLEMENTATION_TITLE);
+				this.implVersion = manifest.getMainAttributes().getValue(Name.IMPLEMENTATION_VERSION);
+				this.implVendor = manifest.getMainAttributes().getValue(Name.IMPLEMENTATION_VENDOR);
 			}
 			this.inputs.offer(in);
 		}
@@ -106,7 +118,10 @@ public class ExewrapClassLoader extends ClassLoader {
 		if(name.indexOf('.') >= 0) {
 			String packageName = name.substring(0, name.lastIndexOf('.'));
 			if(getPackage(packageName) == null) {
-				definePackage(packageName, null, null, null, null, null, null, null);
+				definePackage(packageName,
+					specTitle, specVersion, specVendor,
+					implTitle, implVersion, implVendor,
+					null);
 			}
 		}
 		return defineClass(name, bytes, 0, bytes.length);
