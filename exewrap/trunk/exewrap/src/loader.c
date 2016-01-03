@@ -11,17 +11,18 @@
 #include "include/eventlog.h"
 #include "include/message.h"
 
-BOOL          LoadMainClass(int argc, char* argv[], char* utilities, LOAD_RESULT* result);
-BOOL          SetSplashScreenResource(char* splash_screen_name, BYTE* splash_screen_image_buf, DWORD splash_screen_image_len);
-DWORD WINAPI  RemoteCallMainMethod(void* _shared_memory_handle);
-char*         ToString(JNIEnv* env, jobject object, char* buf);
-char*         GetModuleObjectName(const char* prefix);
-BYTE*         GetResource(LPCTSTR name, RESOURCE* resource);
-char*         GetWinErrorMessage(DWORD err, int* exit_code, char* buf);
-char*         GetJniErrorMessage(int err, int* exit_code, char* buf);
-void JNICALL  JNI_WriteConsole(JNIEnv *env, jobject clazz, jbyteArray b, jint off, jint len);
-void JNICALL  JNI_WriteEventLog(JNIEnv *env, jobject clazz, jint logType, jstring message);
-void JNICALL  JNI_UncaughtException(JNIEnv *env, jobject clazz, jstring thread, jstring message, jstring trace);
+BOOL            LoadMainClass(int argc, char* argv[], char* utilities, LOAD_RESULT* result);
+BOOL            SetSplashScreenResource(char* splash_screen_name, BYTE* splash_screen_image_buf, DWORD splash_screen_image_len);
+DWORD   WINAPI  RemoteCallMainMethod(void* _shared_memory_handle);
+char*           ToString(JNIEnv* env, jobject object, char* buf);
+char*           GetModuleObjectName(const char* prefix);
+BYTE*           GetResource(LPCTSTR name, RESOURCE* resource);
+char*           GetWinErrorMessage(DWORD err, int* exit_code, char* buf);
+char*           GetJniErrorMessage(int err, int* exit_code, char* buf);
+void    JNICALL JNI_WriteConsole(JNIEnv *env, jobject clazz, jbyteArray b, jint off, jint len);
+void    JNICALL JNI_WriteEventLog(JNIEnv *env, jobject clazz, jint logType, jstring message);
+void    JNICALL JNI_UncaughtException(JNIEnv *env, jobject clazz, jstring thread, jstring message, jstring trace);
+jstring JNICALL JNI_SetEnvironment(JNIEnv *env, jobject clazz, jstring key, jstring value);
 
 static jint   register_native(JNIEnv* env, jclass cls, const char* name, const char* signature, void* fnPtr);
 static void   print_stack_trace(const char* text);
@@ -346,6 +347,12 @@ BOOL LoadMainClass(int argc, char* argv[], char* utilities, LOAD_RESULT* result)
 	{
 		result->msg_id = MSG_ID_ERR_REGISTER_NATIVE;
 		sprintf(result->msg, _(MSG_ID_ERR_REGISTER_NATIVE), "UncaughtException");
+		goto EXIT;
+	}
+	if (register_native(env, ExewrapClassLoader, "SetEnvironment", "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;", JNI_SetEnvironment) != 0)
+	{
+		result->msg_id = MSG_ID_ERR_REGISTER_NATIVE;
+		sprintf(result->msg, _(MSG_ID_ERR_REGISTER_NATIVE), "SetEnvironment");
 		goto EXIT;
 	}
 	// Create ExewrapClassLoader instance
@@ -749,6 +756,43 @@ void JNICALL JNI_UncaughtException(JNIEnv *env, jobject clazz, jstring thread, j
 	}
 
 	ExitProcess(exit_code);
+}
+
+
+jstring JNICALL JNI_SetEnvironment(JNIEnv *env, jobject clazz, jstring key, jstring value)
+{
+	char* sjis_key;
+	char* sjis_value;
+	DWORD size;
+	char* sjis_buf = NULL;
+	jstring prev_value = NULL;
+	BOOL  result;
+
+	sjis_key = GetShiftJIS(env, key);
+	sjis_value = GetShiftJIS(env, value);
+
+	size = GetEnvironmentVariable(sjis_key, NULL, 0);
+	if (size > 0)
+	{
+		sjis_buf = (char*)malloc(size);
+		size = GetEnvironmentVariable(sjis_key, sjis_buf, size);
+		if (size > 0) {
+			prev_value = GetJString(env, sjis_buf);
+		}
+		free(sjis_buf);
+	}
+
+	result = SetEnvironmentVariable(sjis_key, sjis_value);
+	if (result == 0)
+	{
+		if (prev_value != NULL)
+		{
+			(*env)->DeleteLocalRef(env, prev_value);
+			prev_value = NULL;
+		}
+	}
+
+	return prev_value;
 }
 
 
