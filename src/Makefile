@@ -269,7 +269,7 @@ $(OBJ)\exewrap\core\URLStreamHandler.class : $(OBJ) java\exewrap\core\URLStreamH
 
 ### exewrap.util
 
-$(OBJ)\util.jar : $(OBJ) $(OBJ)\exewrap\util\EventLogHandler.class $(OBJ)\exewrap\util\EventLogStream.class $(OBJ)\exewrap\util\FileLogStream.class $(OBJ)\exewrap\util\UncaughtExceptionHandler.class $(OBJ)\exewrap\util\ConsoleOutputStream.class
+$(OBJ)\util.jar : $(OBJ) $(OBJ)\exewrap\util\EventLogHandler.class $(OBJ)\exewrap\util\EventLogStream.class $(OBJ)\exewrap\util\FileLogStream.class $(OBJ)\exewrap\util\UncaughtExceptionHandler.class $(OBJ)\exewrap\util\ConsoleOutputStream.class $(OBJ)\exewrap\util\Environment.class
 	$(JAR) cvf $(OBJ)\util.jar -C $(OBJ) exewrap\util
 
 $(OBJ)\exewrap\util\EventLogHandler.class : $(OBJ) java\exewrap\util\EventLogHandler.java
@@ -286,6 +286,9 @@ $(OBJ)\exewrap\util\UncaughtExceptionHandler.class : $(OBJ) java\exewrap\util\Un
 
 $(OBJ)\exewrap\util\ConsoleOutputStream.class : $(OBJ) java\exewrap\util\ConsoleOutputStream.java
 	$(JAVAC) -Xlint:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\util\ConsoleOutputStream.java
+
+$(OBJ)\exewrap\util\Environment.class : $(OBJ) java\exewrap\util\Environment.java
+	$(JAVAC) -Xlint:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\util\Environment.java
 
 ### exewrap.tool
 
