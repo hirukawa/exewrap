@@ -138,13 +138,13 @@ void WriteEventLog(WORD type, const char* message)
 
 void ShowErrorMessage()
 {
-	LPVOID Message = NULL;
+	LPSTR Message = NULL;
 	DWORD LastError = GetLastError();
 
 	if(LastError != 0)
 	{
 		FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-			NULL, GetLastError(), MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPTSTR)&Message, 0, NULL);
+			NULL, GetLastError(), MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPSTR)&Message, 0, NULL);
 
 		printf("%s", Message);
 		LocalFree(Message);

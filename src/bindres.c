@@ -30,7 +30,7 @@ int main(int argc, char* argv[])
 
 	if(argc < 4 || (strcmp(argv[1], "-r") == 0 && argc < 5))
 	{
-		printf("Usage: %s [-r] <filename> <resource-name> <resource-file>\n", argv[0]);
+		//printf("Usage: %s [-r] <filename> <resource-name> <resource-file>\n", argv[0]);
 		return -1;
 	}
 	
@@ -48,7 +48,7 @@ int main(int argc, char* argv[])
 	hRscFile = CreateFile(rscFileName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if(hRscFile == INVALID_HANDLE_VALUE)
 	{
-		printf("Failed to open: %s\n", rscFileName);
+		//printf("Failed to open: %s\n", rscFileName);
 		return -2;		
 	}
 	rscSize = GetFileSize(hRscFile, NULL);
@@ -61,7 +61,7 @@ int main(int argc, char* argv[])
 	{
 		if(ReadFile(hRscFile, p, r, &readSize, NULL) == 0)
 		{
-			printf("Failed to read: %s\n", rscFileName);
+			//printf("Failed to read: %s\n", rscFileName);
 			return -3;
 		}
 		p += readSize;

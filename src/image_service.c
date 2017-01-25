@@ -60,9 +60,9 @@ static int service_main(int argc, char* argv[])
 	char*        relative_classpath;
 	char*        relative_extdirs;
 	BOOL         use_server_vm;
-	BOOL        use_side_by_side_jre;
+	BOOL         use_side_by_side_jre;
 	char*        ext_flags;
-	char*        vm_args_opt;
+	char*        vm_args_opt = NULL;
 	char         utilities[128];
 	RESOURCE     res;
 	LOAD_RESULT  result;
@@ -88,7 +88,12 @@ static int service_main(int argc, char* argv[])
 	use_side_by_side_jre = (ext_flags == NULL) || (strstr(ext_flags, "NOSIDEBYSIDE") == NULL);
 	InitializePath(relative_classpath, relative_extdirs, use_server_vm, use_side_by_side_jre);
 
-	vm_args_opt = (char*)GetResource("VMARGS", NULL);
+	if(!is_service) {
+		vm_args_opt = (char*)GetResource("VMARGS_B", NULL);
+	}
+	if(vm_args_opt == NULL) {
+		vm_args_opt = (char*)GetResource("VMARGS", NULL);
+	}
 	CreateJavaVM(vm_args_opt, use_server_vm, use_side_by_side_jre, &err);
 	if (err != JNI_OK)
 	{
@@ -173,10 +178,6 @@ static int service_main(int argc, char* argv[])
 	{
 		WriteEventLog(EVENTLOG_INFORMATION_TYPE, result.msg);
 	}
-	else
-	{
-		OutputMessage(result.msg);
-	}
 
 	// JavaVM が CTRL_SHUTDOWN_EVENT を受け取って終了してしまわないように、ハンドラを登録して先取りします。
 	SetConsoleCtrlHandler((PHANDLER_ROUTINE)console_control_handler, TRUE);
@@ -209,10 +210,6 @@ static int service_main(int argc, char* argv[])
 		if (is_service)
 		{
 			WriteEventLog(EVENTLOG_INFORMATION_TYPE, result.msg);
-		}
-		else
-		{
-			OutputMessage(result.msg);
 		}
 	}
 
@@ -286,20 +283,25 @@ int main(int argc, char* argv[])
 	HANDLE pipe = NULL;
 	int    exit_code = 0;
 
-	set_current_dir();
 	service_name = get_service_name(NULL);
 	flags = parse_args(&argc, argv, &opt_end);
 
 	if (flags & SHOW_HELP_MESSAGE)
 	{
-		show_help_message();
-		goto EXIT;
+		char* ext_flags = (char*)GetResource("EXTFLAGS", NULL);
+		if(ext_flags == NULL || strstr(ext_flags, "NOHELP") == NULL)
+		{
+			show_help_message();
+			goto EXIT;
+		}
 	}
 
 	if (flags & SERVICE_START_BY_SCM)
 	{
 		SERVICE_TABLE_ENTRY ServiceTable[2];
 
+		set_current_dir();
+		
 		ARG_COUNT = argc;
 		ARG_VALUE = argv;
 
@@ -1140,9 +1142,10 @@ static int run_as_administrator(HANDLE pipe, int argc, char* argv[], char* appen
 	}
 	else if (ret == TRUE)
 	{
-		buf = (char*)HeapAlloc(GetProcessHeap(), 0, 1024);
 		DWORD read_size;
 		DWORD write_size;
+
+		buf = (char*)HeapAlloc(GetProcessHeap(), 0, 1024);
 
 		if (!ConnectNamedPipe(pipe, NULL))
 		{

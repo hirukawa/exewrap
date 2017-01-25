@@ -52,6 +52,7 @@ int main(int argc, char* argv[])
 	DWORD    jar_len;
 	char*    ext_flags = NULL;
 	char*    vmargs = NULL;
+	char*    vmargs_b = NULL;
 	char*    version_number;
 	char*    file_description;
 	char*    copyright;
@@ -60,6 +61,7 @@ int main(int argc, char* argv[])
 	char*    product_version;
 	char*    original_filename;
 	char*    new_version;
+	BOOL     is_trace_version = FALSE;
 
 	char*    buf = NULL;
 	char*    ptr = NULL;
@@ -80,33 +82,35 @@ int main(int argc, char* argv[])
 		{
 			exe_file = argv[0];
 		}
+		
+		is_trace_version = strstr(exe_file, "trace") != NULL;
 
-		printf("exewrap 1.1.2 for %s (%d-bit)\r\n"
+		printf("exewrap 1.1.4 for %s (%d-bit) %s\r\n"
 			   "Native executable java application wrapper.\r\n"
-			   "Copyright (C) 2005-2015 HIRUKAWA Ryo. All rights reserved.\r\n"
+			   "Copyright (C) 2005-2017 HIRUKAWA Ryo. All rights reserved.\r\n"
 			   "\r\n"
 			   "Usage: %s <options> <jar-file>\r\n"
 			   "Options:\r\n"
-			   "  -g                  \t create Window application.\r\n"
-			   "  -s                  \t create Windows Service application.\r\n"
-			   "  -A <architecture>   \t select exe-file architecture. (default %s)\r\n"
-			   "  -t <version>        \t set target java runtime version. (default 1.5)\r\n"
-			   "  -2                  \t disable Pack200.\r\n"
-			   "  -T                  \t enable trace for to shrink JRE.\r\n"
-			   "  -M <main-class>     \t set main-class.\r\n"
-			   "  -L <ext-dirs>       \t set ext-dirs.\r\n"
-			   "  -e <ext-flags>      \t set extended flags.\r\n"
-			   "  -a <vm-args>        \t set Java VM arguments.\r\n"
-			   "  -i <icon-file>      \t set application icon.\r\n"
-			   "  -v <version>        \t set version number.\r\n"
-			   "  -d <description>    \t set file description.\r\n"
-			   "  -c <copyright>      \t set copyright.\r\n"
-			   "  -C <company-name>   \t set company name.\r\n"
-			   "  -p <product-name>   \t set product name.\r\n"
-			   "  -V <product-version>\t set product version.\r\n"
-			   "  -j <jar-file>       \t input jar-file.\r\n"
-			   "  -o <exe-file>       \t output exe-file.\r\n"
-			, (bits == 64 ? "x64" : "x86"), bits, exe_file, (bits == 64 ? "x64" : "x86"));
+			   "  -g                  \t Create Window application.\r\n"
+			   "  -s                  \t Create Windows Service application.\r\n"
+			   "  -A <architecture>   \t Select exe-file architecture. (default %s)\r\n"
+			   "  -t <version>        \t Set target java runtime version. (default 1.5)\r\n"
+			   "  -2                  \t Disable Pack200.\r\n"
+			   "  -M <main-class>     \t Set main-class.\r\n"
+			   "  -L <ext-dirs>       \t Set ext-dirs.\r\n"
+			   "  -e <ext-flags>      \t Set extended flags.\r\n"
+			   "  -a <vm-args>        \t Set Java VM arguments.\r\n"
+			   "  -b <vm-args>        \t This arguments will be applied when the service was started without the SCM.\r\n"
+			   "  -i <icon-file>      \t Set application icon.\r\n"
+			   "  -v <version>        \t Set version number.\r\n"
+			   "  -d <description>    \t Set file description.\r\n"
+			   "  -c <copyright>      \t Set copyright.\r\n"
+			   "  -C <company-name>   \t Set company name.\r\n"
+			   "  -p <product-name>   \t Set product name.\r\n"
+			   "  -V <product-version>\t Set product version.\r\n"
+			   "  -j <jar-file>       \t Input jar-file.\r\n"
+			   "  -o <exe-file>       \t Output exe-file.\r\n"
+			, (bits == 64 ? "x64" : "x86"), bits, (is_trace_version ? "[ TRACE VERSION ]" : ""), exe_file, (bits == 64 ? "x64" : "x86"));
 
 		return 0;
 	}
@@ -157,7 +161,7 @@ int main(int argc, char* argv[])
 		*strrchr(strrchr(exe_file, '\\' + 1), '.') = '\0';
 		strcat(exe_file, ".exe");
 	}
-	if (opt['T'])
+	if (is_trace_version)
 	{
 		*strrchr(exe_file, '.') = '\0';
 		strcat(exe_file, ".TRACE.exe");
@@ -182,15 +186,15 @@ int main(int argc, char* argv[])
 
 	if(opt['g'])
 	{
-		sprintf(image_name, "IMAGE%s_GUI_%d", (opt['T'] ? "_TRACE" : ""), architecture_bits);
+		sprintf(image_name, "IMAGE%s_GUI_%d", (is_trace_version ? "_TRACE" : ""), architecture_bits);
 	}
 	else if(opt['s'])
 	{
-		sprintf(image_name, "IMAGE%s_SERVICE_%d", (opt['T'] ? "_TRACE" : ""), architecture_bits);
+		sprintf(image_name, "IMAGE%s_SERVICE_%d", (is_trace_version ? "_TRACE" : ""), architecture_bits);
 	}
 	else
 	{
-		sprintf(image_name, "IMAGE%s_CONSOLE_%d", (opt['T'] ? "_TRACE" : ""), architecture_bits);
+		sprintf(image_name, "IMAGE%s_CONSOLE_%d", (is_trace_version ? "_TRACE" : ""), architecture_bits);
 	}
 
 	GetResource(image_name, &res);
@@ -232,7 +236,7 @@ int main(int argc, char* argv[])
 		set_resource(exe_file, "EXTDIRS", RT_RCDATA, "lib", 4);
 	}
 
-	enable_java = CreateJavaVM(NULL, FALSE, FALSE, NULL) != NULL;
+	enable_java = CreateJavaVM(NULL, FALSE, TRUE, NULL) != NULL;
 	if (enable_java)
 	{
 		LOAD_RESULT result;
@@ -383,7 +387,7 @@ int main(int argc, char* argv[])
 	
 	ext_flags = (char*)malloc(1024);
 	ext_flags[0] = '\0';
-	if (opt['T'])
+	if (is_trace_version)
 	{
 		strcat(ext_flags, "NOSIDEBYSIDE;");
 	}
@@ -394,7 +398,7 @@ int main(int argc, char* argv[])
 	set_resource(exe_file, "EXTFLAGS", RT_RCDATA, ext_flags, (DWORD)strlen(ext_flags) + 1);
 	free(ext_flags);
 
-	if (opt['T'])
+	if (is_trace_version)
 	{
 		if (vmargs == NULL)
 		{
@@ -424,6 +428,25 @@ int main(int argc, char* argv[])
 	{
 		set_resource(exe_file, "VMARGS", RT_RCDATA, vmargs, (DWORD)strlen(vmargs) + 1);
 		free(vmargs);
+	}
+
+	if(opt['b'] && *opt['b'] != '\0')
+	{
+		if (vmargs_b == NULL)
+		{
+			vmargs_b = (char*)malloc(2048);
+			vmargs_b[0] = '\0';
+		}
+		else
+		{
+			strcat(vmargs_b, " ");
+		}
+		strcat(vmargs_b, opt['b']);
+	}
+	if (vmargs_b != NULL)
+	{
+		set_resource(exe_file, "VMARGS_B", RT_RCDATA, vmargs_b, (DWORD)strlen(vmargs_b) + 1);
+		free(vmargs_b);
 	}
 
 	if(opt['i'] && *opt['i'] != '-' && *opt['i'] != '\0')
@@ -676,15 +699,18 @@ static DWORD get_version_revision(char* filename)
 	CloseHandle(hFile);
 
 	len = strlen(HEADER);
-	for (i = 0; i < size - len; i++)
+	if(size > len)
 	{
-		for (j = 0; j < len; j++)
+		for (i = 0; i < size - len; i++)
 		{
-			if (buf[i + j * 2] != HEADER[j]) break;
-		}
-		if (j == strlen(HEADER))
-		{
-			revision = ((buf[i + 47] << 8) & 0xFF00) | ((buf[i + 46]) & 0x00FF);
+			for (j = 0; j < len; j++)
+			{
+				if (buf[i + j * 2] != HEADER[j]) break;
+			}
+			if (j == strlen(HEADER))
+			{
+				revision = ((buf[i + 47] << 8) & 0xFF00) | ((buf[i + 46]) & 0x00FF);
+			}
 		}
 	}
 
