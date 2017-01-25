@@ -1,4 +1,4 @@
-Copyright (C) 2005-2016 HIRUKAWA Ryo. All rights reserved.
+Copyright (C) 2005-2017 HIRUKAWA Ryo. All rights reserved.
 
 ソースコード形式であれバイナリ形式であれ、変更の有無に関わらず、
 以下の条件を満たす限りにおいて、再配布および使用を許可します:
@@ -17,7 +17,7 @@ Copyright (C) 2005-2016 HIRUKAWA Ryo. All rights reserved.
 #
 # MinHook
 #
-exewrapにオプション -T を指定して出力したトレース用バイナリは Tsuda Kageyu さんの作成した MinHook を含んでいます。(通常出力のバイナリには MinHook のコードは含まれません。)
+トレース用バイナリ(exewrap-trace.exe)は Tsuda Kageyu さんの作成した MinHook を含んでいます。(通常出力のバイナリには MinHook のコードは含まれません。)
 
 MinHook - The Minimalistic API Hooking Library for x64/x86
 Copyright (C) 2009-2015 Tsuda Kageyu.
