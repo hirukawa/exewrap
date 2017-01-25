@@ -70,9 +70,9 @@ $(BIN)\exewrap.exe : $(BIN) $(OBJ) $(OBJ)\exewrap.res $(OBJ)\exewrap.obj \
 		$(OBJ)\jvm.obj $(OBJ)\loader.obj $(OBJ)\message.obj $(OBJ)\eventlog.obj \
 		$(OBJ)\image_console.exe $(OBJ)\image_gui.exe $(OBJ)\image_service.exe \
 		$(OBJ)\bindres.exe $(OBJ)\exewrap\core\ByteBufferInputStream.class $(OBJ)\exewrap\core\ExewrapClassLoader.class $(OBJ)\tool.jar
-	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE$(TARGET_VER) /MANIFEST /OUT:$(BIN)\exewrap.exe $(OBJ)\exewrap.res $(OBJ)\exewrap.obj \
+	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE$(TARGET_VER) /MANIFEST /MANIFESTFILE:$(OBJ)\exewrap\exewrap.exe.manifest /OUT:$(BIN)\exewrap.exe $(OBJ)\exewrap.res $(OBJ)\exewrap.obj \
 		$(OBJ)\jvm.obj $(OBJ)\loader.obj $(OBJ)\message.obj $(OBJ)\eventlog.obj $(LIBS) $(MSVCRT_PATCH)
-	$(MT) -manifest $(BIN)\exewrap.exe.manifest -outputresource:$(BIN)\exewrap.exe;1
+	$(MT) -manifest $(OBJ)\exewrap\exewrap.exe.manifest -outputresource:$(BIN)\exewrap.exe;1
 	$(OBJ)\bindres.exe $(BIN)\exewrap.exe VERSION_INFO              resources\versioninfo.bin
 	$(OBJ)\bindres.exe -r $(BIN)\exewrap.exe IMAGE_CONSOLE_32       $(OBJ)\..\x86\image_console.exe
 	$(OBJ)\bindres.exe -r $(BIN)\exewrap.exe IMAGE_CONSOLE_64       $(OBJ)\..\x64\image_console.exe
@@ -92,9 +92,9 @@ $(BIN)\exewrap-trace.exe : $(BIN) $(OBJ) $(OBJ)\exewrap.res $(OBJ)\exewrap.obj \
 		$(OBJ)\jvm.obj $(OBJ)\loader.obj $(OBJ)\message.obj $(OBJ)\eventlog.obj \
 		$(OBJ)\image_console_trace.exe $(OBJ)\image_gui_trace.exe $(OBJ)\image_service_trace.exe \
 		$(OBJ)\bindres.exe $(OBJ)\exewrap\core\ByteBufferInputStream.class $(OBJ)\exewrap\core\ExewrapClassLoader.class $(OBJ)\tool.jar
-	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE$(TARGET_VER) /MANIFEST /OUT:$(BIN)\exewrap-trace.exe $(OBJ)\exewrap.res $(OBJ)\exewrap.obj \
+	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE$(TARGET_VER) /MANIFEST /MANIFESTFILE:$(OBJ)\exewrap\exewrap-trace.exe.manifest /OUT:$(BIN)\exewrap-trace.exe $(OBJ)\exewrap.res $(OBJ)\exewrap.obj \
 		$(OBJ)\jvm.obj $(OBJ)\loader.obj $(OBJ)\message.obj $(OBJ)\eventlog.obj $(LIBS) $(MSVCRT_PATCH)
-	$(MT) -manifest $(BIN)\exewrap-trace.exe.manifest -outputresource:$(BIN)\exewrap-trace.exe;1
+	$(MT) -manifest $(OBJ)\exewrap\exewrap-trace.exe.manifest -outputresource:$(BIN)\exewrap-trace.exe;1
 	$(OBJ)\bindres.exe $(BIN)\exewrap-trace.exe VERSION_INFO              resources\versioninfo.bin
 	$(OBJ)\bindres.exe -r $(BIN)\exewrap-trace.exe IMAGE_TRACE_CONSOLE_32 $(OBJ)\..\x86\image_console_trace.exe
 	$(OBJ)\bindres.exe -r $(BIN)\exewrap-trace.exe IMAGE_TRACE_CONSOLE_64 $(OBJ)\..\x64\image_console_trace.exe
