@@ -85,7 +85,7 @@ int main(int argc, char* argv[])
 		
 		is_trace_version = strstr(exe_file, "trace") != NULL;
 
-		printf("exewrap 1.1.4 for %s (%d-bit) %s\r\n"
+		printf("exewrap 1.1.5 for %s (%d-bit) %s\r\n"
 			   "Native executable java application wrapper.\r\n"
 			   "Copyright (C) 2005-2017 HIRUKAWA Ryo. All rights reserved.\r\n"
 			   "\r\n"
