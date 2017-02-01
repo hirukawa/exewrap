@@ -6,6 +6,7 @@ import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.concurrent.CountDownLatch;
 import java.util.jar.JarInputStream;
 import java.util.jar.Pack200;
 
@@ -17,7 +18,8 @@ public class PackOutputStream extends OutputStream implements Runnable {
 	private PipedInputStream pipeIn;
 	private IOException exception;
 	private volatile boolean isPackCompleted = false;
-	private volatile boolean isOutputStreamClosed = false;
+	private CountDownLatch initLatch = new CountDownLatch(1);
+	private CountDownLatch doneLatch = new CountDownLatch(1);
 	
 	public PackOutputStream(OutputStream out) {
 		this.out = out;
@@ -26,9 +28,7 @@ public class PackOutputStream extends OutputStream implements Runnable {
 	public void run() {
 		try {
 			pipeIn = new PipedInputStream(this.pipeOut, PIPE_SIZE);
-			synchronized(this) {
-				notifyAll();
-			}
+			initLatch.countDown();
 			JarInputStream jarIn = new JarInputStream(pipeIn);
 			Pack200.newPacker().pack(jarIn, this.out);
 			isPackCompleted = true;
@@ -39,22 +39,18 @@ public class PackOutputStream extends OutputStream implements Runnable {
 			if(this.exception == null) {
 				this.exception = e;
 			}
-		}
-		synchronized (this) {
-			this.isOutputStreamClosed = true;
-			synchronized(this.pipeOut) {
-				notifyAll();
-			}
+		} finally {
+			doneLatch.countDown();
 		}
 	}
 	
 	private void init() throws IOException {
 		this.pipeOut = new PipedOutputStream();
 		
-		synchronized(this) {
-			new Thread(this).start();
-			try { wait(); } catch (InterruptedException e) {}
-		}
+		new Thread(this).start();
+		try {
+			initLatch.await();
+		} catch (InterruptedException e) {}
 	}
 	
 	@Override
@@ -123,16 +119,11 @@ public class PackOutputStream extends OutputStream implements Runnable {
 		if(this.pipeOut == null) {
 			init();
 		}
-		while(pipeIn.available() > 0) {
-			Thread.yield();
-		}
 		this.pipeOut.close();
-		
-		synchronized(this) {
-			if(!isOutputStreamClosed) {
-				try { wait(); } catch (InterruptedException e) {}
-			}
-		}
+
+		try {
+			doneLatch.await();
+		} catch (InterruptedException e1) {}
 	}
 
 	private static boolean finish(OutputStream out) {
