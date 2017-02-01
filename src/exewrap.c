@@ -1,6 +1,8 @@
 #define _CRT_SECURE_NO_WARNINGS
 
 #include <windows.h>
+#include <Shlwapi.h>
+#include <Shlobj.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -29,9 +31,6 @@ static void   set_resource(const char* filename, const char* rsc_name, const cha
 static BYTE*  get_jar_buf(const char* jar_file, DWORD* jar_len);
 static void   set_application_icon(const char* filename, const char* icon_file);
 static char*  set_version_info(const char* filename, const char* version_number, DWORD previous_revision, char* file_description, char* copyright, char* company_name, char* product_name, char* product_version, char* original_filename, char* jar_file);
-
-
-void UsePack200(LPCTSTR exefile, LPCTSTR jarfile);
 
 
 int main(int argc, char* argv[])
@@ -533,110 +532,6 @@ EXIT:
 	ExitProcess(0);
 }
 
-
-void UsePack200(LPCTSTR exefile, LPCTSTR jarfile)
-{
-	/*
-	DWORD size;
-	char* buf;
-	jclass optimizerClass;
-	jmethodID optimizerInit;
-	jobject optimizer;
-	jmethodID getRelativeClassPath;
-	jmethodID getClassesPackGz;
-	jmethodID getResourcesGz;
-	jmethodID getSplashPath;
-	jmethodID getSplashImage;
-	jbyteArray relativeClassPath;
-	jbyteArray classesPackGz;
-	jbyteArray resourcesGz;
-	jbyteArray splashPath;
-	jbyteArray splashImage;
-
-	buf = GetResource("JAR_OPTIMIZER", RT_RCDATA, &size);
-
-	optimizerClass = (*env)->DefineClass(env, "JarOptimizer", NULL, (jbyte*)buf, size);
-	if(optimizerClass == NULL)
-	{
-		return;
-	}
-	optimizerInit = (*env)->GetMethodID(env, optimizerClass, "<init>", "(Ljava/lang/String;)V");
-	if(optimizerInit == NULL)
-	{
-		return;
-	}
-
-	optimizer = (*env)->NewObject(env, optimizerClass, optimizerInit, GetJString(env, jarfile));
-	if(optimizer == NULL)
-	{
-		(*env)->ExceptionDescribe(env);
-		(*env)->ExceptionClear(env);
-		return;
-	}
-	getRelativeClassPath = (*env)->GetMethodID(env, optimizerClass, "getRelativeClassPath", "()[B");
-	if(getRelativeClassPath == NULL)
-	{
-		return;
-	}
-	getClassesPackGz = (*env)->GetMethodID(env, optimizerClass, "getClassesPackGz", "()[B");
-	if(getClassesPackGz == NULL)
-	{
-		return;
-	}
-	getResourcesGz = (*env)->GetMethodID(env, optimizerClass, "getResourcesGz", "()[B");
-	if(getResourcesGz == NULL)
-	{
-		return;
-	}
-	getSplashPath = (*env)->GetMethodID(env, optimizerClass, "getSplashPath", "()[B");
-	if(getSplashPath == NULL)
-	{
-		return;
-	}
-	getSplashImage = (*env)->GetMethodID(env, optimizerClass, "getSplashImage", "()[B");
-	if(getSplashImage == NULL)
-	{
-		return;
-	}
-	relativeClassPath = (jbyteArray)((*env)->CallObjectMethod(env, optimizer, getRelativeClassPath));
-	if(relativeClassPath != NULL)
-	{
-		size = (*env)->GetArrayLength(env, relativeClassPath);
-		buf = (char*)((*env)->GetByteArrayElements(env, relativeClassPath, NULL));
-		SetResource(exefile, "RELATIVE_CLASSPATH", RT_RCDATA, buf, size);
-	}
-	classesPackGz = (jbyteArray)((*env)->CallObjectMethod(env, optimizer, getClassesPackGz));
-	if(classesPackGz != NULL)
-	{
-		size = (*env)->GetArrayLength(env, classesPackGz);
-		buf = (char*)((*env)->GetByteArrayElements(env, classesPackGz, NULL));
-		SetResource(exefile, "CLASSES_PACK_GZ", RT_RCDATA, buf, size);
-	}
-	resourcesGz = (jbyteArray)((*env)->CallObjectMethod(env, optimizer, getResourcesGz));
-	if(resourcesGz != NULL)
-	{
-		size = (*env)->GetArrayLength(env, resourcesGz);
-		buf = (char*)((*env)->GetByteArrayElements(env, resourcesGz, NULL));
-		SetResource(exefile, "RESOURCES_GZ", RT_RCDATA, buf, size);
-	}
-	splashPath = (jbyteArray)((*env)->CallObjectMethod(env, optimizer, getSplashPath));
-	if(splashPath != NULL)
-	{
-		size = (*env)->GetArrayLength(env, splashPath);
-		buf = (char*)((*env)->GetByteArrayElements(env, splashPath, NULL));
-		SetResource(exefile, "SPLASH_PATH", RT_RCDATA, buf, size);
-	}
-	splashImage = (jbyteArray)((*env)->CallObjectMethod(env, optimizer, getSplashImage));
-	if(splashImage != NULL)
-	{
-		size = (*env)->GetArrayLength(env, splashImage);
-		buf = (char*)((*env)->GetByteArrayElements(env, splashImage, NULL));
-		SetResource(exefile, "SPLASH_IMAGE", RT_RCDATA, buf, size);
-	}
-	*/
-}
-
-
 static char** parse_opt(int argc, char* argv[])
 {
 	char** opt = (char**)HeapAlloc(GetProcessHeap(), 0, 256 * 8);
@@ -729,7 +624,20 @@ static BOOL create_exe_file(const char* filename, BYTE* image_buf, DWORD image_l
 	HANDLE hFile;
 	BYTE*  buf = NULL;
 	DWORD  write_size;
-
+	char*  dir;
+	char*  ptr;
+	
+	dir = malloc(strlen(filename) + 1);
+	strcpy(dir, filename);
+	if((ptr = strrchr(dir, '\\')) != NULL)
+	{
+		*ptr = '\0';
+		if(!PathIsDirectory(dir))
+		{
+			SHCreateDirectoryEx(NULL, dir, NULL);
+		}
+	}
+	
 	hFile = CreateFile(filename, GENERIC_WRITE, 0, NULL, TRUNCATE_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (hFile == INVALID_HANDLE_VALUE)
 	{

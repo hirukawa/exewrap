@@ -1,6 +1,6 @@
 
 INC     = /I ..\include /I ..\include\win32
-LIBS    = kernel32.lib user32.lib advapi32.lib shell32.lib
+LIBS    = kernel32.lib user32.lib advapi32.lib shell32.lib Shlwapi.lib
 
 CC      = cl.exe
 LINK    = link.exe
