@@ -61,6 +61,7 @@ int main(int argc, char* argv[])
 	char*    original_filename;
 	char*    new_version;
 	BOOL     is_trace_version = FALSE;
+	BOOL     contains_visualvm_display_name = FALSE;
 
 	char*    buf = NULL;
 	char*    ptr = NULL;
@@ -84,7 +85,7 @@ int main(int argc, char* argv[])
 		
 		is_trace_version = strstr(exe_file, "trace") != NULL;
 
-		printf("exewrap 1.1.5 for %s (%d-bit) %s\r\n"
+		printf("exewrap 1.1.6 for %s (%d-bit) %s\r\n"
 			   "Native executable java application wrapper.\r\n"
 			   "Copyright (C) 2005-2017 HIRUKAWA Ryo. All rights reserved.\r\n"
 			   "\r\n"
@@ -155,11 +156,6 @@ int main(int argc, char* argv[])
 	}
 	strcpy(exe_file, buf);
 
-	if (strrchr(strrchr(exe_file, '\\') + 1, '.') == NULL)
-	{
-		*strrchr(strrchr(exe_file, '\\' + 1), '.') = '\0';
-		strcat(exe_file, ".exe");
-	}
 	if (is_trace_version)
 	{
 		*strrchr(exe_file, '.') = '\0';
@@ -423,12 +419,36 @@ int main(int argc, char* argv[])
 		}
 		strcat(vmargs, opt['a']);
 	}
+	if(opt['a'] && *opt['a'] != '\0')
+	{
+		if(strstr(opt['a'], "-Dvisualvm.display.name="))
+		{
+			contains_visualvm_display_name = TRUE;
+		}
+	}
+	if(!contains_visualvm_display_name)
+	{
+		char* visualvm_display_name = malloc(25 + MAX_PATH);
+		strcpy(visualvm_display_name, "-Dvisualvm.display.name=");
+		strcat(visualvm_display_name, strrchr(exe_file, '\\') + 1);
+		
+		if (vmargs == NULL)
+		{
+			vmargs = (char*)malloc(2048);
+			vmargs[0] = '\0';
+		}
+		else
+		{
+			strcat(vmargs, " ");
+		}
+		strcat(vmargs, visualvm_display_name);
+	}
 	if (vmargs != NULL)
 	{
 		set_resource(exe_file, "VMARGS", RT_RCDATA, vmargs, (DWORD)strlen(vmargs) + 1);
 		free(vmargs);
 	}
-
+	
 	if(opt['b'] && *opt['b'] != '\0')
 	{
 		if (vmargs_b == NULL)
