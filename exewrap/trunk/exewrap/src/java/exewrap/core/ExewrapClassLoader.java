@@ -5,6 +5,11 @@ import java.io.IOException;
 import java.lang.reflect.Field;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.security.CodeSource;
+import java.security.PermissionCollection;
+import java.security.Policy;
+import java.security.ProtectionDomain;
+import java.security.cert.Certificate;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Map;
@@ -28,6 +33,7 @@ public class ExewrapClassLoader extends ClassLoader {
 	private String implVersion;
 	private String implVendor;
 	private URL context;
+	private ProtectionDomain protectionDomain;
 	
 	public ExewrapClassLoader(ClassLoader parent, JarInputStream[] inputs) throws MalformedURLException {
 		super(parent);
@@ -55,7 +61,13 @@ public class ExewrapClassLoader extends ClassLoader {
 			name = "";
 		}
 		
-		this.context = new URL("jar:file:/" + path.replace('\\', '/') + '/' + name + "!/");
+		URL.setURLStreamHandlerFactory(new URLStreamHandlerFactory(this));
+		this.context = new URL("exewrap:file:/" + path.replace('\\', '/') + '/' + name + "!/");
+
+		URL url = new URL("file:/" + path.replace('\\', '/') + '/' + name);
+		CodeSource codesource = new CodeSource(url, (Certificate[])null);
+		PermissionCollection permissions = Policy.getPolicy().getPermissions(new CodeSource(null, (Certificate[])null));
+		this.protectionDomain = new ProtectionDomain(codesource, permissions, this, null);
 	}
 	
 	public void register() throws NoSuchFieldException, SecurityException, IllegalArgumentException, IllegalAccessException {
@@ -124,7 +136,7 @@ public class ExewrapClassLoader extends ClassLoader {
 					null);
 			}
 		}
-		return defineClass(name, bytes, 0, bytes.length);
+		return defineClass(name, bytes, 0, bytes.length, protectionDomain);
 	}
 	
 	protected URL findResource(String name) {

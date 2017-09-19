@@ -82,7 +82,7 @@ int main(int argc, char* argv[])
 		{
 			char* targetVersionString = (char*)res.buf + 4;
 			result.msg_id = MSG_ID_ERR_TARGET_VERSION;
-			sprintf(result.msg, _(MSG_ID_ERR_TARGET_VERSION), targetVersionString + 4);
+			sprintf(result.msg, _(MSG_ID_ERR_TARGET_VERSION), targetVersionString);
 			OutputMessage(result.msg);
 			goto EXIT;
 		}

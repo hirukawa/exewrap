@@ -80,7 +80,7 @@ static void init_message()
 	"Resource not found: %s";
 
 	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_ERR_TARGET_VERSION] =
-	"Java %s or higher is required to run this program.";
+	"%s or higher is required to run this program.";
 
 	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_ERR_DEFINE_CLASS] =
 	"Class not found: %s";
@@ -180,7 +180,7 @@ static void init_message()
 	"リソースが見つかりません: %s";
 
 	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_ERR_TARGET_VERSION] =
-	"このプログラムの実行には Java %s 以上が必要です。";
+	"このプログラムの実行には%s以上が必要です。";
 
 	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_ERR_DEFINE_CLASS] =
 	"クラスが見つかりません: %s";

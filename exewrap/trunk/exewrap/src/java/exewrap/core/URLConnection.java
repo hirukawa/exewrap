@@ -1,6 +1,7 @@
 package exewrap.core;
 
 import java.io.ByteArrayInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
@@ -16,6 +17,9 @@ public class URLConnection extends java.net.URLConnection {
 	}
 	
 	public void connect() throws IOException {
+		if(this.buf == null) {
+			throw new FileNotFoundException("JAR entry " + url);
+		}
 		if(this.in != null) {
 			try { this.in.close(); } catch(Exception ex) {}
 		}
