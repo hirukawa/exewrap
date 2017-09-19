@@ -51,6 +51,7 @@ BOOL LoadMainClass(int argc, char* argv[], char* utilities, LOAD_RESULT* result)
 	jobjectArray jars;
 	jclass       URLConnection;
 	jclass       URLStreamHandler;
+	jclass       URLStreamHandlerFactory;
 	jmethodID    ExewrapClassLoader_init;
 	jmethodID    exewrapClassLoader_register;
 	jmethodID    exewrapClassLoader_loadUtilities;
@@ -314,6 +315,20 @@ BOOL LoadMainClass(int argc, char* argv[], char* utilities, LOAD_RESULT* result)
 	{
 		result->msg_id = MSG_ID_ERR_DEFINE_CLASS;
 		sprintf(result->msg, _(MSG_ID_ERR_DEFINE_CLASS), "exewrap.core.URLStreamHandler");
+		goto EXIT;
+	}
+	// URLStreamHandlerFactory
+	if (GetResource("URL_STREAM_HANDLER_FACTORY", &res) == NULL)
+	{
+		result->msg_id = MSG_ID_ERR_RESOURCE_NOT_FOUND;
+		sprintf(result->msg, _(MSG_ID_ERR_RESOURCE_NOT_FOUND), "RT_RCDATA: URL_STREAM_HANDLER_FACTORY");
+		goto EXIT;
+	}
+	URLStreamHandlerFactory = (*env)->DefineClass(env, "exewrap/core/URLStreamHandlerFactory", systemClassLoader, res.buf, res.len);
+	if (URLStreamHandlerFactory == NULL)
+	{
+		result->msg_id = MSG_ID_ERR_DEFINE_CLASS;
+		sprintf(result->msg, _(MSG_ID_ERR_DEFINE_CLASS), "exewrap.core.URLStreamHandlerFactory");
 		goto EXIT;
 	}
 	// ExewrapClassLoader

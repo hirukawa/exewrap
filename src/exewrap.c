@@ -85,7 +85,7 @@ int main(int argc, char* argv[])
 		
 		is_trace_version = strstr(exe_file, "trace") != NULL;
 
-		printf("exewrap 1.1.6 for %s (%d-bit) %s\r\n"
+		printf("exewrap 1.1.7 for %s (%d-bit) %s\r\n"
 			   "Native executable java application wrapper.\r\n"
 			   "Copyright (C) 2005-2017 HIRUKAWA Ryo. All rights reserved.\r\n"
 			   "\r\n"
@@ -211,11 +211,11 @@ int main(int argc, char* argv[])
 	}
 	else
 	{
-		target_version = 0x01050000; //default target version 1.5
+		target_version = get_target_java_runtime_version("1.5"); //default target version 1.5
 	}
 	target_version_string = get_target_java_runtime_version_string(target_version, buf);
-	printf("Target: %s (%d.%d.%d.%d)\n", target_version_string + 4, target_version >> 24 & 0xFF, target_version >> 16 & 0xFF, target_version >> 8 & 0xFF, target_version & 0xFF);
-	set_resource(exe_file, "TARGET_VERSION", RT_RCDATA, target_version_string, 4);
+	printf("Target: %s (%d.%d.%d.%d)\n", target_version_string + 4, target_version >> 25 & 0x7F, target_version >> 18 & 0x7F, target_version >> 11 & 0x7F, target_version & 0x7FF);
+	set_resource(exe_file, "TARGET_VERSION", RT_RCDATA, target_version_string, (DWORD)(4 + strlen(target_version_string + 4) + 1));
 	
 	if(opt['2'])
 	{
@@ -711,6 +711,12 @@ EXIT:
 }
 
 
+/*
+ * major(7bit) 31-25
+ * minor(7bit) 24-18
+ * build(7bit) 17-11
+ * revision(11bit) 10-0
+ */
 static DWORD get_target_java_runtime_version(char* version)
 {
 	char* p = version;
@@ -734,21 +740,40 @@ static DWORD get_target_java_runtime_version(char* version)
 				}
 			}
 		}
-		return major << 24 & 0xFF000000 | minor << 16 & 0x00FF0000 | build << 8 & 0x0000FF00 | revision & 0x000000FF;
+		return major << 25 & 0xFE000000 | minor << 18 & 0x00FC0000 | build << 11 & 0x0000F800 | revision & 0x000007FF;
 	}
 	return 0x00000000;
 }
 
-
+/*
+ * major(7bit) 31-25
+ * minor(7bit) 24-18
+ * build(7bit) 17-11
+ * revision(11bit) 10-0
+ */
 static char* get_target_java_runtime_version_string(DWORD version, char* buf)
 {
-	DWORD major = version >> 24 & 0xFF;
-	DWORD minor = version >> 16 & 0xFF;
-	DWORD build = version >> 8 & 0xFF;
-	DWORD revision = version & 0xFF;
+	DWORD major = version >> 25 & 0x7F;
+	DWORD minor = version >> 18 & 0x7F;
+	DWORD build = version >> 11 & 0x7F;
+	DWORD revision = version & 0x7FF;
 
 	*(DWORD*)buf = version;
-
+	
+	//1.7`
+	if (major == 1 && minor >= 7 && build == 0)
+	{
+		if(revision == 0)
+		{
+			sprintf(buf + 4, "Java %d", minor);
+		}
+		else
+		{
+			sprintf(buf + 4, "Java %du%d", minor, revision);
+		}
+		return buf;
+	}
+	
 	//1.5, 1.6
 	if (major == 1 && (minor == 5 || minor == 6))
 	{

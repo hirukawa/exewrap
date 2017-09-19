@@ -173,6 +173,12 @@ void DetachJavaVM()
 	(*jvm)->DetachCurrentThread(jvm);
 }
 
+/*
+ * major(7bit) 31-25
+ * minor(7bit) 24-18
+ * build(7bit) 17-11
+ * revision(11bit) 10-0
+ */
 DWORD GetJavaRuntimeVersion()
 {
 	jclass systemClass;
@@ -181,7 +187,7 @@ DWORD GetJavaRuntimeVersion()
 	DWORD major = 0;
 	DWORD minor = 0;
 	DWORD build = 0;
-	char* tail;
+	DWORD revision = 0;
 	
 	if(javaRuntimeVersion == 0xFFFFFFFF)
 	{
@@ -192,44 +198,81 @@ DWORD GetJavaRuntimeVersion()
 			if(getPropertyMethod != NULL)
 			{
 				version = GetShiftJIS(env, (jstring)((*env)->CallStaticObjectMethod(env, systemClass, getPropertyMethod, GetJString(env, "java.runtime.version"))));
+				//数字が出てくるまでスキップ
 				while(*version != '\0' && !('0' <= *version && *version <= '9'))
 				{
-					while(*version != '\0' && !(*version == ' ' || *version == '\t' || *version == '_' || *version == '-'))
-					{
-						version++;
-					}
-					if(*version == ' ' || *version == '\t' || *version == '_' || *version == '-')
-					{
-						version++;
-					}
+					version++;
 				}
 				if(*version == '\0')
 				{
-					javaRuntimeVersion = 0;
-					return javaRuntimeVersion;
-				}
-				tail = version;
-				while(*tail != '\0' && (*tail == '.' || ('0' <= *tail && *tail <= '9')))
-				{
-					tail++;
+					goto END_PARSE;
 				}
 				major = atoi(version);
-				version = strchr(version, '.');
-				if(version != NULL && version < tail)
+				
+				//数字以外が出てくるまでスキップ
+				while(*version != '\0' && ('0' <= *version && *version <= '9'))
 				{
-					minor = atoi(++version);
+					version++;
 				}
-				version = strchr(version, '.');
-				if(version != NULL && version < tail)
+				if(*version == '\0')
 				{
-					build = atoi(++version);
+					goto END_PARSE;
 				}
-				javaRuntimeVersion = ((major << 24) & 0xFF000000) | ((minor << 16) & 0x00FF0000) | ((build << 8) & 0x0000FF00);
+				//数字が出てくるまでスキップ
+				while(*version != '\0' && !('0' <= *version && *version <= '9'))
+				{
+					version++;
+				}
+				if(*version == '\0')
+				{
+					goto END_PARSE;
+				}
+				minor = atoi(version);
+				
+				//数字以外が出てくるまでスキップ
+				while(*version != '\0' && ('0' <= *version && *version <= '9'))
+				{
+					version++;
+				}
+				if(*version == '\0')
+				{
+					goto END_PARSE;
+				}
+				//数字が出てくるまでスキップ
+				while(*version != '\0' && !('0' <= *version && *version <= '9'))
+				{
+					version++;
+				}
+				if(*version == '\0')
+				{
+					goto END_PARSE;
+				}
+				build = atoi(version);
+				
+				//数字以外が出てくるまでスキップ
+				while(*version != '\0' && ('0' <= *version && *version <= '9'))
+				{
+					version++;
+				}
+				if(*version == '\0')
+				{
+					goto END_PARSE;
+				}
+				//数字が出てくるまでスキップ
+				while(*version != '\0' && !('0' <= *version && *version <= '9'))
+				{
+					version++;
+				}
+				if(*version == '\0')
+				{
+					goto END_PARSE;
+				}
+				revision = atoi(version);
 			}
 		}
-		return javaRuntimeVersion;
+END_PARSE:
+		javaRuntimeVersion = ((major << 25) & 0xFE000000) | ((minor << 18) & 0x00FC0000) | ((build << 11) & 0x0000F800) | (revision & 0x000007FF);
 	}
-	javaRuntimeVersion = 0;
 	return javaRuntimeVersion;
 }
 
