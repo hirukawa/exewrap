@@ -271,7 +271,7 @@ DWORD GetJavaRuntimeVersion()
 			}
 		}
 END_PARSE:
-		javaRuntimeVersion = ((major << 25) & 0xFE000000) | ((minor << 18) & 0x00FC0000) | ((build << 11) & 0x0000F800) | (revision & 0x000007FF);
+		javaRuntimeVersion = ((major << 25) & 0xFE000000) | ((minor << 18) & 0x01FC0000) | ((build << 11) & 0x0003F800) | (revision & 0x000007FF);
 	}
 	return javaRuntimeVersion;
 }
