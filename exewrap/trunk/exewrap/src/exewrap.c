@@ -85,7 +85,7 @@ int main(int argc, char* argv[])
 		
 		is_trace_version = strstr(exe_file, "trace") != NULL;
 
-		printf("exewrap 1.1.7 for %s (%d-bit) %s\r\n"
+		printf("exewrap 1.1.8 for %s (%d-bit) %s\r\n"
 			   "Native executable java application wrapper.\r\n"
 			   "Copyright (C) 2005-2017 HIRUKAWA Ryo. All rights reserved.\r\n"
 			   "\r\n"
@@ -740,7 +740,7 @@ static DWORD get_target_java_runtime_version(char* version)
 				}
 			}
 		}
-		return major << 25 & 0xFE000000 | minor << 18 & 0x00FC0000 | build << 11 & 0x0000F800 | revision & 0x000007FF;
+		return major << 25 & 0xFE000000 | minor << 18 & 0x01FC0000 | build << 11 & 0x0003F800 | revision & 0x000007FF;
 	}
 	return 0x00000000;
 }
