@@ -24,6 +24,8 @@ LPTSTR	GetModuleVersion(LPTSTR buffer);
 BOOL    IsDirectory(LPTSTR path);
 char*   GetSubDirs(char* dir);
 char*   AddSubDirs(char* buf, char* dir, int* size);
+char*   GetJars(char* dir);
+char*   AddJars(char* buf, char* dir, int* size);
 char**  GetArgsOpt(char* vm_args_opt, int* argc);
 int     GetArchitectureBits(const char* jvmpath);
 static  LPWSTR A2W(LPCSTR s);
@@ -44,9 +46,7 @@ char    opt_policy_path[MAX_PATH + 32];
 BOOL    path_initialized = FALSE;
 char    binpath[MAX_PATH];
 char    jvmpath[MAX_PATH];
-char    extpath[MAX_PATH];
 char*   classpath = NULL;
-char*   extdirs = NULL;
 char*	libpath = NULL;
 HMODULE jvmdll;
 
@@ -92,12 +92,11 @@ JNIEnv* CreateJavaVM(LPTSTR vm_args_opt, BOOL useServerVM, BOOL useSideBySideJRE
 	options[1].optionString = opt_app_name;
 	options[2].optionString = opt_app_version;
 	options[3].optionString = classpath;
-	options[4].optionString = extdirs;
-	options[5].optionString = libpath;
+	options[4].optionString = libpath;
 	
 	vm_args.version = JNI_VERSION_1_2;
 	vm_args.options = options;
-	vm_args.nOptions = 6;
+	vm_args.nOptions = 5;
 	vm_args.ignoreUnrecognized = 1;
 	
 	if(opt_policy_path[0] != 0x00)
@@ -144,11 +143,6 @@ void DestroyJavaVM()
 	{
 		HeapFree(GetProcessHeap(), 0, classpath);
 		classpath = NULL;
-	}
-	if (extdirs != NULL)
-	{
-		HeapFree(GetProcessHeap(), 0, extdirs);
-		extdirs = NULL;
 	}
 	if (libpath != NULL)
 	{
@@ -340,10 +334,6 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 	{
 		classpath = (char*)HeapAlloc(GetProcessHeap(), 0, 64 * 1024);
 	}
-	if (extdirs == NULL)
-	{
-		extdirs = (char*)HeapAlloc(GetProcessHeap(), 0, 64 * 1024);
-	}
 	if (libpath == NULL)
 	{
 		libpath = (char*)HeapAlloc(GetProcessHeap(), 0, 64 * 1024);
@@ -351,7 +341,6 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 
 	binpath[0] = '\0';
 	jvmpath[0] = '\0';
-	extdirs[0] = '\0';
 	libpath[0] = '\0';
 
 	buffer = HeapAlloc(GetProcessHeap(), 0, 64 * 1024);
@@ -408,8 +397,6 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 						SetEnvironmentVariable("JAVA_HOME", jre1);
 						lstrcpy(binpath, jre1);
 						lstrcat(binpath, "\\bin");
-						lstrcpy(extpath, jre1);
-						lstrcat(extpath, "\\lib\\ext");
 					}
 					else
 					{
@@ -449,8 +436,6 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 						SetEnvironmentVariable("JAVA_HOME", jre2);
 						lstrcpy(binpath, jre2);
 						lstrcat(binpath, "\\bin");
-						lstrcpy(extpath, jre2);
-						lstrcat(extpath, "\\lib\\ext");
 					}
 					else
 					{
@@ -513,15 +498,12 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 			{
 				lstrcpy(binpath, jre3);
 				lstrcat(binpath, "\\bin");
-				lstrcpy(extpath, jre3);
-				lstrcat(extpath, "\\lib\\ext");
 				FindJavaVM(jvmpath, jre3, useServerVM);
 			}
 		}
 	}
 
 	lstrcpy(classpath, "-Djava.class.path=");
-	lstrcpy(extdirs, "-Djava.ext.dirs=");
 	lstrcpy(libpath, "-Djava.library.path=.;");
 
 	if(relative_classpath != NULL)
@@ -562,10 +544,22 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 				char* dir = dirs;
 				while (*dir)
 				{
+					char* jars = GetJars(dir);
+					char* jar = jars;
+					while(*jar)
+					{
+						if(strstr(classpath, jar) == NULL)
+						{
+							lstrcat(classpath, ";");
+							lstrcat(classpath, jar);
+						}
+						jar += lstrlen(jar) + 1;
+					}
+					HeapFree(GetProcessHeap(), 0, jars);
+					
 					lstrcat(classpath, ";");
 					lstrcat(classpath, dir);
-					lstrcat(extdirs, dir);
-					lstrcat(extdirs, ";");
+
 					lstrcat(libpath, dir);
 					lstrcat(libpath, ";");
 					AddPath(dir);
@@ -579,7 +573,6 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 		HeapFree(GetProcessHeap(), 0, buf_extdirs);
 		HeapFree(GetProcessHeap(), 0, extdir);
 	}
-	lstrcat(extdirs, extpath);
 
 	if(GetEnvironmentVariable("PATH", buffer, 64 * 1024))
 	{
@@ -803,6 +796,72 @@ char* AddSubDirs(char* buf, char* dir, int* size)
 					buf += lstrlen(child) + 1;
 				}
 				buf = AddSubDirs(buf, child, size);
+			}
+		} while (FindNextFile(hSearch, &fd));
+		FindClose(hSearch);
+	}
+	return buf;
+}
+
+char* GetJars(char* dir)
+{
+	int size = lstrlen(dir) + 2;
+	char* buf;
+
+	AddJars(NULL, dir, &size);
+	buf = (char*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, size);
+	AddJars(buf, dir, NULL);
+	return buf;
+}
+
+char* AddJars(char* buf, char* dir, int* size)
+{
+	WIN32_FIND_DATA fd;
+	HANDLE hSearch;
+	char search[MAX_PATH];
+	char child[MAX_PATH];
+	lstrcpy(search, dir);
+	lstrcat(search, "\\*");
+	
+	hSearch = FindFirstFile(search, &fd);
+	if (hSearch != INVALID_HANDLE_VALUE)
+	{
+		do
+		{
+			if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+			{
+				if (lstrcmp(fd.cFileName, ".") == 0 || lstrcmp(fd.cFileName, "..") == 0)
+				{
+					continue;
+				}
+
+				lstrcpy(child, dir);
+				lstrcat(child, "\\");
+				lstrcat(child, fd.cFileName);
+				buf = AddJars(buf, child, size);
+			}
+			else
+			{
+				int len = lstrlen(fd.cFileName);
+				if(len >= 4)
+				{
+					char* ext = fd.cFileName + len - 4;
+					if(lstrcmpi(ext, ".JAR") == 0)
+					{
+						lstrcpy(child, dir);
+						lstrcat(child, "\\");
+						lstrcat(child, fd.cFileName);
+						if (size != NULL)
+						{
+							*size = *size + lstrlen(child) + 1;
+						}
+						if(buf != NULL)
+						{
+							lstrcpy(buf, child);
+							buf += lstrlen(child) + 1;
+						}
+					}
+				}
 			}
 		} while (FindNextFile(hSearch, &fd));
 		FindClose(hSearch);

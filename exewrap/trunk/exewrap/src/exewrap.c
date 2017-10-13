@@ -85,7 +85,7 @@ int main(int argc, char* argv[])
 		
 		is_trace_version = strstr(exe_file, "trace") != NULL;
 
-		printf("exewrap 1.1.8 for %s (%d-bit) %s\r\n"
+		printf("exewrap 1.1.9 for %s (%d-bit) %s\r\n"
 			   "Native executable java application wrapper.\r\n"
 			   "Copyright (C) 2005-2017 HIRUKAWA Ryo. All rights reserved.\r\n"
 			   "\r\n"
@@ -588,9 +588,9 @@ static char** parse_opt(int argc, char* argv[])
 
 static DWORD get_version_revision(char* filename)
 {
-	/* GetFileVersionInfoSize, GetFileVersionInfo ‚ğg‚¤‚Æ“à•”‚Å LoadLibrary ‚ªg—p‚³‚ê‚é‚ç‚µ‚­
-	* ‚»‚ÌŒã‚ÌƒŠƒ\[ƒX‘‚«‚İ‚ª‚¤‚Ü‚­‚¢‚©‚È‚­‚È‚é‚æ‚¤‚Å‚·B‚È‚Ì‚ÅA©—Í‚Å EXEƒtƒ@ƒCƒ‹‚©‚ç
-	* ƒŠƒrƒWƒ‡ƒ“ƒiƒ“ƒo[‚ğæ‚èo‚·‚æ‚¤‚É•ÏX‚µ‚Ü‚µ‚½B
+	/* GetFileVersionInfoSize, GetFileVersionInfo ï¿½ï¿½ï¿½gï¿½ï¿½ï¿½Æ“ï¿½ï¿½ï¿½ï¿½ï¿½ LoadLibrary ï¿½ï¿½ï¿½gï¿½pï¿½ï¿½ï¿½ï¿½ï¿½ç‚µï¿½ï¿½
+	* ï¿½ï¿½ï¿½ÌŒï¿½Ìƒï¿½ï¿½\ï¿½[ï¿½Xï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½İ‚ï¿½ï¿½ï¿½ï¿½Ü‚ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È‚ï¿½ï¿½È‚ï¿½æ‚¤ï¿½Å‚ï¿½ï¿½Bï¿½È‚Ì‚ÅAï¿½ï¿½ï¿½Í‚ï¿½ EXEï¿½tï¿½@ï¿½Cï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+	* ï¿½ï¿½ï¿½rï¿½Wï¿½ï¿½ï¿½ï¿½ï¿½iï¿½ï¿½ï¿½oï¿½[ï¿½ï¿½ï¿½ï¿½ï¿½oï¿½ï¿½ï¿½æ‚¤ï¿½É•ÏXï¿½ï¿½ï¿½Ü‚ï¿½ï¿½ï¿½ï¿½B
 	*/
 	DWORD  revision = 0;
 	HANDLE hFile;
@@ -760,7 +760,7 @@ static char* get_target_java_runtime_version_string(DWORD version, char* buf)
 
 	*(DWORD*)buf = version;
 	
-	//1.7`
+	//1.7ï¿½`
 	if (major == 1 && minor >= 7 && build == 0)
 	{
 		if(revision == 0)
@@ -1056,7 +1056,7 @@ static char* set_version_info(const char* filename, const char* version_number, 
 	product_version_build = atoi(strtok(NULL, "."));
 	product_version_revision = atoi(strtok(NULL, "."));
 
-	// revison ‚ª–¾¦“I‚Éw’è‚³‚ê‚Ä‚¢‚È‚©‚Á‚½ê‡AŠù‘¶ƒtƒ@ƒCƒ‹‚©‚çæ“¾‚µ‚½’l‚É 1@‚ğ‰ÁZ‚µ‚Ä revision ‚Æ‚·‚éB
+	// revison ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Iï¿½Éwï¿½è‚³ï¿½ï¿½Ä‚ï¿½ï¿½È‚ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ê‡ï¿½Aï¿½ï¿½ï¿½ï¿½ï¿½tï¿½@ï¿½Cï¿½ï¿½ï¿½ï¿½ï¿½ï¿½æ“¾ï¿½ï¿½ï¿½ï¿½ï¿½lï¿½ï¿½ 1ï¿½@ï¿½ï¿½ï¿½ï¿½ï¿½Zï¿½ï¿½ï¿½ï¿½ revision ï¿½Æ‚ï¿½ï¿½ï¿½B
 	strcpy(buffer, version_number);
 	if (strtok(buffer, ".") != NULL)
 	{
@@ -1073,7 +1073,7 @@ static char* set_version_info(const char* filename, const char* version_number, 
 	}
 
 	file_version_revision = (short)previous_revision + 1;
-	// build ‰ÁZ”»’è‚±‚±‚Ü‚ÅB
+	// build ï¿½ï¿½ï¿½Zï¿½ï¿½ï¿½è‚±ï¿½ï¿½ï¿½Ü‚ÅB
 	sprintf(file_version, "%d.%d.%d.%d", file_version_major, file_version_minor, file_version_build, file_version_revision);
 
 	GetResource("VERSION_INFO", &res);
