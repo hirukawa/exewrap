@@ -72,10 +72,6 @@ public class ExewrapClassLoader extends ClassLoader {
 	
 	public void register() throws NoSuchFieldException, SecurityException, IllegalArgumentException, IllegalAccessException {
 		Thread.currentThread().setContextClassLoader(this);
-		
-		Field scl = ClassLoader.class.getDeclaredField("scl");
-		scl.setAccessible(true);
-		scl.set(null, this);
 	}
 	
 	public void loadUtilities(String utilities) throws ClassNotFoundException {
