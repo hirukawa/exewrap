@@ -9,7 +9,7 @@
 
 void    InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useServerVM, BOOL useSideBySideJRE);
 int     GetProcessArchitecture();
-JNIEnv* CreateJavaVM(LPTSTR vm_args_opt, BOOL useServerVM, BOOL useSideBySideJRE, int* err);
+JNIEnv* CreateJavaVM(LPTSTR vm_args_opt, LPTSTR systemClassLoader, BOOL useServerVM, BOOL useSideBySideJRE, int* err);
 void    DestroyJavaVM();
 JNIEnv* AttachJavaVM();
 void    DetachJavaVM();
@@ -39,6 +39,7 @@ JavaVM* jvm = NULL;
 JNIEnv* env = NULL;
 DWORD   javaRuntimeVersion = 0xFFFFFFFF;
 
+char    opt_system_class_loader[512];
 char    opt_app_path[MAX_PATH + 32];
 char    opt_app_name[MAX_PATH + 32];
 char	opt_app_version[64];
@@ -58,7 +59,7 @@ int GetProcessArchitecture()
 	return sizeof(int*) * 8;
 }
 
-JNIEnv* CreateJavaVM(LPTSTR vm_args_opt, BOOL useServerVM, BOOL useSideBySideJRE, int* err)
+JNIEnv* CreateJavaVM(LPTSTR vm_args_opt, LPTSTR systemClassLoader, BOOL useServerVM, BOOL useSideBySideJRE, int* err)
 {
 	JNIGetDefaultJavaVMInitArgs getDefaultJavaVMInitArgs;
 	JNICreateJavaVM createJavaVM;
@@ -98,6 +99,13 @@ JNIEnv* CreateJavaVM(LPTSTR vm_args_opt, BOOL useServerVM, BOOL useSideBySideJRE
 	vm_args.options = options;
 	vm_args.nOptions = 5;
 	vm_args.ignoreUnrecognized = 1;
+
+	if(systemClassLoader != NULL)
+	{
+		lstrcpy(opt_system_class_loader, "-Djava.system.class.loader=");
+		lstrcat(opt_system_class_loader, systemClassLoader);
+		options[vm_args.nOptions++].optionString = opt_system_class_loader;
+	}
 	
 	if(opt_policy_path[0] != 0x00)
 	{
@@ -110,6 +118,13 @@ JNIEnv* CreateJavaVM(LPTSTR vm_args_opt, BOOL useServerVM, BOOL useSideBySideJRE
 	{
 		options[vm_args.nOptions++].optionString = argv[i];
 	}
+	
+	/*
+	for(i = 0; i < vm_args.nOptions; i++)
+	{
+		printf("[%d] %s\n\n", i, options[i].optionString);
+	}
+	*/
 	
 	getDefaultJavaVMInitArgs(&vm_args);
 	result = createJavaVM(&jvm, (void**)&env, &vm_args);
@@ -317,6 +332,7 @@ char* GetShiftJIS(JNIEnv* _env, jstring src)
 
 void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useServerVM, BOOL useSideBySideJRE) {
 	char modulePath[_MAX_PATH];
+	char moduleFileFullPath[_MAX_PATH];
 	char* buffer;
 	char* token;
 	DWORD size = MAX_PATH;
@@ -354,9 +370,9 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 	lstrcpy(opt_policy_path, "-Djava.security.policy=");
 	lstrcat(opt_policy_path, modulePath);
 
-	GetModuleFileName(NULL, buffer, size);
+	GetModuleFileName(NULL, moduleFileFullPath, MAX_PATH);
 	lstrcpy(opt_app_name, "-Djava.application.name=");
-	lstrcat(opt_app_name, strrchr(buffer, '\\') + 1);
+	lstrcat(opt_app_name, strrchr(moduleFileFullPath, '\\') + 1);
 
 	lstrcat(opt_policy_path, "\\");
 	*(strrchr(buffer, '.')) = 0;
@@ -504,6 +520,8 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 	}
 
 	lstrcpy(classpath, "-Djava.class.path=");
+	lstrcat(classpath, moduleFileFullPath);
+	lstrcat(classpath, ";");
 	lstrcpy(libpath, "-Djava.library.path=.;");
 
 	if(relative_classpath != NULL)

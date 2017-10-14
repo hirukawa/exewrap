@@ -25,6 +25,7 @@ UINT    UncaughtException(const char* thread, const char* message, const char* t
 static char** parse_opt(int argc, char* argv[]);
 static DWORD  get_version_revision(char* filename);
 static BOOL   create_exe_file(const char* filename, BYTE* image_buf, DWORD image_len, BOOL is_reverse);
+static BOOL   append_exe_file(const char* filename, BYTE* image_buf, DWORD image_len);
 static DWORD  get_target_java_runtime_version(char* version);
 static char*  get_target_java_runtime_version_string(DWORD version, char* buf);
 static void   set_resource(const char* filename, const char* rsc_name, const char* rsc_type, BYTE* rsc_data, DWORD rsc_size);
@@ -60,7 +61,6 @@ int main(int argc, char* argv[])
 	char*    product_version;
 	char*    original_filename;
 	char*    new_version;
-	BOOL     is_trace_version = FALSE;
 	BOOL     contains_visualvm_display_name = FALSE;
 
 	char*    buf = NULL;
@@ -83,9 +83,7 @@ int main(int argc, char* argv[])
 			exe_file = argv[0];
 		}
 		
-		is_trace_version = strstr(exe_file, "trace") != NULL;
-
-		printf("exewrap 1.1.9 for %s (%d-bit) %s\r\n"
+		printf("exewrap 1.2.0 for %s (%d-bit) \r\n"
 			   "Native executable java application wrapper.\r\n"
 			   "Copyright (C) 2005-2017 HIRUKAWA Ryo. All rights reserved.\r\n"
 			   "\r\n"
@@ -110,7 +108,7 @@ int main(int argc, char* argv[])
 			   "  -V <product-version>\t Set product version.\r\n"
 			   "  -j <jar-file>       \t Input jar-file.\r\n"
 			   "  -o <exe-file>       \t Output exe-file.\r\n"
-			, (bits == 64 ? "x64" : "x86"), bits, (is_trace_version ? "[ TRACE VERSION ]" : ""), exe_file, (bits == 64 ? "x64" : "x86"));
+			, (bits == 64 ? "x64" : "x86"), bits, exe_file, (bits == 64 ? "x64" : "x86"));
 
 		return 0;
 	}
@@ -156,12 +154,6 @@ int main(int argc, char* argv[])
 	}
 	strcpy(exe_file, buf);
 
-	if (is_trace_version)
-	{
-		*strrchr(exe_file, '.') = '\0';
-		strcat(exe_file, ".TRACE.exe");
-	}
-
 	if(opt['A'])
 	{
 		if(strstr(opt['A'], "86") != NULL)
@@ -181,15 +173,15 @@ int main(int argc, char* argv[])
 
 	if(opt['g'])
 	{
-		sprintf(image_name, "IMAGE%s_GUI_%d", (is_trace_version ? "_TRACE" : ""), architecture_bits);
+		sprintf(image_name, "IMAGE_GUI_%d", architecture_bits);
 	}
 	else if(opt['s'])
 	{
-		sprintf(image_name, "IMAGE%s_SERVICE_%d", (is_trace_version ? "_TRACE" : ""), architecture_bits);
+		sprintf(image_name, "IMAGE_SERVICE_%d", architecture_bits);
 	}
 	else
 	{
-		sprintf(image_name, "IMAGE%s_CONSOLE_%d", (is_trace_version ? "_TRACE" : ""), architecture_bits);
+		sprintf(image_name, "IMAGE_CONSOLE_%d", architecture_bits);
 	}
 
 	GetResource(image_name, &res);
@@ -231,7 +223,7 @@ int main(int argc, char* argv[])
 		set_resource(exe_file, "EXTDIRS", RT_RCDATA, "lib", 4);
 	}
 
-	enable_java = CreateJavaVM(NULL, FALSE, TRUE, NULL) != NULL;
+	enable_java = CreateJavaVM(NULL, "exewrap.core.ExewrapClassLoader", FALSE, TRUE, NULL) != NULL;
 	if (enable_java)
 	{
 		LOAD_RESULT result;
@@ -313,7 +305,7 @@ int main(int argc, char* argv[])
 			printf(_(MSG_ID_ERR_GET_METHOD), "exewrap.tool.JarProcessor.getSplashScreenImage()");
 			goto EXIT;
 		}
-		jarProcessor_getBytes =             (*env)->GetMethodID(env, JarProcessor, "getBytes", "()[B");
+		jarProcessor_getBytes = (*env)->GetMethodID(env, JarProcessor, "getBytes", "()[B");
 		if (jarProcessor_getBytes == NULL)
 		{
 			result.msg_id = MSG_ID_ERR_GET_METHOD;
@@ -382,10 +374,6 @@ int main(int argc, char* argv[])
 	
 	ext_flags = (char*)malloc(1024);
 	ext_flags[0] = '\0';
-	if (is_trace_version)
-	{
-		strcat(ext_flags, "NOSIDEBYSIDE;");
-	}
 	if (opt['e'] && *opt['e'] != '-' && *opt['e'] != '\0')
 	{
 		strcat(ext_flags, opt['e']);
@@ -393,19 +381,6 @@ int main(int argc, char* argv[])
 	set_resource(exe_file, "EXTFLAGS", RT_RCDATA, ext_flags, (DWORD)strlen(ext_flags) + 1);
 	free(ext_flags);
 
-	if (is_trace_version)
-	{
-		if (vmargs == NULL)
-		{
-			vmargs = (char*)malloc(2048);
-			vmargs[0] = '\0';
-		}
-		else
-		{
-			strcat(vmargs, " ");
-		}
-		strcat(vmargs, "-XX:+TraceClassLoading");
-	}
 	if(opt['a'] && *opt['a'] != '\0')
 	{
 		if (vmargs == NULL)
@@ -533,6 +508,20 @@ int main(int argc, char* argv[])
 
 	original_filename = strrchr(exe_file, '\\') + 1;
 	new_version = set_version_info(exe_file, version_number, previous_revision, file_description, copyright, company_name, product_name, product_version, original_filename, jar_file);
+	
+	if(GetResource("CORE_JAR", &res) == NULL)
+	{
+		printf("ERROR: GetResource: CORE_JAR\n");
+		goto EXIT;
+	}
+	else
+	{
+		if(append_exe_file(exe_file, res.buf, res.len) == FALSE)
+		{
+			goto EXIT;
+		}
+	}
+	
 	printf("%s (%d-bit) version %s\r\n", strrchr(exe_file, '\\') + 1, architecture_bits, new_version);
 	
 EXIT:
@@ -588,10 +577,11 @@ static char** parse_opt(int argc, char* argv[])
 
 static DWORD get_version_revision(char* filename)
 {
-	/* GetFileVersionInfoSize, GetFileVersionInfo ï¿½ï¿½ï¿½gï¿½ï¿½ï¿½Æ“ï¿½ï¿½ï¿½ï¿½ï¿½ LoadLibrary ï¿½ï¿½ï¿½gï¿½pï¿½ï¿½ï¿½ï¿½ï¿½ç‚µï¿½ï¿½
-	* ï¿½ï¿½ï¿½ÌŒï¿½Ìƒï¿½ï¿½\ï¿½[ï¿½Xï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½İ‚ï¿½ï¿½ï¿½ï¿½Ü‚ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È‚ï¿½ï¿½È‚ï¿½æ‚¤ï¿½Å‚ï¿½ï¿½Bï¿½È‚Ì‚ÅAï¿½ï¿½ï¿½Í‚ï¿½ EXEï¿½tï¿½@ï¿½Cï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-	* ï¿½ï¿½ï¿½rï¿½Wï¿½ï¿½ï¿½ï¿½ï¿½iï¿½ï¿½ï¿½oï¿½[ï¿½ï¿½ï¿½ï¿½ï¿½oï¿½ï¿½ï¿½æ‚¤ï¿½É•ÏXï¿½ï¿½ï¿½Ü‚ï¿½ï¿½ï¿½ï¿½B
-	*/
+	/* GetFileVersionInfoSize, GetFileVersionInfo ‚ğg‚¤‚Æ“à•”‚Å LoadLibrary ‚ªg—p‚³‚ê‚é‚ç‚µ‚­
+	 * ‚»‚ÌŒã‚ÌƒŠƒ\[ƒX‘‚«‚İ‚ª‚¤‚Ü‚­‚¢‚©‚È‚­‚È‚é‚æ‚¤‚Å‚·B‚È‚Ì‚ÅA©—Í‚Å EXEƒtƒ@ƒCƒ‹‚©‚ç
+	 * ƒŠƒrƒWƒ‡ƒ“ƒiƒ“ƒo[‚ğæ‚èo‚·‚æ‚¤‚É•ÏX‚µ‚Ü‚µ‚½B
+	 */
+	int    SCAN_SIZE = 8192 * 3;
 	DWORD  revision = 0;
 	HANDLE hFile;
 	char   HEADER[] = "VS_VERSION_INFO";
@@ -601,7 +591,7 @@ static DWORD get_version_revision(char* filename)
 	unsigned int i;
 	size_t j;
 
-	buf = (BYTE*)malloc(8192);
+	buf = (BYTE*)malloc(SCAN_SIZE);
 
 	hFile = CreateFile(filename, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (hFile == INVALID_HANDLE_VALUE)
@@ -609,8 +599,8 @@ static DWORD get_version_revision(char* filename)
 		goto EXIT;
 	}
 
-	SetFilePointer(hFile, -1 * 8192, 0, FILE_END);
-	ReadFile(hFile, buf, 8192, &size, NULL);
+	SetFilePointer(hFile, -1 * SCAN_SIZE, 0, FILE_END);
+	ReadFile(hFile, buf, SCAN_SIZE, &size, NULL);
 	CloseHandle(hFile);
 
 	len = strlen(HEADER);
@@ -679,10 +669,6 @@ static BOOL create_exe_file(const char* filename, BYTE* image_buf, DWORD image_l
 		}
 		image_buf = buf;
 	}
-	else
-	{
-		buf = image_buf;
-	}
 
 	while (image_len > 0)
 	{
@@ -707,6 +693,41 @@ EXIT:
 		}
 	}
 
+	return ret;
+}
+
+
+static BOOL append_exe_file(const char* filename, BYTE* image_buf, DWORD image_len)
+{
+	BOOL   ret = FALSE;
+	HANDLE hFile;
+	BYTE*  buf = NULL;
+	DWORD  write_size;
+	char*  dir;
+	char*  ptr;
+	
+	hFile = CreateFile(filename, FILE_APPEND_DATA, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (hFile == INVALID_HANDLE_VALUE)
+	{
+		printf("Failed to open file: %s\n", filename);
+		goto EXIT;
+	}
+
+	while (image_len > 0)
+	{
+		if (WriteFile(hFile, image_buf, image_len, &write_size, NULL) == 0)
+		{
+			printf("Failed to write: %s\n", filename);
+			goto EXIT;
+		}
+		image_buf += write_size;
+		image_len -= write_size;
+	}
+	CloseHandle(hFile);
+
+	ret = TRUE;
+
+EXIT:
 	return ret;
 }
 
@@ -760,7 +781,7 @@ static char* get_target_java_runtime_version_string(DWORD version, char* buf)
 
 	*(DWORD*)buf = version;
 	
-	//1.7ï¿½`
+	//1.7-
 	if (major == 1 && minor >= 7 && build == 0)
 	{
 		if(revision == 0)
@@ -1056,7 +1077,7 @@ static char* set_version_info(const char* filename, const char* version_number, 
 	product_version_build = atoi(strtok(NULL, "."));
 	product_version_revision = atoi(strtok(NULL, "."));
 
-	// revison ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Iï¿½Éwï¿½è‚³ï¿½ï¿½Ä‚ï¿½ï¿½È‚ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ê‡ï¿½Aï¿½ï¿½ï¿½ï¿½ï¿½tï¿½@ï¿½Cï¿½ï¿½ï¿½ï¿½ï¿½ï¿½æ“¾ï¿½ï¿½ï¿½ï¿½ï¿½lï¿½ï¿½ 1ï¿½@ï¿½ï¿½ï¿½ï¿½ï¿½Zï¿½ï¿½ï¿½ï¿½ revision ï¿½Æ‚ï¿½ï¿½ï¿½B
+	// revison ‚ª–¾¦“I‚Éw’è‚³‚ê‚Ä‚¢‚È‚©‚Á‚½ê‡AŠù‘¶ƒtƒ@ƒCƒ‹‚©‚çæ“¾‚µ‚½’l‚É 1@‚ğ‰ÁZ‚µ‚Ä revision ‚Æ‚·‚éB
 	strcpy(buffer, version_number);
 	if (strtok(buffer, ".") != NULL)
 	{
@@ -1073,7 +1094,7 @@ static char* set_version_info(const char* filename, const char* version_number, 
 	}
 
 	file_version_revision = (short)previous_revision + 1;
-	// build ï¿½ï¿½ï¿½Zï¿½ï¿½ï¿½è‚±ï¿½ï¿½ï¿½Ü‚ÅB
+	// build ‰ÁZ”»’è‚±‚±‚Ü‚ÅB
 	sprintf(file_version, "%d.%d.%d.%d", file_version_major, file_version_minor, file_version_build, file_version_revision);
 
 	GetResource("VERSION_INFO", &res);

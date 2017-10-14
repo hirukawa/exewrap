@@ -82,7 +82,7 @@ static void init_message()
 	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_ERR_TARGET_VERSION] =
 	"%s or higher is required to run this program.";
 
-	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_ERR_DEFINE_CLASS] =
+	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_ERR_FIND_CLASS] =
 	"Class not found: %s";
 
 	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_ERR_GET_CONSTRUCTOR] =
@@ -182,7 +182,7 @@ static void init_message()
 	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_ERR_TARGET_VERSION] =
 	"このプログラムの実行には%s以上が必要です。";
 
-	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_ERR_DEFINE_CLASS] =
+	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_ERR_FIND_CLASS] =
 	"クラスが見つかりません: %s";
 
 	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_ERR_GET_CONSTRUCTOR] =

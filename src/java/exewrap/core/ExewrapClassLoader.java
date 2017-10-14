@@ -21,36 +21,38 @@ import java.util.jar.Manifest;
 
 public class ExewrapClassLoader extends ClassLoader {
 	
-	private Map<String, byte[]> classes = new HashMap<String, byte[]>();
-	private Map<String, byte[]> resources = new HashMap<String, byte[]>();
-	private Queue<JarInputStream> inputs = new LinkedList<JarInputStream>();
-	private JarInputStream in;
-	private String mainClassName;
-	private String specTitle;
-	private String specVersion;
-	private String specVendor;
-	private String implTitle;
-	private String implVersion;
-	private String implVendor;
-	private URL context;
-	private ProtectionDomain protectionDomain;
-	
-	public ExewrapClassLoader(ClassLoader parent, JarInputStream[] inputs) throws MalformedURLException {
-		super(parent);
-		for(JarInputStream in : inputs) {
-			Manifest manifest = in.getManifest();
-			if(manifest != null) {
-				this.mainClassName = manifest.getMainAttributes().getValue(Name.MAIN_CLASS);
-				this.specTitle = manifest.getMainAttributes().getValue(Name.SPECIFICATION_TITLE);
-				this.specVersion = manifest.getMainAttributes().getValue(Name.SPECIFICATION_VERSION);
-				this.specVendor = manifest.getMainAttributes().getValue(Name.SPECIFICATION_VENDOR);
-				this.implTitle = manifest.getMainAttributes().getValue(Name.IMPLEMENTATION_TITLE);
-				this.implVersion = manifest.getMainAttributes().getValue(Name.IMPLEMENTATION_VERSION);
-				this.implVendor = manifest.getMainAttributes().getValue(Name.IMPLEMENTATION_VENDOR);
+	private static Map<String, byte[]> classes = new HashMap<String, byte[]>();
+	private static Map<String, byte[]> resources = new HashMap<String, byte[]>();
+	private static Queue<JarInputStream> inputs = new LinkedList<JarInputStream>();
+	private static JarInputStream in;
+	private static String mainClassName;
+	private static String specTitle;
+	private static String specVersion;
+	private static String specVendor;
+	private static String implTitle;
+	private static String implVersion;
+	private static String implVendor;
+	private static URL context;
+	private static ProtectionDomain protectionDomain;
+
+	public static void setInputs(JarInputStream[] jars) throws MalformedURLException {
+		for(JarInputStream jar : jars) {
+			if(jar == null) {
+				continue;
 			}
-			this.inputs.offer(in);
+			Manifest manifest = jar.getManifest();
+			if(manifest != null) {
+				mainClassName = manifest.getMainAttributes().getValue(Name.MAIN_CLASS);
+				specTitle = manifest.getMainAttributes().getValue(Name.SPECIFICATION_TITLE);
+				specVersion = manifest.getMainAttributes().getValue(Name.SPECIFICATION_VERSION);
+				specVendor = manifest.getMainAttributes().getValue(Name.SPECIFICATION_VENDOR);
+				implTitle = manifest.getMainAttributes().getValue(Name.IMPLEMENTATION_TITLE);
+				implVersion = manifest.getMainAttributes().getValue(Name.IMPLEMENTATION_VERSION);
+				implVendor = manifest.getMainAttributes().getValue(Name.IMPLEMENTATION_VENDOR);
+			}
+			inputs.offer(jar);
 		}
-		this.in = this.inputs.poll();
+		in = inputs.poll();
 		
 		String path = System.getProperty("java.application.path");
 		if(path == null) {
@@ -61,52 +63,61 @@ public class ExewrapClassLoader extends ClassLoader {
 			name = "";
 		}
 		
-		URL.setURLStreamHandlerFactory(new URLStreamHandlerFactory(this));
-		this.context = new URL("exewrap:file:/" + path.replace('\\', '/') + '/' + name + "!/");
+		ClassLoader systemClassLoader = ClassLoader.getSystemClassLoader();
+		URL.setURLStreamHandlerFactory(new URLStreamHandlerFactory(systemClassLoader));
+		context = new URL("exewrap:file:/" + path.replace('\\', '/') + '/' + name + "!/");
 
 		URL url = new URL("file:/" + path.replace('\\', '/') + '/' + name);
 		CodeSource codesource = new CodeSource(url, (Certificate[])null);
 		PermissionCollection permissions = Policy.getPolicy().getPermissions(new CodeSource(null, (Certificate[])null));
-		this.protectionDomain = new ProtectionDomain(codesource, permissions, this, null);
+		protectionDomain = new ProtectionDomain(codesource, permissions, systemClassLoader, null);
 	}
 	
-	public void register() throws NoSuchFieldException, SecurityException, IllegalArgumentException, IllegalAccessException {
-		Thread.currentThread().setContextClassLoader(this);
-	}
-	
-	public void loadUtilities(String utilities) throws ClassNotFoundException {
+	public static void loadUtilities(String utilities) throws ClassNotFoundException {
 		if(utilities == null) {
 			return;
 		}
 		if(utilities.contains("UncaughtExceptionHandler;")) {
-			Class.forName("exewrap.util.UncaughtExceptionHandler", true, this);
+			Class.forName("exewrap.util.UncaughtExceptionHandler");
 		}
 		if(utilities.contains("FileLogStream;")) {
-			Class.forName("exewrap.util.FileLogStream", true, this);
+			Class.forName("exewrap.util.FileLogStream");
 		}
 		if(utilities.contains("EventLogStream;")) {
-			Class.forName("exewrap.util.EventLogStream", true, this);
+			Class.forName("exewrap.util.EventLogStream");
 		}
 		if(utilities.contains("EventLogHandler;")) {
-			Class.forName("exewrap.util.EventLogHandler", true, this);
+			Class.forName("exewrap.util.EventLogHandler");
 		}
 		if(utilities.contains("ConsoleOutputStream;")) {
-			Class.forName("exewrap.util.ConsoleOutputStream", true, this);
+			Class.forName("exewrap.util.ConsoleOutputStream");
 		}
 	}
 	
-	public Class<?> getMainClass(String mainClassName) throws ClassNotFoundException {
+	public static Class<?> getMainClass(String mainClassName) throws ClassNotFoundException {
+		ClassLoader systemClassLoader = ClassLoader.getSystemClassLoader();
+		
 		if(mainClassName != null) {
-			return loadClass(mainClassName);
+			return Class.forName(mainClassName, true, systemClassLoader);
 		}
-		if(this.mainClassName != null) {
-			return loadClass(this.mainClassName);
+		if(ExewrapClassLoader.mainClassName != null) {
+			return Class.forName(ExewrapClassLoader.mainClassName, true, systemClassLoader);
 		}
 		return null;
 	}
 
-	public void setSplashScreenResource(String name, byte[] image) {
-		this.resources.put(name, image);
+	public static void setSplashScreenResource(String name, byte[] image) {
+		resources.put(name, image);
+	}
+	
+	public static native void WriteConsole(byte[] b, int off, int len);
+	public static native void WriteEventLog(int type, String message);
+	public static native void UncaughtException(String thread, String message, String trace);
+	public static native String SetEnvironment(String key, String value);
+
+	
+	public ExewrapClassLoader(ClassLoader parent) {
+		super(parent);
 	}
 	
 	protected Class<?> findClass(String name) throws ClassNotFoundException {
@@ -193,9 +204,4 @@ public class ExewrapClassLoader extends ClassLoader {
 		}
 		return buf.toByteArray();
 	}
-
-	public static native void WriteConsole(byte[] b, int off, int len);
-	public static native void WriteEventLog(int type, String message);
-	public static native void UncaughtException(String thread, String message, String trace);
-	public static native String SetEnvironment(String key, String value);
 }
