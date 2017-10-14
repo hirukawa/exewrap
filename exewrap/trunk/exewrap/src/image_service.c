@@ -94,7 +94,7 @@ static int service_main(int argc, char* argv[])
 	if(vm_args_opt == NULL) {
 		vm_args_opt = (char*)GetResource("VMARGS", NULL);
 	}
-	CreateJavaVM(vm_args_opt, use_server_vm, use_side_by_side_jre, &err);
+	CreateJavaVM(vm_args_opt, "exewrap.core.ExewrapClassLoader", use_server_vm, use_side_by_side_jre, &err);
 	if (err != JNI_OK)
 	{
 		OutputMessage(GetWinErrorMessage(err, &result.msg_id, result.msg));

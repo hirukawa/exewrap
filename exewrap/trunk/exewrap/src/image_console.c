@@ -67,7 +67,7 @@ int main(int argc, char* argv[])
 	}
 
 	vm_args_opt = (char*)GetResource("VMARGS", NULL);
-	CreateJavaVM(vm_args_opt, use_server_vm, use_side_by_side_jre, &err);
+	CreateJavaVM(vm_args_opt, "exewrap.core.ExewrapClassLoader", use_server_vm, use_side_by_side_jre, &err);
 	if (err != JNI_OK)
 	{
 		OutputMessage(GetJniErrorMessage(err, &result.msg_id, result.msg));
