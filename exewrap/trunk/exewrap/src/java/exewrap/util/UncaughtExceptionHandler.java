@@ -3,7 +3,7 @@ package exewrap.util;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 
-import exewrap.core.ExewrapClassLoader;
+import exewrap.core.NativeMethods;
 
 public class UncaughtExceptionHandler implements java.lang.Thread.UncaughtExceptionHandler {
 	
@@ -13,7 +13,7 @@ public class UncaughtExceptionHandler implements java.lang.Thread.UncaughtExcept
 	
 	public void uncaughtException(Thread t, Throwable e) {
 		e.printStackTrace();
-		ExewrapClassLoader.UncaughtException(t.getName(), e.toString(), getStackTrace(e));
+		NativeMethods.UncaughtException(t.getName(), e.toString(), getStackTrace(e));
 	}
 	
 	private static String getStackTrace(Throwable t) {

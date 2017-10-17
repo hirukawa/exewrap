@@ -82,17 +82,26 @@ static void init_message()
 	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_ERR_TARGET_VERSION] =
 	"%s or higher is required to run this program.";
 
+	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_ERR_DEFINE_CLASS] =
+	"Class not found: %s";
+
 	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_ERR_FIND_CLASS] =
 	"Class not found: %s";
 
 	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_ERR_GET_CONSTRUCTOR] =
 	"Constructor not found: %s";
 
+	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_ERR_GET_FIELD] =
+	"Field not found: %s";
+
 	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_ERR_GET_METHOD] =
 	"Method not found: %s";
 
 	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_ERR_NEW_OBJECT] =
 	"Failed to create object: %s";
+
+	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_ERR_NULL_OBJECT] =
+	"Object is null: %s";
 
 	msg[MSG_ID_COUNT * MSG_LANG_ID_EN + MSG_ID_ERR_FIND_CLASSLOADER] =
 	"Class Loader not found.";
@@ -182,17 +191,26 @@ static void init_message()
 	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_ERR_TARGET_VERSION] =
 	"このプログラムの実行には%s以上が必要です。";
 
+	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_ERR_DEFINE_CLASS] =
+	"クラスが見つかりません: %s";
+
 	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_ERR_FIND_CLASS] =
 	"クラスが見つかりません: %s";
 
 	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_ERR_GET_CONSTRUCTOR] =
 	"コンストラクターが見つかりません: %s";
 
+	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_ERR_GET_FIELD] =
+	"フィールドが見つかりません: %s";
+
 	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_ERR_GET_METHOD] =
 	"メソッドが見つかりません: %s";
 
 	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_ERR_NEW_OBJECT] =
 	"オブジェクトの作成に失敗しました: %s";
+
+	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_ERR_NULL_OBJECT] =
+	"オブジェクト参照がありません: %s";
 
 	msg[MSG_ID_COUNT * MSG_LANG_ID_JA + MSG_ID_ERR_FIND_CLASSLOADER] =
 	"クラスローダーが見つかりません。";

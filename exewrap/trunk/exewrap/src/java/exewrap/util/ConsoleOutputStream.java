@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
 
-import exewrap.core.ExewrapClassLoader;
+import exewrap.core.NativeMethods;
 
 public class ConsoleOutputStream extends OutputStream {
 	static {
@@ -13,20 +13,20 @@ public class ConsoleOutputStream extends OutputStream {
 
 	@Override
 	public void write(int b) throws IOException {
-		ExewrapClassLoader.WriteConsole(new byte[] { (byte)(b & 0xFF) }, 0, 1);
+		NativeMethods.WriteConsole(new byte[] { (byte)(b & 0xFF) }, 0, 1);
 	}
 
 	@Override
 	public void write(byte[] b) throws IOException {
 		if(b != null) {
-			ExewrapClassLoader.WriteConsole(b, 0, b.length);
+			NativeMethods.WriteConsole(b, 0, b.length);
 		}
 	}
 
 	@Override
 	public void write(byte[] b, int off, int len) throws IOException {
 		if(b != null) {
-			ExewrapClassLoader.WriteConsole(b, off, len);
+			NativeMethods.WriteConsole(b, off, len);
 		}
 	}
 }

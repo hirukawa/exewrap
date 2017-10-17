@@ -35,36 +35,6 @@ nmake /nologo EXEWRAP_X64
 IF ERRORLEVEL 1 GOTO ERR
 
 
-REM SKIP TRACE VERSION
-goto SUCCESS
-
-REM TRACE IMAGE ######################################################
-
-CALL :SETENV_X86
-nmake /nologo TRACE_IMAGE_X86
-IF ERRORLEVEL 1 GOTO ERR
-
-CALL :SETENV_X64
-nmake /nologo TRACE_IMAGE_X64
-IF ERRORLEVEL 1 GOTO ERR
-
-REM TRACE EXEWRAP ####################################################
-
-CALL :SETENV_X86
-nmake /nologo TRACE_EXEWRAP_X86
-IF ERRORLEVEL 1 GOTO ERR
-
-nmake /nologo JREMIN_X86
-IF ERRORLEVEL 1 GOTO ERR
-
-CALL :SETENV_X64
-nmake /nologo TRACE_EXEWRAP_X64
-IF ERRORLEVEL 1 GOTO ERR
-
-nmake /nologo JREMIN_X64
-IF ERRORLEVEL 1 GOTO ERR
-
-
 REM ##################################################################
 
 :SUCCESS

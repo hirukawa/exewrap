@@ -32,22 +32,97 @@ extern void   OutputConsole(BYTE* buf, DWORD len);
 extern void   OutputMessage(const char* text);
 extern UINT   UncaughtException(const char* thread, const char* message, const char* trace);
 
-static jclass    ExewrapClassLoader = NULL;
+static jclass    Loader = NULL;
+static jobject   resources = NULL;
 static jclass    MainClass = NULL;
 static jmethodID MainClass_main = NULL;
 
 BOOL LoadMainClass(int argc, char* argv[], char* utilities, LOAD_RESULT* result)
 {
 	RESOURCE     res;
+	jclass       ClassLoader;
+	jmethodID    ClassLoader_getSystemClassLoader;
+	jmethodID    ClassLoader_definePackage;
+	jstring      packageName;
+	jobject      systemClassLoader;
+	jfieldID     Loader_resources;
+	jmethodID    Loader_initialize;
 	jclass       JarInputStream;
 	jmethodID    JarInputStream_init;
 	jclass       ByteBufferInputStream;
 	jmethodID    ByteBufferInputStream_init;
+	jclass       NativeMethods;
+	jclass       URLConnection;
+	jclass       URLStreamHandler;
+	jclass       URLStreamHandlerFactory;
+	jmethodID    URLStreamHandlerFactory_init;
+	jobject      urlStreamHandlerFactory;
 	jobjectArray jars;
-	jmethodID	ExewrapClassLoader_setInputs;
-	jmethodID   ExewrapClassLoader_loadUtilities;
-	jmethodID   ExewrapClassLoader_getMainClass;
 
+	// ClassLoader
+	ClassLoader = (*env)->FindClass(env, "java/lang/ClassLoader");
+	if (ClassLoader == NULL)
+	{
+		result->msg_id = MSG_ID_ERR_DEFINE_CLASS;
+		sprintf(result->msg, _(MSG_ID_ERR_DEFINE_CLASS), "java.lang.ClassLoader");
+		goto EXIT;
+	}
+	ClassLoader_getSystemClassLoader = (*env)->GetStaticMethodID(env, ClassLoader, "getSystemClassLoader", "()Ljava/lang/ClassLoader;");
+	if (ClassLoader_getSystemClassLoader == NULL)
+	{
+		result->msg_id = MSG_ID_ERR_GET_METHOD;
+		sprintf(result->msg, _(MSG_ID_ERR_GET_METHOD), "java.lang.ClassLoader.getSystemClassLoader()");
+		goto EXIT;
+	}
+	systemClassLoader = (*env)->CallStaticObjectMethod(env, ClassLoader, ClassLoader_getSystemClassLoader);
+	if (systemClassLoader == NULL)
+	{
+		result->msg_id = MSG_ID_ERR_NULL_OBJECT;
+		sprintf(result->msg, _(MSG_ID_ERR_NULL_OBJECT), "java.lang.ClassLoader.getSystemClassLoader()");
+		goto EXIT;
+	}
+	ClassLoader_definePackage = (*env)->GetMethodID(env, ClassLoader, "definePackage", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/net/URL;)Ljava/lang/Package;");
+	if (ClassLoader_definePackage == NULL)
+	{
+		result->msg_id = MSG_ID_ERR_GET_METHOD;
+		sprintf(result->msg, _(MSG_ID_ERR_GET_METHOD), "java.lang.ClassLoader.definePackage(java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.net.URL)");
+		goto EXIT;
+	}
+	
+	// Define package "exewrap.core"
+	packageName = GetJString(env, "exewrap.core");
+	(*env)->CallObjectMethod(env, systemClassLoader, ClassLoader_definePackage, packageName, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+	
+	// Loader
+	Loader = (*env)->FindClass(env, "Loader");
+	if(Loader == NULL)
+	{
+		result->msg_id = MSG_ID_ERR_FIND_CLASS;
+		sprintf(result->msg, _(MSG_ID_ERR_FIND_CLASS), "Loader");
+		goto EXIT;
+	}
+	Loader_resources = (*env)->GetStaticFieldID(env, Loader, "resources", "Ljava/util/Map;");
+	if(Loader_resources == NULL)
+	{
+		result->msg_id = MSG_ID_ERR_GET_FIELD;
+		sprintf(result->msg, _(MSG_ID_ERR_GET_FIELD), "Loader.resources");
+		goto EXIT;
+	}
+	resources = (*env)->GetStaticObjectField(env, Loader, Loader_resources);
+	if(resources == NULL)
+	{
+		result->msg_id = MSG_ID_ERR_GET_FIELD;
+		sprintf(result->msg, _(MSG_ID_ERR_GET_FIELD), "Loader.resources");
+		goto EXIT;
+	}
+	Loader_initialize = (*env)->GetStaticMethodID(env, Loader, "initialize", "([Ljava/util/jar/JarInputStream;Ljava/net/URLStreamHandlerFactory;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/Class;");
+	if(Loader_initialize == NULL)
+	{
+		result->msg_id = MSG_ID_ERR_GET_METHOD;
+		sprintf(result->msg, _(MSG_ID_ERR_GET_METHOD), "Loader.initialize(java.util.jar.JarInputStream[], java.net.URLStreamHandlerFactory, java.lang.String, java.lang.String)");
+		goto EXIT;
+	}
+	
 	// JarInputStream
 	JarInputStream = (*env)->FindClass(env, "java/util/jar/JarInputStream");
 	if (JarInputStream == NULL)
@@ -65,7 +140,13 @@ BOOL LoadMainClass(int argc, char* argv[], char* utilities, LOAD_RESULT* result)
 	}
 
 	// ByteBufferInputStream
-	ByteBufferInputStream = (*env)->FindClass(env, "exewrap/core/ByteBufferInputStream");
+	if (GetResource("BYTE_BUFFER_INPUT_STREAM", &res) == NULL)
+	{
+		result->msg_id = MSG_ID_ERR_RESOURCE_NOT_FOUND;
+		sprintf(result->msg, _(MSG_ID_ERR_RESOURCE_NOT_FOUND), "RT_RCDATA: BYTE_BUFFER_INPUT_STREAM");
+		goto EXIT;
+	}
+	ByteBufferInputStream = (*env)->DefineClass(env, "exewrap/core/ByteBufferInputStream", systemClassLoader, res.buf, res.len);
 	if (ByteBufferInputStream == NULL)
 	{
 		result->msg_id = MSG_ID_ERR_FIND_CLASS;
@@ -80,13 +161,145 @@ BOOL LoadMainClass(int argc, char* argv[], char* utilities, LOAD_RESULT* result)
 		goto EXIT;
 	}
 
-	// JarInputStream[] jars = new JarInputStream[1];
-	jars = (*env)->NewObjectArray(env, 1, JarInputStream, NULL);
+	// NativeMethods
+	if (GetResource("NATIVE_METHODS", &res) == NULL)
+	{
+		result->msg_id = MSG_ID_ERR_RESOURCE_NOT_FOUND;
+		sprintf(result->msg, _(MSG_ID_ERR_RESOURCE_NOT_FOUND), "RT_RCDATA: NATIVE_METHODS");
+		goto EXIT;
+	}
+	NativeMethods = (*env)->DefineClass(env, "exewrap/core/NativeMethods", systemClassLoader, res.buf, res.len);
+	if (NativeMethods == NULL)
+	{
+		result->msg_id = MSG_ID_ERR_FIND_CLASS;
+		sprintf(result->msg, _(MSG_ID_ERR_FIND_CLASS), "exewrap.core.NativeMethods");
+		goto EXIT;
+	}
+	if (register_native(env, NativeMethods, "WriteConsole", "([BII)V", JNI_WriteConsole) != 0)
+	{
+		result->msg_id = MSG_ID_ERR_REGISTER_NATIVE;
+		sprintf(result->msg, _(MSG_ID_ERR_REGISTER_NATIVE), "WriteConsole");
+		goto EXIT;
+	}
+	if (register_native(env, NativeMethods, "WriteEventLog", "(ILjava/lang/String;)V", JNI_WriteEventLog) != 0)
+	{
+		result->msg_id = MSG_ID_ERR_REGISTER_NATIVE;
+		sprintf(result->msg, _(MSG_ID_ERR_REGISTER_NATIVE), "WriteEventLog");
+		goto EXIT;
+	}
+	if (register_native(env, NativeMethods, "UncaughtException", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V", JNI_UncaughtException) != 0)
+	{
+		result->msg_id = MSG_ID_ERR_REGISTER_NATIVE;
+		sprintf(result->msg, _(MSG_ID_ERR_REGISTER_NATIVE), "UncaughtException");
+		goto EXIT;
+	}
+	if (register_native(env, NativeMethods, "SetEnvironment", "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;", JNI_SetEnvironment) != 0)
+	{
+		result->msg_id = MSG_ID_ERR_REGISTER_NATIVE;
+		sprintf(result->msg, _(MSG_ID_ERR_REGISTER_NATIVE), "SetEnvironment");
+		goto EXIT;
+	}
+	
+	// URLConnection
+	if (GetResource("URL_CONNECTION", &res) == NULL)
+	{
+		result->msg_id = MSG_ID_ERR_RESOURCE_NOT_FOUND;
+		sprintf(result->msg, _(MSG_ID_ERR_RESOURCE_NOT_FOUND), "RT_RCDATA: URL_CONNECTION");
+		goto EXIT;
+	}
+	URLConnection = (*env)->DefineClass(env, "exewrap/core/URLConnection", systemClassLoader, res.buf, res.len);
+	if (URLConnection == NULL)
+	{
+		result->msg_id = MSG_ID_ERR_DEFINE_CLASS;
+		sprintf(result->msg, _(MSG_ID_ERR_DEFINE_CLASS), "exewrap.core.URLConnection");
+		goto EXIT;
+	}
+	// URLStreamHandler
+	if (GetResource("URL_STREAM_HANDLER", &res) == NULL)
+	{
+		result->msg_id = MSG_ID_ERR_RESOURCE_NOT_FOUND;
+		sprintf(result->msg, _(MSG_ID_ERR_RESOURCE_NOT_FOUND), "RT_RCDATA: URL_STREAM_HANDLER");
+		goto EXIT;
+	}
+	URLStreamHandler = (*env)->DefineClass(env, "exewrap/core/URLStreamHandler", systemClassLoader, res.buf, res.len);
+	if (URLStreamHandler == NULL)
+	{
+		result->msg_id = MSG_ID_ERR_DEFINE_CLASS;
+		sprintf(result->msg, _(MSG_ID_ERR_DEFINE_CLASS), "exewrap.core.URLStreamHandler");
+		goto EXIT;
+	}
+	// URLStreamHandlerFactory
+	if (GetResource("URL_STREAM_HANDLER_FACTORY", &res) == NULL)
+	{
+		result->msg_id = MSG_ID_ERR_RESOURCE_NOT_FOUND;
+		sprintf(result->msg, _(MSG_ID_ERR_RESOURCE_NOT_FOUND), "RT_RCDATA: URL_STREAM_HANDLER_FACTORY");
+		goto EXIT;
+	}
+	URLStreamHandlerFactory = (*env)->DefineClass(env, "exewrap/core/URLStreamHandlerFactory", systemClassLoader, res.buf, res.len);
+	if (URLStreamHandlerFactory == NULL)
+	{
+		result->msg_id = MSG_ID_ERR_DEFINE_CLASS;
+		sprintf(result->msg, _(MSG_ID_ERR_DEFINE_CLASS), "exewrap.core.URLStreamHandlerFactory");
+		goto EXIT;
+	}
+	URLStreamHandlerFactory_init = (*env)->GetMethodID(env, URLStreamHandlerFactory, "<init>", "(Ljava/lang/ClassLoader;Ljava/util/Map;)V");
+	if (URLStreamHandlerFactory_init == NULL)
+	{
+		result->msg_id = MSG_ID_ERR_GET_CONSTRUCTOR;
+		sprintf(result->msg, _(MSG_ID_ERR_GET_CONSTRUCTOR), "exewrap.core.URLStreamHandlerFactory(java.lang.ClassLoader)");
+		goto EXIT;
+	}
+	urlStreamHandlerFactory = (*env)->NewObject(env, URLStreamHandlerFactory, URLStreamHandlerFactory_init, systemClassLoader, resources);
+	if (urlStreamHandlerFactory == NULL)
+	{
+		result->msg_id = MSG_ID_ERR_NEW_OBJECT;
+		sprintf(result->msg, _(MSG_ID_ERR_NEW_OBJECT), "exewrap.core.URLStreamHandlerFactory(java.lang.ClassLoader)");
+		goto EXIT;
+	}
+
+	// JarInputStream[] jars = new JarInputStream[2];
+	jars = (*env)->NewObjectArray(env, 2, JarInputStream, NULL);
 	if (jars == NULL)
 	{
 		result->msg_id = MSG_ID_ERR_NEW_OBJECT;
 		sprintf(result->msg, _(MSG_ID_ERR_NEW_OBJECT), "JarInputStream[]");
 		goto EXIT;
+	}
+	
+	//util.jar
+	{
+		jobject byteBuffer;
+		jobject byteBufferInputStream = NULL;
+		jobject jarInputStream = NULL;
+		
+		if (GetResource("UTIL_JAR", &res) == NULL)
+		{
+			result->msg_id = MSG_ID_ERR_RESOURCE_NOT_FOUND;
+			sprintf(result->msg, _(MSG_ID_ERR_RESOURCE_NOT_FOUND), "RT_RCDATA: UTIL_JAR");
+			goto EXIT;
+		}
+		byteBuffer = (*env)->NewDirectByteBuffer(env, res.buf, res.len);
+		if (byteBuffer == NULL)
+		{
+			result->msg_id = MSG_ID_ERR_NEW_OBJECT;
+			sprintf(result->msg, _(MSG_ID_ERR_NEW_OBJECT), "NewDirectByteBuffer(JNIEnv* env, void* address, jlong capacity)");
+			goto EXIT;
+		}
+		byteBufferInputStream = (*env)->NewObject(env, ByteBufferInputStream, ByteBufferInputStream_init, byteBuffer);
+		if (byteBufferInputStream == NULL)
+		{
+			result->msg_id = MSG_ID_ERR_NEW_OBJECT;
+			sprintf(result->msg, _(MSG_ID_ERR_NEW_OBJECT), "exewrap.core.ByteBufferInputStream(java.nio.ByteBuffer)");
+			goto EXIT;
+		}
+		jarInputStream = (*env)->NewObject(env, JarInputStream, JarInputStream_init, byteBufferInputStream);
+		if (jarInputStream == NULL)
+		{
+			result->msg_id = MSG_ID_ERR_NEW_OBJECT;
+			sprintf(result->msg, _(MSG_ID_ERR_NEW_OBJECT), "java.util.jar.JarInputStream(exewrap.core.ByteBufferInputStream)");
+			goto EXIT;
+		}
+		(*env)->SetObjectArrayElement(env, jars, 0, jarInputStream);
 	}
 
 	// user.jar or user.pack.gz
@@ -153,7 +366,13 @@ BOOL LoadMainClass(int argc, char* argv[], char* utilities, LOAD_RESULT* result)
 			}
 
 			// PackInputStream
-			PackInputStream = (*env)->FindClass(env, "exewrap/core/PackInputStream");
+			if (GetResource("PACK_INPUT_STREAM", &res) == NULL)
+			{
+				result->msg_id = MSG_ID_ERR_RESOURCE_NOT_FOUND;
+				sprintf(result->msg, _(MSG_ID_ERR_RESOURCE_NOT_FOUND), "RT_RCDATA: PACK_INPUT_STREAM");
+				goto EXIT;
+			}
+			PackInputStream = (*env)->DefineClass(env, "exewrap/core/PackInputStream", systemClassLoader, res.buf, res.len);
 			if (PackInputStream == NULL)
 			{
 				result->msg_id = MSG_ID_ERR_FIND_CLASS;
@@ -195,76 +414,11 @@ BOOL LoadMainClass(int argc, char* argv[], char* utilities, LOAD_RESULT* result)
 				goto EXIT;
 			}
 		}
-		(*env)->SetObjectArrayElement(env, jars, 0, jarInputStream);
+		(*env)->SetObjectArrayElement(env, jars, 1, jarInputStream);
 	}
 	
-	// ExewrapClassLoader
-	ExewrapClassLoader = (*env)->FindClass(env, "exewrap/core/ExewrapClassLoader");
-	if (ExewrapClassLoader == NULL)
-	{
-		result->msg_id = MSG_ID_ERR_FIND_CLASS;
-		sprintf(result->msg, _(MSG_ID_ERR_FIND_CLASS), "exewrap.core.ExewrapClassLoader");
-		goto EXIT;
-	}
-	
-	// register native methods
-	if (register_native(env, ExewrapClassLoader, "WriteConsole", "([BII)V", JNI_WriteConsole) != 0)
-	{
-		result->msg_id = MSG_ID_ERR_REGISTER_NATIVE;
-		sprintf(result->msg, _(MSG_ID_ERR_REGISTER_NATIVE), "WriteConsole");
-		goto EXIT;
-	}
-	if (register_native(env, ExewrapClassLoader, "WriteEventLog", "(ILjava/lang/String;)V", JNI_WriteEventLog) != 0)
-	{
-		result->msg_id = MSG_ID_ERR_REGISTER_NATIVE;
-		sprintf(result->msg, _(MSG_ID_ERR_REGISTER_NATIVE), "WriteEventLog");
-		goto EXIT;
-	}
-	if (register_native(env, ExewrapClassLoader, "UncaughtException", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V", JNI_UncaughtException) != 0)
-	{
-		result->msg_id = MSG_ID_ERR_REGISTER_NATIVE;
-		sprintf(result->msg, _(MSG_ID_ERR_REGISTER_NATIVE), "UncaughtException");
-		goto EXIT;
-	}
-	if (register_native(env, ExewrapClassLoader, "SetEnvironment", "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;", JNI_SetEnvironment) != 0)
-	{
-		result->msg_id = MSG_ID_ERR_REGISTER_NATIVE;
-		sprintf(result->msg, _(MSG_ID_ERR_REGISTER_NATIVE), "SetEnvironment");
-		goto EXIT;
-	}
-	
-	ExewrapClassLoader_setInputs = (*env)->GetStaticMethodID(env, ExewrapClassLoader, "setInputs", "([Ljava/util/jar/JarInputStream;)V");
-	if (ExewrapClassLoader_setInputs == NULL)
-	{
-		result->msg_id = MSG_ID_ERR_GET_METHOD;
-		sprintf(result->msg, _(MSG_ID_ERR_GET_METHOD), "exewrap.core.ExewrapClassLoader.setInputs(java.util.jar.JarInputStream[])");
-		goto EXIT;
-	}
-	(*env)->CallStaticObjectMethod(env, ExewrapClassLoader, ExewrapClassLoader_setInputs, jars);
-	
-	
-	ExewrapClassLoader_loadUtilities = (*env)->GetStaticMethodID(env, ExewrapClassLoader, "loadUtilities", "(Ljava/lang/String;)V");
-	if (ExewrapClassLoader_loadUtilities == NULL)
-	{
-		result->msg_id = MSG_ID_ERR_GET_METHOD;
-		sprintf(result->msg, _(MSG_ID_ERR_GET_METHOD), "exewrap.core.ExewrapClassLoader.loadUtilities(java.lang.String)");
-		goto EXIT;
-	}
-	// exewrapClassLoader.loadUtilities();
-	{
-		jstring s = GetJString(env, utilities);
-		(*env)->CallStaticObjectMethod(env, ExewrapClassLoader, ExewrapClassLoader_loadUtilities, s);
-	}
-
-	// MainClass
-	ExewrapClassLoader_getMainClass = (*env)->GetStaticMethodID(env, ExewrapClassLoader, "getMainClass", "(Ljava/lang/String;)Ljava/lang/Class;");
-	if (ExewrapClassLoader_getMainClass == NULL)
-	{
-		result->msg_id = MSG_ID_ERR_GET_METHOD;
-		sprintf(result->msg, _(MSG_ID_ERR_GET_METHOD), "exewrap.core.ExewrapClassLoader.getMainClass(java.lang.String)");
-		goto EXIT;
-	}
-	MainClass = (*env)->CallStaticObjectMethod(env, ExewrapClassLoader, ExewrapClassLoader_getMainClass, GetJString(env, GetResource("MAIN_CLASS", NULL)));
+	// call Main
+	MainClass = (*env)->CallStaticObjectMethod(env, Loader, Loader_initialize, jars, urlStreamHandlerFactory, GetJString(env, utilities), GetJString(env, GetResource("MAIN_CLASS", NULL)));
 	if (MainClass == NULL)
 	{
 		result->msg_id = MSG_ID_ERR_LOAD_MAIN_CLASS;
@@ -308,7 +462,8 @@ BOOL SetSplashScreenResource(char* splash_screen_name, BYTE* splash_screen_image
 	BOOL       ret = FALSE;
 	jstring    name;
 	jbyteArray image;
-	jmethodID  ExewrapClassLoader_setSplashScreenResource;
+	jclass     Map;
+	jmethodID  Map_put;
 
 	name = GetJString(env, splash_screen_name);
 	if (name == NULL)
@@ -323,13 +478,18 @@ BOOL SetSplashScreenResource(char* splash_screen_name, BYTE* splash_screen_image
 	}
 	(*env)->SetByteArrayRegion(env, image, 0, splash_screen_image_len, splash_screen_image_buf);
 
-	ExewrapClassLoader_setSplashScreenResource = (*env)->GetStaticMethodID(env, ExewrapClassLoader, "setSplashScreenResource", "(Ljava/lang/String;[B)V");
-	if (ExewrapClassLoader_setSplashScreenResource == NULL)
+	Map = (*env)->FindClass(env, "java/util/Map");
+	if(Map == NULL)
+	{
+		goto EXIT;
+	}
+	Map_put = (*env)->GetMethodID(env, Map, "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
+	if (Map_put == NULL)
 	{
 		goto EXIT;
 	}
 
-	(*env)->CallStaticVoidMethod(env, ExewrapClassLoader, ExewrapClassLoader_setSplashScreenResource, name, image);
+	(*env)->CallObjectMethod(env, resources, Map_put, name, image);
 
 	ret = TRUE;
 

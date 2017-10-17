@@ -223,7 +223,7 @@ int main(int argc, char* argv[])
 		set_resource(exe_file, "EXTDIRS", RT_RCDATA, "lib", 4);
 	}
 
-	enable_java = CreateJavaVM(NULL, "exewrap.core.ExewrapClassLoader", FALSE, TRUE, NULL) != NULL;
+	enable_java = CreateJavaVM(NULL, "Loader", FALSE, TRUE, NULL) != NULL;
 	if (enable_java)
 	{
 		LOAD_RESULT result;
@@ -246,7 +246,7 @@ int main(int argc, char* argv[])
 
 		if (LoadMainClass(argc, argv, NULL, &result) == FALSE)
 		{
-			printf("ERROR: LoadMainClass: tool.jar exewrap.tool.JarProcessor\n");
+			printf("ERROR: LoadMainClass: tool.jar exewrap.tool.JarProcessor: %s\n", result.msg);
 			goto EXIT;
 		}
 		JarProcessor = result.MainClass;
@@ -509,9 +509,9 @@ int main(int argc, char* argv[])
 	original_filename = strrchr(exe_file, '\\') + 1;
 	new_version = set_version_info(exe_file, version_number, previous_revision, file_description, copyright, company_name, product_name, product_version, original_filename, jar_file);
 	
-	if(GetResource("CORE_JAR", &res) == NULL)
+	if(GetResource("LOADER", &res) == NULL)
 	{
-		printf("ERROR: GetResource: CORE_JAR\n");
+		printf("ERROR: GetResource: LOADER\n");
 		goto EXIT;
 	}
 	else

@@ -71,10 +71,6 @@ static int service_main(int argc, char* argv[])
 	int          i;
 
 	utilities[0] = '\0';
-	#ifdef TRACE
-	StartTrace(TRUE);
-	strcat(utilities, UTIL_CONSOLE_OUTPUT_STREAM);
-	#endif
 
 	service_name = get_service_name(NULL);
 	is_service = (flags & SERVICE_START_BY_SCM);
@@ -94,7 +90,7 @@ static int service_main(int argc, char* argv[])
 	if(vm_args_opt == NULL) {
 		vm_args_opt = (char*)GetResource("VMARGS", NULL);
 	}
-	CreateJavaVM(vm_args_opt, "exewrap.core.ExewrapClassLoader", use_server_vm, use_side_by_side_jre, &err);
+	CreateJavaVM(vm_args_opt, "Loader", use_server_vm, use_side_by_side_jre, &err);
 	if (err != JNI_OK)
 	{
 		OutputMessage(GetWinErrorMessage(err, &result.msg_id, result.msg));
@@ -231,10 +227,6 @@ EXIT:
 			DestroyJavaVM();
 		}
 	}
-
-	#ifdef TRACE
-	StopTrace();
-	#endif
 
 	return result.msg_id;
 }
