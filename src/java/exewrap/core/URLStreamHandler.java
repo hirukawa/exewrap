@@ -2,31 +2,27 @@ package exewrap.core;
 
 import java.io.IOException;
 import java.net.URL;
+import java.util.Map;
 
 public class URLStreamHandler extends java.net.URLStreamHandler {
 	
-	private byte[] buf;
 	private ClassLoader loader;
+	private Map<String, byte[]> resources;
 	
-	public URLStreamHandler(byte[] buf) {
-		this.buf = buf;
-	}
-	
-	public URLStreamHandler(ClassLoader loader) {
+	public URLStreamHandler(ClassLoader loader, Map<String, byte[]> resources) {
 		this.loader = loader;
+		this.resources = resources;
 	}
 	
 	protected java.net.URLConnection openConnection(URL url) throws IOException {
-		if(this.buf != null) {
-			return new URLConnection(url, this.buf);
-		} else if(this.loader != null) {
+		if(this.loader != null) {
 			String s = url.toExternalForm();
 			int i = s.toLowerCase().indexOf(".exe!/");
 			if(i >= 0) {
 				String name = s.substring(i + 6);
-				URL resource = loader.getResource(name);
-				if(resource != null) {
-					return resource.openConnection();
+				byte[] bytes = resources.get(name);
+				if(bytes != null) {
+					return new URLConnection(url, bytes);
 				}
 			}
 		}

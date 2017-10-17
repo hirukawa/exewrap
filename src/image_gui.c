@@ -20,7 +20,6 @@
 #include "include/loader.h"
 #include "include/notify.h"
 #include "include/message.h"
-#include "include/trace.h"
 
 void OutputConsole(BYTE* buf, DWORD len);
 void OutputMessage(const char* text);
@@ -56,17 +55,6 @@ INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine,
 	LOAD_RESULT result;
 
 	utilities[0] = '\0';
-	#ifdef TRACE
-	{
-		const char* filename = StartTrace(FALSE);
-		vm_args_opt = (char*)malloc(1024);
-		sprintf(vm_args_opt, "-XX:+UnlockDiagnosticVMOptions -XX:+LogVMOutput -XX:LogFile=\"%s\" ", filename);
-		if (GetResource("VMARGS", &res) != NULL)
-		{
-			strcat(vm_args_opt, res.buf);
-		}
-	}
-	#endif
 
 	argv = get_args(&argc);
 	result.msg = malloc(2048);
@@ -119,7 +107,7 @@ INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine,
 	{
 		vm_args_opt = (char*)GetResource("VMARGS", NULL);
 	}
-	CreateJavaVM(vm_args_opt, "exewrap.core.ExewrapClassLoader", use_server_vm, use_side_by_side_jre, &err);
+	CreateJavaVM(vm_args_opt, "Loader", use_server_vm, use_side_by_side_jre, &err);
 	if (err != JNI_OK)
 	{
 		OutputMessage(GetJniErrorMessage(err, &result.msg_id, result.msg));
@@ -203,10 +191,6 @@ EXIT:
 	}
 
 	NotifyClose();
-
-	#ifdef TRACE
-	StopTrace();
-	#endif
 
 	return result.msg_id;
 }

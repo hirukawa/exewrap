@@ -4,7 +4,7 @@ import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
 
-import exewrap.core.ExewrapClassLoader;
+import exewrap.core.NativeMethods;
 
 public class Environment implements Map<String, String> {
 
@@ -44,7 +44,7 @@ public class Environment implements Map<String, String> {
 
 	@Override
 	public String put(String key, String value) {
-		return ExewrapClassLoader.SetEnvironment(key, value);
+		return NativeMethods.SetEnvironment(key, value);
 	}
 
 	@Override

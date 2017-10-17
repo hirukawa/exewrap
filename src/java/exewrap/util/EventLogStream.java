@@ -6,7 +6,7 @@ import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 
-import exewrap.core.ExewrapClassLoader;
+import exewrap.core.NativeMethods;
 
 public class EventLogStream extends PrintStream {
 	public static final int INFORMATION = 0;
@@ -32,7 +32,7 @@ public class EventLogStream extends PrintStream {
 	}
 	
 	public void flush() {
-		ExewrapClassLoader.WriteEventLog(type, new String(buffer.toByteArray()));
+		NativeMethods.WriteEventLog(type, new String(buffer.toByteArray()));
 		buffer.reset();
 	}
 	

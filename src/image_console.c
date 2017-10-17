@@ -10,7 +10,6 @@
 #include "include/loader.h"
 #include "include/notify.h"
 #include "include/message.h"
-#include "include/trace.h"
 
 void    OutputConsole(BYTE* buf, DWORD len);
 void    OutputMessage(const char* text);
@@ -34,10 +33,6 @@ int main(int argc, char* argv[])
 	LOAD_RESULT result;
 
 	utilities[0] = '\0';
-	#ifdef TRACE
-	StartTrace(TRUE);
-	strcat(utilities, UTIL_CONSOLE_OUTPUT_STREAM);
-	#endif
 
 	result.msg = malloc(2048);
 
@@ -67,7 +62,7 @@ int main(int argc, char* argv[])
 	}
 
 	vm_args_opt = (char*)GetResource("VMARGS", NULL);
-	CreateJavaVM(vm_args_opt, "exewrap.core.ExewrapClassLoader", use_server_vm, use_side_by_side_jre, &err);
+	CreateJavaVM(vm_args_opt, "Loader", use_server_vm, use_side_by_side_jre, &err);
 	if (err != JNI_OK)
 	{
 		OutputMessage(GetJniErrorMessage(err, &result.msg_id, result.msg));
@@ -128,10 +123,6 @@ EXIT:
 	}
 
 	NotifyClose();
-
-	#ifdef TRACE
-	StopTrace();
-	#endif
 
 	return result.msg_id;
 }
