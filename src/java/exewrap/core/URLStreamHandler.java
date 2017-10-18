@@ -1,6 +1,7 @@
 package exewrap.core;
 
 import java.io.IOException;
+import java.net.Proxy;
 import java.net.URL;
 import java.util.Map;
 
@@ -27,5 +28,9 @@ public class URLStreamHandler extends java.net.URLStreamHandler {
 			}
 		}
 		return new URLConnection(url, null);
+	}
+	
+	protected java.net.URLConnection openConnection(URL url, Proxy proxy) throws IOException {
+		return openConnection(url);
 	}
 }
