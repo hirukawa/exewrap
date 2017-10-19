@@ -79,9 +79,9 @@ $(BIN)\exewrap.exe : $(BIN) $(OBJ) $(OBJ)\exewrap.res $(OBJ)\exewrap.obj \
 	$(OBJ)\bindres.exe    $(OBJ)\exewrap.exe URL_CONNECTION             $(OBJ)\exewrap\core\URLConnection.class
 	$(OBJ)\bindres.exe    $(OBJ)\exewrap.exe URL_STREAM_HANDLER         $(OBJ)\exewrap\core\URLStreamHandler.class
 	$(OBJ)\bindres.exe    $(OBJ)\exewrap.exe URL_STREAM_HANDLER_FACTORY $(OBJ)\exewrap\core\URLStreamHandlerFactory.class
+	$(OBJ)\bindres.exe    $(OBJ)\exewrap.exe LOADER_JAR                 $(OBJ)\loader.jar
 	$(OBJ)\bindres.exe    $(OBJ)\exewrap.exe UTIL_JAR                   $(OBJ)\util.jar
 	$(OBJ)\bindres.exe    $(OBJ)\exewrap.exe JAR                        $(OBJ)\tool.jar
-	$(OBJ)\bindres.exe    $(OBJ)\exewrap.exe LOADER                     $(OBJ)\loader.jar
 	copy /V /Y /B $(OBJ)\exewrap.exe + $(OBJ)\loader.jar $(BIN)\exewrap.exe
 
 $(OBJ)\exewrap.obj : $(OBJ) exewrap.c
@@ -96,7 +96,7 @@ $(OBJ)\image_console.exe : $(OBJ) $(OBJ)\image_console.res $(OBJ)\image_console.
 		$(OBJ)\exewrap\core\ByteBufferInputStream.class $(OBJ)\exewrap\core\NativeMethods.class $(OBJ)\exewrap\core\PackInputStream.class \
 		$(OBJ)\exewrap\core\URLConnection.class $(OBJ)\exewrap\core\URLStreamHandler.class $(OBJ)\exewrap\core\URLStreamHandlerFactory.class \
 		$(OBJ)\util.jar
-	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE$(TARGET_VER) /MANIFEST /OUT:$(OBJ)\image_console.exe $(OBJ)\image_console.obj \
+	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE$(TARGET_VER) /MANIFEST /OUT:$(OBJ)\image_console.exe $(OBJ)\image_console.res $(OBJ)\image_console.obj \
 		$(OBJ)\jvm.obj $(OBJ)\loader.obj $(OBJ)\message.obj $(OBJ)\notify.obj $(OBJ)\eventlog.obj $(LIBS) $(MSVCRT_PATCH)
 	$(MT) -manifest $(OBJ)\image_console.exe.manifest -outputresource:$(OBJ)\image_console.exe;1
 	$(OBJ)\bindres.exe $(OBJ)\image_console.exe BYTE_BUFFER_INPUT_STREAM   $(OBJ)\exewrap\core\ByteBufferInputStream.class
