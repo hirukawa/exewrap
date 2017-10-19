@@ -62,6 +62,7 @@ int main(int argc, char* argv[])
 	char*    original_filename;
 	char*    new_version;
 	BOOL     contains_visualvm_display_name = FALSE;
+	BOOL     is_icon_set = FALSE;
 
 	char*    buf = NULL;
 	char*    ptr = NULL;
@@ -445,7 +446,22 @@ int main(int argc, char* argv[])
 
 	if(opt['i'] && *opt['i'] != '-' && *opt['i'] != '\0')
 	{
-		set_application_icon(exe_file, opt['i']);
+		size_t len = strlen(opt['i']);
+		if(len > 4 && stricmp(opt['i'] + len - 4, ".ico") == 0)
+		{
+			set_application_icon(exe_file, opt['i']);
+			is_icon_set = TRUE;
+		}
+		else
+		{
+			printf("Invalid icon filename: %s\n", opt['i']);
+		}
+	}
+	if(!opt['g'] && !opt['s'] && !is_icon_set)
+	{
+		// コンソールアプリケーションでアイコンが指定されていない場合は、
+		// リソースに内包しているアイコンを削除してシステム既定のアイコンが表示されるようにします。		
+		set_application_icon(exe_file, NULL);
 	}
 	
 	if(opt['v'] && *opt['v'] != '-' && *opt['v'] != '\0')
@@ -509,9 +525,9 @@ int main(int argc, char* argv[])
 	original_filename = strrchr(exe_file, '\\') + 1;
 	new_version = set_version_info(exe_file, version_number, previous_revision, file_description, copyright, company_name, product_name, product_version, original_filename, jar_file);
 	
-	if(GetResource("LOADER", &res) == NULL)
+	if(GetResource("LOADER_JAR", &res) == NULL)
 	{
-		printf("ERROR: GetResource: LOADER\n");
+		printf("ERROR: GetResource: LOADER_JAR\n");
 		goto EXIT;
 	}
 	else
@@ -966,7 +982,7 @@ static void set_application_icon(const char* filename, const char* icon_file)
 		EndUpdateResource(hResource, FALSE);
 	}
 
-	if (!strlen(icon_file))
+	if (icon_file == NULL || !strlen(icon_file))
 	{
 		return;
 	}
