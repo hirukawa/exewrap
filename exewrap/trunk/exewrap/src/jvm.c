@@ -469,8 +469,12 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 		{
 			char* subkeys[] =
 			{
+				"SOFTWARE\\Wow6432Node\\JavaSoft\\JDK", //Java9-
+				"SOFTWARE\\Wow6432Node\\JavaSoft\\JRE", //Java9-
 				"SOFTWARE\\Wow6432Node\\JavaSoft\\Java Development Kit",
 				"SOFTWARE\\Wow6432Node\\JavaSoft\\Java Runtime Environment",
+				"SOFTWARE\\JavaSoft\\JDK", //Java9-
+				"SOFTWARE\\JavaSoft\\JRE", //Java9-
 				"SOFTWARE\\JavaSoft\\Java Development Kit",
 				"SOFTWARE\\JavaSoft\\Java Runtime Environment",
 				NULL
