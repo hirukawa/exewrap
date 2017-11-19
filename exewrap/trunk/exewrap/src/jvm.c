@@ -9,6 +9,7 @@
 
 void    InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useServerVM, BOOL useSideBySideJRE);
 int     GetProcessArchitecture();
+int     GetPlatformArchitecture();
 JNIEnv* CreateJavaVM(LPTSTR vm_args_opt, LPTSTR systemClassLoader, BOOL useServerVM, BOOL useSideBySideJRE, int* err);
 void    DestroyJavaVM();
 JNIEnv* AttachJavaVM();
@@ -52,11 +53,36 @@ char*	libpath = NULL;
 HMODULE jvmdll;
 
 /* このプロセスのアーキテクチャ(32ビット/64ビット)を返します。
+　* 64ビットOSで32ビットプロセスを実行している場合、この関数は32を返します。
  * 戻り値として32ビットなら 32 を返します。64ビットなら 64 を返します。
  */
 int GetProcessArchitecture()
 {
 	return sizeof(int*) * 8;
+}
+
+/* OSのアーキテクチャ(32ビット/64ビット)を返します。
+　* 64ビットOSで32ビットプロセスを実行している場合、この関数は64を返します。
+ *　戻り値として32ビットなら 32 を返します。64ビットなら 64 を返します。
+ */
+int GetPlatformArchitecture()
+{
+	char buf[256];
+	if(GetEnvironmentVariable("PROCESSOR_ARCHITECTURE", buf, 256))
+	{
+		if(strstr(buf, "64") >= 0)
+		{
+			return 64;
+		}
+		else if(GetEnvironmentVariable("PROCESSOR_ARCHITEW6432", buf, 256))
+		{
+			if(strstr(buf, "64") >= 0)
+			{
+			return 64;
+			}
+		}
+	}
+	return 32;
 }
 
 JNIEnv* CreateJavaVM(LPTSTR vm_args_opt, LPTSTR systemClassLoader, BOOL useServerVM, BOOL useSideBySideJRE, int* err)
@@ -467,24 +493,32 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 		jre3[0] = '\0';
 		if(GetEnvironmentVariable("JAVA_HOME", jre3, MAX_PATH) == 0)
 		{
-			char* subkeys[] =
+			char* subkeys_native[] =
 			{
-				"SOFTWARE\\Wow6432Node\\JavaSoft\\JDK", //Java9-
-				"SOFTWARE\\Wow6432Node\\JavaSoft\\JRE", //Java9-
-				"SOFTWARE\\Wow6432Node\\JavaSoft\\Java Development Kit",
-				"SOFTWARE\\Wow6432Node\\JavaSoft\\Java Runtime Environment",
 				"SOFTWARE\\JavaSoft\\JDK", //Java9-
 				"SOFTWARE\\JavaSoft\\JRE", //Java9-
 				"SOFTWARE\\JavaSoft\\Java Development Kit",
 				"SOFTWARE\\JavaSoft\\Java Runtime Environment",
 				NULL
 			};
+		
+			char* subkeys_wow[] = 
+			{
+				"SOFTWARE\\Wow6432Node\\JavaSoft\\JDK", //Java9-
+				"SOFTWARE\\Wow6432Node\\JavaSoft\\JRE", //Java9-
+				"SOFTWARE\\Wow6432Node\\JavaSoft\\Java Development Kit",
+				"SOFTWARE\\Wow6432Node\\JavaSoft\\Java Runtime Environment",
+				NULL
+			};
+			
+			char** subkeys = subkeys_native;
 			char* output = (char*)HeapAlloc(GetProcessHeap(), 0, MAX_PATH);
 			int i = 0;
-
-			if (GetProcessArchitecture() == 64)
+			
+			//32ビットプロセスを64ビットOSで実行している場合はWowレジストリから検索します。
+			if(GetProcessArchitecture() == 32 && GetPlatformArchitecture() == 64)
 			{
-				i = 2; //64ビットEXEの場合は 32ビットJREに適合しないので、Wow6432 レジストリの検索をスキップします。
+				subkeys = subkeys_wow;
 			}
 
 			while(subkeys[i] != NULL)
