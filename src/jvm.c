@@ -199,6 +199,10 @@ EXIT:
 		{
 			free(vmoptions[i]);
 		}
+		else
+		{
+			break;
+		}
 	}
 
 	return env;
