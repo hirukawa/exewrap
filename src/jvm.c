@@ -31,6 +31,7 @@ char**  GetArgsOpt(char* vm_args_opt, int* argc);
 int     GetArchitectureBits(const char* jvmpath);
 static  LPWSTR A2W(LPCSTR s);
 static  LPSTR W2A(LPCWSTR s);
+static  char* get_line(FILE* fp);
 
 
 typedef jint (WINAPI* JNIGetDefaultJavaVMInitArgs)(JavaVMInitArgs*);
@@ -95,6 +96,7 @@ JNIEnv* CreateJavaVM(LPTSTR vm_args_opt, LPTSTR systemClassLoader, BOOL useServe
 	int argc;
 	int i;
 	int result;
+	char* vmoptions[256] = {0};
 
 	if (!path_initialized)
 	{
@@ -145,6 +147,29 @@ JNIEnv* CreateJavaVM(LPTSTR vm_args_opt, LPTSTR systemClassLoader, BOOL useServe
 		options[vm_args.nOptions++].optionString = argv[i];
 	}
 	
+	//read .exe.vmoptions
+	//ìØÇ∂VMà¯êîÇ™ï°êîâÒéwíËÇ≥ÇÍÇΩèÍçáÇÕå„óDêÊÇ…Ç»ÇÈÇÃÇ≈ÅA.exe.vmoptionsÇóDêÊÇ∑ÇÈÇΩÇﬂÇ…ç≈å„Ç…í«â¡ÇµÇ‹Ç∑ÅB
+	{
+		char vm_opt_file[MAX_PATH];
+		GetModuleFileName(NULL, vm_opt_file, MAX_PATH);
+		strcat(vm_opt_file, ".vmoptions");
+		if(GetFileAttributes(vm_opt_file) != -1)
+		{
+			FILE* fp = fopen(vm_opt_file, "r");
+			if(fp != NULL)
+			{
+				char* line = NULL;
+				i = 0;
+				while((line = get_line(fp)) != NULL)
+				{
+					vmoptions[i++] = line;
+					options[vm_args.nOptions++].optionString = line;
+				}
+				fclose(fp);
+			}
+		}
+	}
+	
 	/*
 	for(i = 0; i < vm_args.nOptions; i++)
 	{
@@ -167,6 +192,13 @@ EXIT:
 			HeapFree(GetProcessHeap(), 0, argv[i]);
 		}
 		HeapFree(GetProcessHeap(), 0, argv);
+	}
+	for(i = 0; i < 256; i++)
+	{
+		if(vmoptions[i] != NULL)
+		{
+			free(vmoptions[i]);
+		}
 	}
 
 	return env;
@@ -1064,5 +1096,42 @@ static LPSTR W2A(LPCWSTR s)
 	}
 	buf[ret] = '\0';
 
+	return buf;
+}
+
+static char* get_line(FILE* fp)
+{
+	int size = 32;
+	int pos = 0;
+	int c;
+	char* buf = (char*)malloc(size);
+	
+	do {
+		c = fgetc(fp);
+		if(c != EOF)
+		{
+			buf[pos++] = (char)c;
+		}
+		if(pos >= size - 1)
+		{
+			size *= 2;
+			buf = (char*)realloc(buf, size);
+		}
+	} while(c != EOF && c != '\n');
+	
+	if(pos == 0)
+	{
+		free(buf);
+		return NULL;
+	}
+	if(pos >= 1 && buf[pos - 1] == '\n')
+	{
+		buf[pos - 1] = '\0';
+		if(pos >= 2 && buf[pos -2] == '\r')
+		{
+			buf[pos -2] = '\0';
+		}
+	}
+	buf[pos] = '\0';
 	return buf;
 }
