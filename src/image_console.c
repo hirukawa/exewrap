@@ -11,12 +11,8 @@
 #include "include/notify.h"
 #include "include/message.h"
 
-void    OutputConsole(BYTE* buf, DWORD len);
-void    OutputMessage(const char* text);
-UINT    UncaughtException(const char* thread, const char* message, const char* trace);
-
-static HANDLE hConOut = NULL;
-
+void OutputMessage(const char* text);
+UINT UncaughtException(const char* thread, const jthrowable throwable);
 
 int main(int argc, char* argv[])
 {
@@ -99,9 +95,17 @@ int main(int argc, char* argv[])
 		synchronize_mutex_handle = NULL;
 	}
 	(*env)->CallStaticVoidMethod(env, result.MainClass, result.MainClass_main, result.MainClass_main_args);
-
-	(*env)->ExceptionDescribe(env);
-	(*env)->ExceptionClear(env);
+	
+	if ((*env)->ExceptionCheck(env) == JNI_TRUE)
+	{
+		jthrowable throwable = (*env)->ExceptionOccurred(env);
+		if (throwable != NULL)
+		{
+			UncaughtException("main", throwable);
+			(*env)->DeleteLocalRef(env, throwable);
+		}
+		(*env)->ExceptionClear(env);
+	}
 
 EXIT:
 	if (synchronize_mutex_handle != NULL)
@@ -127,25 +131,6 @@ EXIT:
 	return result.msg_id;
 }
 
-void OutputConsole(BYTE* buf, DWORD len)
-{
-	DWORD written;
-
-	if (hConOut == INVALID_HANDLE_VALUE)
-	{
-		return;
-	}
-	if (hConOut == NULL)
-	{
-		hConOut = CreateFile("CONOUT$", GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
-		if (hConOut == INVALID_HANDLE_VALUE)
-		{
-			return;
-		}
-	}
-	WriteConsole(hConOut, buf, len, &written, NULL);
-}
-
 void OutputMessage(const char* text)
 {
 	DWORD written;
@@ -159,18 +144,52 @@ void OutputMessage(const char* text)
 	WriteConsole(GetStdHandle(STD_ERROR_HANDLE), "\r\n", 2, &written, NULL);
 }
 
-UINT UncaughtException(const char* thread, const char* message, const char* trace)
+UINT UncaughtException(const char* thread, const jthrowable throwable)
 {
-	if (thread != NULL)
+	jclass    Throwable                 = NULL;
+	jmethodID throwable_printStackTrace = NULL;
+	char*     buf                       = NULL;
+	DWORD     written;
+	
+	if(thread == NULL || throwable == NULL)
 	{
-		char* buf = malloc(32 + strlen(thread));
-		sprintf(buf, "Exception in thread \"%s\"", thread);
-		OutputMessage(buf);
+		goto EXIT;
+	}
+
+	Throwable = (*env)->FindClass(env, "java/lang/Throwable");
+	if(Throwable == NULL)
+	{
+		printf(_(MSG_ID_ERR_FIND_CLASS), "java.lang.Throwable");
+		goto EXIT;
+	}
+	throwable_printStackTrace = (*env)->GetMethodID(env, Throwable, "printStackTrace", "()V");
+	if(throwable_printStackTrace == NULL)
+	{
+		printf(_(MSG_ID_ERR_GET_METHOD), "java.lang.Throwable.printStackTrace()");
+		goto EXIT;
+	}
+
+	buf = malloc(1024);
+	if(buf == NULL)
+	{
+		goto EXIT;
+	}
+	sprintf(buf, "Exception in thread \"%s\" ", thread);
+	WriteConsole(GetStdHandle(STD_ERROR_HANDLE), buf, (DWORD)strlen(buf), &written, NULL);
+	
+	(*env)->CallObjectMethod(env, throwable, throwable_printStackTrace);
+	
+EXIT:
+	if(buf != NULL)
+	{
 		free(buf);
+		buf = NULL;
 	}
-	if (trace != NULL)
+	if(Throwable != NULL)
 	{
-		OutputMessage(trace);
+		(*env)->DeleteLocalRef(env, Throwable);
+		Throwable = NULL;
 	}
+
 	return MSG_ID_ERR_UNCAUGHT_EXCEPTION;
 }

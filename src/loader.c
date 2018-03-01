@@ -14,23 +14,20 @@
 BOOL            LoadMainClass(int argc, char* argv[], char* utilities, LOAD_RESULT* result);
 BOOL            SetSplashScreenResource(char* splash_screen_name, BYTE* splash_screen_image_buf, DWORD splash_screen_image_len);
 DWORD   WINAPI  RemoteCallMainMethod(void* _shared_memory_handle);
-char*           ToString(JNIEnv* env, jobject object, char* buf);
 char*           GetModuleObjectName(const char* prefix);
 BYTE*           GetResource(LPCTSTR name, RESOURCE* resource);
 char*           GetWinErrorMessage(DWORD err, int* exit_code, char* buf);
 char*           GetJniErrorMessage(int err, int* exit_code, char* buf);
-void    JNICALL JNI_WriteConsole(JNIEnv *env, jobject clazz, jbyteArray b, jint off, jint len);
 void    JNICALL JNI_WriteEventLog(JNIEnv *env, jobject clazz, jint logType, jstring message);
-void    JNICALL JNI_UncaughtException(JNIEnv *env, jobject clazz, jstring thread, jstring message, jstring trace);
+void    JNICALL JNI_UncaughtException(JNIEnv *env, jobject clazz, jstring thread, jthrowable throwable);
 jstring JNICALL JNI_SetEnvironment(JNIEnv *env, jobject clazz, jstring key, jstring value);
 
 static jint   register_native(JNIEnv* env, jclass cls, const char* name, const char* signature, void* fnPtr);
 static void   print_stack_trace(const char* text);
 static char** split_args(char* buffer, int* p_argc);
 
-extern void   OutputConsole(BYTE* buf, DWORD len);
 extern void   OutputMessage(const char* text);
-extern UINT   UncaughtException(const char* thread, const char* message, const char* trace);
+extern UINT   UncaughtException(const char* thread, const jthrowable throwable);
 
 static jclass    Loader = NULL;
 static jobject   resources = NULL;
@@ -175,19 +172,13 @@ BOOL LoadMainClass(int argc, char* argv[], char* utilities, LOAD_RESULT* result)
 		sprintf(result->msg, _(MSG_ID_ERR_FIND_CLASS), "exewrap.core.NativeMethods");
 		goto EXIT;
 	}
-	if (register_native(env, NativeMethods, "WriteConsole", "([BII)V", JNI_WriteConsole) != 0)
-	{
-		result->msg_id = MSG_ID_ERR_REGISTER_NATIVE;
-		sprintf(result->msg, _(MSG_ID_ERR_REGISTER_NATIVE), "WriteConsole");
-		goto EXIT;
-	}
 	if (register_native(env, NativeMethods, "WriteEventLog", "(ILjava/lang/String;)V", JNI_WriteEventLog) != 0)
 	{
 		result->msg_id = MSG_ID_ERR_REGISTER_NATIVE;
 		sprintf(result->msg, _(MSG_ID_ERR_REGISTER_NATIVE), "WriteEventLog");
 		goto EXIT;
 	}
-	if (register_native(env, NativeMethods, "UncaughtException", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V", JNI_UncaughtException) != 0)
+	if (register_native(env, NativeMethods, "UncaughtException", "(Ljava/lang/String;Ljava/lang/Throwable;)V", JNI_UncaughtException) != 0)
 	{
 		result->msg_id = MSG_ID_ERR_REGISTER_NATIVE;
 		sprintf(result->msg, _(MSG_ID_ERR_REGISTER_NATIVE), "UncaughtException");
@@ -553,7 +544,13 @@ DWORD WINAPI RemoteCallMainMethod(void* _shared_memory_handle)
 	(*env)->CallStaticVoidMethod(env, MainClass, MainClass_main, args);
 	if ((*env)->ExceptionCheck(env) == JNI_TRUE)
 	{
-		print_stack_trace(NULL);
+		jthrowable throwable = (*env)->ExceptionOccurred(env);
+		if (throwable != NULL)
+		{
+			UncaughtException("main", throwable);
+			(*env)->DeleteLocalRef(env, throwable);
+		}
+		(*env)->ExceptionClear(env);
 	}
 	DetachJavaVM();
 
@@ -566,56 +563,6 @@ EXIT:
 	return 0;
 }
 
-
-char* ToString(JNIEnv* env, jobject object, char* buf)
-{
-	jclass    Object;
-	jmethodID Object_getClass;
-	jclass    object_class;
-	jmethodID object_class_toString;
-	jstring   str;
-	char*     sjis;
-
-	if (object == NULL)
-	{
-		return NULL;
-	}
-	Object = (*env)->FindClass(env, "java/lang/Object");
-	if (Object == NULL)
-	{
-		return NULL;
-	}
-	Object_getClass = (*env)->GetMethodID(env, Object, "getClass", "()Ljava/lang/Class;");
-	if (Object_getClass == NULL)
-	{
-		return NULL;
-	}
-	object_class = (*env)->CallObjectMethod(env, object, Object_getClass);
-	if (object_class == NULL)
-	{
-		return NULL;
-	}
-	object_class_toString = (*env)->GetMethodID(env, object_class, "toString", "()Ljava/lang/String;");
-	if (object_class_toString == NULL)
-	{
-		return NULL;
-	}
-	str = (*env)->CallObjectMethod(env, object, object_class_toString);
-	if (str == NULL)
-	{
-		return NULL;
-	}
-	
-	sjis = GetShiftJIS(env, str);
-	if (buf != NULL)
-	{
-		strcpy(buf, sjis);
-		HeapFree(GetProcessHeap(), 0, sjis);
-		sjis = buf;
-	}
-
-	return sjis;
-}
 
 
 char* GetModuleObjectName(const char* prefix)
@@ -635,7 +582,6 @@ char* GetModuleObjectName(const char* prefix)
 	free(module_filename);
 	return object_name;
 }
-
 
 BYTE* GetResource(LPCTSTR name, RESOURCE* resource)
 {
@@ -721,17 +667,6 @@ char* GetJniErrorMessage(int err, int* exit_code, char* buf)
 }
 
 
-void JNICALL JNI_WriteConsole(JNIEnv *env, jobject clazz, jbyteArray b, jint off, jint len)
-{
-	jboolean isCopy;
-	BYTE*    buf;
-
-	buf = (*env)->GetByteArrayElements(env, b, &isCopy);
-	OutputConsole(buf, len);
-	(*env)->ReleaseByteArrayElements(env, b, buf, 0);
-}
-
-
 void JNICALL JNI_WriteEventLog(JNIEnv *env, jobject clazz, jint logType, jstring message)
 {
 	WORD  nType;
@@ -750,30 +685,18 @@ void JNICALL JNI_WriteEventLog(JNIEnv *env, jobject clazz, jint logType, jstring
 }
 
 
-void JNICALL JNI_UncaughtException(JNIEnv *env, jobject clazz, jstring thread, jstring message, jstring trace)
+void JNICALL JNI_UncaughtException(JNIEnv *env, jobject clazz, jstring thread, jthrowable throwable)
 {
 	char* sjis_thread;
-	char* sjis_message;
-	char* sjis_trace;
 	UINT  exit_code;
 
 	sjis_thread = GetShiftJIS(env, thread);
-	sjis_message = GetShiftJIS(env, message);
-	sjis_trace = GetShiftJIS(env, trace);
 
-	exit_code = UncaughtException(sjis_thread, sjis_message, sjis_trace);
+	exit_code = UncaughtException(sjis_thread, throwable);
 
 	if (sjis_thread != NULL)
 	{
 		HeapFree(GetProcessHeap(), 0, sjis_thread);
-	}
-	if (sjis_message != NULL)
-	{
-		HeapFree(GetProcessHeap(), 0, sjis_message);
-	}
-	if (sjis_trace != NULL)
-	{
-		HeapFree(GetProcessHeap(), 0, sjis_trace);
 	}
 
 	ExitProcess(exit_code);

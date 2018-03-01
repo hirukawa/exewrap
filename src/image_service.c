@@ -20,9 +20,8 @@
 #define SERVICE_START_BY_SCM       32
 #define SHOW_HELP_MESSAGE          64
 
-void    OutputConsole(BYTE* buf, DWORD len);
-void    OutputMessage(const char* text);
-UINT    UncaughtException(const char* thread, const char* message, const char* trace);
+void OutputMessage(const char* text);
+UINT UncaughtException(const char* thread, const jthrowable throwable);
 
 static int         install_service(char* service_name, int argc, char* argv[], int opt_end);
 static int         set_service_description(char* service_name, char* description);
@@ -187,15 +186,7 @@ static int service_main(int argc, char* argv[])
 		jthrowable throwable = (*env)->ExceptionOccurred(env);
 		if (throwable != NULL)
 		{
-			ToString(env, throwable, result.msg);
-			if (is_service)
-			{
-				WriteEventLog(EVENTLOG_ERROR_TYPE, result.msg);
-			}
-			else
-			{
-				OutputMessage(result.msg);
-			}
+			UncaughtException("main", throwable);
 			(*env)->DeleteLocalRef(env, throwable);
 		}
 		(*env)->ExceptionClear(env);
@@ -231,12 +222,6 @@ EXIT:
 	return result.msg_id;
 }
 
-
-void OutputConsole(BYTE* buf, DWORD len)
-{
-}
-
-
 void OutputMessage(const char* text)
 {
 	DWORD written;
@@ -250,19 +235,162 @@ void OutputMessage(const char* text)
 	WriteConsole(GetStdHandle(STD_ERROR_HANDLE), "\r\n", 2, &written, NULL);
 }
 
-
-UINT UncaughtException(const char* thread, const char* message, const char* trace)
+UINT UncaughtException(const char* thread, const jthrowable throwable)
 {
 	BOOL is_service = (flags & SERVICE_START_BY_SCM);
+	
+	jclass     StringWriter              = NULL;
+	jmethodID  StringWriter_init         = NULL;
+	jmethodID  stringWriter_flush        = NULL;
+	jmethodID  stringWriter_toString     = NULL;
+	jobject    stringWriter              = NULL;
+	jclass     PrintWriter               = NULL;
+	jmethodID  PrintWriter_init          = NULL;
+	jmethodID  printWriter_flush         = NULL;
+	jobject    printWriter               = NULL;
+	jclass     Throwable                 = NULL;
+	jmethodID  throwable_printStackTrace = NULL;
+	jstring    stacktrace                = NULL;
+	char*      buf                       = NULL;
+	char*      sjis                      = NULL;
+
+	StringWriter = (*env)->FindClass(env, "java/io/StringWriter");
+	if(StringWriter == NULL)
+	{
+		printf(_(MSG_ID_ERR_FIND_CLASS), "java.io.StringWriter");
+		goto EXIT;
+	}
+	StringWriter_init = (*env)->GetMethodID(env, StringWriter, "<init>","()V");
+	if(StringWriter_init == NULL)
+	{
+		printf(_(MSG_ID_ERR_GET_CONSTRUCTOR), "java.io.StringWriter()");
+		goto EXIT;
+	}
+	stringWriter_flush = (*env)->GetMethodID(env, StringWriter, "flush", "()V");
+	if(stringWriter_flush == NULL)
+	{
+		printf(_(MSG_ID_ERR_GET_METHOD), "java.io.StringWriter.flush()");
+		goto EXIT;
+	}
+	stringWriter_toString = (*env)->GetMethodID(env, StringWriter, "toString", "()Ljava/lang/String;");
+	if(stringWriter_toString == NULL)
+	{
+		printf(_(MSG_ID_ERR_GET_METHOD), "java.io.StringWriter.toString()");
+		goto EXIT;
+	}
+	stringWriter = (*env)->NewObject(env, StringWriter, StringWriter_init);
+	if(stringWriter == NULL)
+	{
+		printf(_(MSG_ID_ERR_NEW_OBJECT), "java.io.StringWriter()");
+		goto EXIT;
+	}
+
+	PrintWriter = (*env)->FindClass(env, "java/io/PrintWriter");
+	if(PrintWriter == NULL)
+	{
+		printf(_(MSG_ID_ERR_FIND_CLASS), "java.io.PrintWriter");
+		goto EXIT;
+	}
+	PrintWriter_init = (*env)->GetMethodID(env, PrintWriter, "<init>", "(Ljava/io/Writer;)V");
+	if(PrintWriter_init == NULL)
+	{
+		printf(_(MSG_ID_ERR_GET_CONSTRUCTOR), "java.io.PrintWriter(java.io.Writer)");
+		goto EXIT;
+	}
+	printWriter_flush = (*env)->GetMethodID(env, PrintWriter, "flush", "()V");
+	if(printWriter_flush == NULL)
+	{
+		printf(_(MSG_ID_ERR_GET_METHOD), "java.io.PrintWriter.flush()");
+		goto EXIT;
+	}
+	printWriter = (*env)->NewObject(env, PrintWriter, PrintWriter_init, stringWriter);
+	if(printWriter == NULL)
+	{
+		printf(_(MSG_ID_ERR_NEW_OBJECT), "java.io.PrintWriter(java.io.Writer)");
+		goto EXIT;
+	}
+
+	Throwable = (*env)->FindClass(env, "java/lang/Throwable");
+	if(Throwable == NULL)
+	{
+		printf(_(MSG_ID_ERR_FIND_CLASS), "java.lang.Throwable");
+		goto EXIT;
+	}
+	throwable_printStackTrace = (*env)->GetMethodID(env, Throwable, "printStackTrace", "(Ljava/io/PrintWriter;)V");
+	if(throwable_printStackTrace == NULL)
+	{
+		printf(_(MSG_ID_ERR_GET_METHOD), "java.lang.Throwable.printStackTrace(java.io.PrintWriter)");
+		goto EXIT;
+	}
+	
+	buf = malloc(65536);
+	if(buf == NULL)
+	{
+		goto EXIT;
+	}
+	strcpy(buf, "Exception in thread \"");
+	strcat(buf, thread);
+	strcat(buf, "\" ");
+	
+	(*env)->CallObjectMethod(env, throwable, throwable_printStackTrace, printWriter);
+	(*env)->CallObjectMethod(env, printWriter, printWriter_flush);
+	(*env)->CallObjectMethod(env, stringWriter, stringWriter_flush);
+	stacktrace = (jstring)(*env)->CallObjectMethod(env, stringWriter, stringWriter_toString);
+	sjis = GetShiftJIS(env, stacktrace);
+	strcat(buf, sjis);
 
 	if (is_service)
 	{
-		char* buf = (char*)malloc(strlen(thread) + strlen(message) + strlen(trace) + 64);
-
-		sprintf(buf, "Exception in thread \"%s\" %s", thread, trace);
 		WriteEventLog(EVENTLOG_ERROR_TYPE, buf);
-		free(buf);
 	}
+	else
+	{
+		DWORD written;
+		WriteConsole(GetStdHandle(STD_ERROR_HANDLE), buf, (DWORD)strlen(buf), &written, NULL);
+	}
+
+EXIT:
+	if(sjis != NULL)
+	{
+		HeapFree(GetProcessHeap(), 0, sjis);
+		sjis = NULL;
+	}
+	if(stacktrace != NULL)
+	{
+		(*env)->DeleteLocalRef(env, stacktrace);
+		stacktrace = NULL;
+	}
+	if(buf != NULL)
+	{
+		free(buf);
+		buf = NULL;
+	}
+	if(Throwable != NULL)
+	{
+		(*env)->DeleteLocalRef(env, Throwable);
+		Throwable = NULL;
+	}
+	if(printWriter != NULL)
+	{
+		(*env)->DeleteLocalRef(env, printWriter);
+		printWriter = NULL;
+	}
+	if(PrintWriter != NULL)
+	{
+		(*env)->DeleteLocalRef(env, PrintWriter);
+		PrintWriter = NULL;
+	}
+	if(stringWriter != NULL)
+	{
+		(*env)->DeleteLocalRef(env, stringWriter);
+		stringWriter = NULL;
+	}
+	if(StringWriter != NULL)
+	{
+		(*env)->DeleteLocalRef(env, StringWriter);
+		StringWriter = NULL;
+	}
+
 	return MSG_ID_ERR_UNCAUGHT_EXCEPTION;
 }
 
@@ -818,16 +946,7 @@ static void stop_service_main()
 		jthrowable throwable = (*env)->ExceptionOccurred(env);
 		if (throwable != NULL)
 		{
-			buf = malloc(2048);
-			ToString(env, throwable, buf);
-			if (is_service)
-			{
-				WriteEventLog(EVENTLOG_ERROR_TYPE, buf);
-			}
-			else
-			{
-				OutputMessage(buf);
-			}
+			UncaughtException("scm", throwable);
 			(*env)->DeleteLocalRef(env, throwable);
 		}
 		(*env)->ExceptionClear(env);
