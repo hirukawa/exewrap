@@ -18,9 +18,8 @@
 #define DEFAULT_VERSION         "0.0"
 #define DEFAULT_PRODUCT_VERSION "0.0"
 
-void    OutputConsole(BYTE* buf, DWORD len);
-void    OutputMessage(const char* text);
-UINT    UncaughtException(const char* thread, const char* message, const char* trace);
+void OutputMessage(const char* text);
+UINT UncaughtException(const char* thread, const jthrowable throwable);
 
 static char** parse_opt(int argc, char* argv[]);
 static DWORD  get_version_revision(char* filename);
@@ -719,8 +718,6 @@ static BOOL append_exe_file(const char* filename, BYTE* image_buf, DWORD image_l
 	HANDLE hFile;
 	BYTE*  buf = NULL;
 	DWORD  write_size;
-	char*  dir;
-	char*  ptr;
 	
 	hFile = CreateFile(filename, FILE_APPEND_DATA, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (hFile == INVALID_HANDLE_VALUE)
@@ -1204,17 +1201,12 @@ static char* set_version_info(const char* filename, const char* version_number, 
 }
 
 
-void OutputConsole(BYTE* buf, DWORD len)
-{
-}
-
-
 void OutputMessage(const char* text)
 {
 }
 
 
-UINT UncaughtException(const char* thread, const char* message, const char* trace)
+UINT UncaughtException(const char* thread, const jthrowable throwable)
 {
 	return 0;
 }
