@@ -12,7 +12,7 @@
 #include "include/message.h"
 
 void OutputMessage(const char* text);
-UINT UncaughtException(const char* thread, const jthrowable throwable);
+UINT UncaughtException(JNIEnv* env, const char* thread, const jthrowable throwable);
 
 int main(int argc, char* argv[])
 {
@@ -101,7 +101,7 @@ int main(int argc, char* argv[])
 		jthrowable throwable = (*env)->ExceptionOccurred(env);
 		if (throwable != NULL)
 		{
-			UncaughtException("main", throwable);
+			UncaughtException(env, "main", throwable);
 			(*env)->DeleteLocalRef(env, throwable);
 		}
 		(*env)->ExceptionClear(env);
@@ -144,7 +144,7 @@ void OutputMessage(const char* text)
 	WriteConsole(GetStdHandle(STD_ERROR_HANDLE), "\r\n", 2, &written, NULL);
 }
 
-UINT UncaughtException(const char* thread, const jthrowable throwable)
+UINT UncaughtException(JNIEnv* env, const char* thread, const jthrowable throwable)
 {
 	jclass    Throwable                 = NULL;
 	jmethodID throwable_printStackTrace = NULL;

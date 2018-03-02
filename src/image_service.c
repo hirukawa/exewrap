@@ -21,7 +21,7 @@
 #define SHOW_HELP_MESSAGE          64
 
 void OutputMessage(const char* text);
-UINT UncaughtException(const char* thread, const jthrowable throwable);
+UINT UncaughtException(JNIEnv* env, const char* thread, const jthrowable throwable);
 
 static int         install_service(char* service_name, int argc, char* argv[], int opt_end);
 static int         set_service_description(char* service_name, char* description);
@@ -92,7 +92,8 @@ static int service_main(int argc, char* argv[])
 	CreateJavaVM(vm_args_opt, "Loader", use_server_vm, use_side_by_side_jre, &err);
 	if (err != JNI_OK)
 	{
-		OutputMessage(GetWinErrorMessage(err, &result.msg_id, result.msg));
+		GetJniErrorMessage(err, &result.msg_id, result.msg);
+		is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, result.msg) : OutputMessage(result.msg);
 		goto EXIT;
 	}
 
@@ -105,7 +106,7 @@ static int service_main(int argc, char* argv[])
 			char* targetVersionString = (char*)res.buf + 4;
 			result.msg_id = MSG_ID_ERR_TARGET_VERSION;
 			sprintf(result.msg, _(MSG_ID_ERR_TARGET_VERSION), targetVersionString);
-			OutputMessage(result.msg);
+			is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, result.msg) : OutputMessage(result.msg);
 			goto EXIT;
 		}
 	}
@@ -126,7 +127,7 @@ static int service_main(int argc, char* argv[])
 
 	if (LoadMainClass(argc, argv, utilities, &result) == FALSE)
 	{
-		OutputMessage(result.msg);
+		is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, result.msg) : OutputMessage(result.msg);
 		goto EXIT;
 	}
 	MainClass = result.MainClass;
@@ -136,7 +137,7 @@ static int service_main(int argc, char* argv[])
 	{
 		result.msg_id = MSG_ID_ERR_FIND_METHOD_SERVICE_START;
 		strcpy(result.msg, _(MSG_ID_ERR_FIND_METHOD_SERVICE_START));
-		OutputMessage(result.msg);
+		is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, result.msg) : OutputMessage(result.msg);
 		goto EXIT;
 	}
 	if (is_service && argc > 2)
@@ -164,7 +165,7 @@ static int service_main(int argc, char* argv[])
 	{
 		result.msg_id = MSG_ID_ERR_FIND_METHOD_SERVICE_STOP;
 		strcpy(result.msg, _(MSG_ID_ERR_FIND_METHOD_SERVICE_STOP));
-		OutputMessage(result.msg);
+		is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, result.msg) : OutputMessage(result.msg);
 		goto EXIT;
 	}
 
@@ -186,7 +187,7 @@ static int service_main(int argc, char* argv[])
 		jthrowable throwable = (*env)->ExceptionOccurred(env);
 		if (throwable != NULL)
 		{
-			UncaughtException("main", throwable);
+			UncaughtException(env, "main", throwable);
 			(*env)->DeleteLocalRef(env, throwable);
 		}
 		(*env)->ExceptionClear(env);
@@ -235,7 +236,7 @@ void OutputMessage(const char* text)
 	WriteConsole(GetStdHandle(STD_ERROR_HANDLE), "\r\n", 2, &written, NULL);
 }
 
-UINT UncaughtException(const char* thread, const jthrowable throwable)
+UINT UncaughtException(JNIEnv* env, const char* thread, const jthrowable throwable)
 {
 	BOOL is_service = (flags & SERVICE_START_BY_SCM);
 	
@@ -254,72 +255,8 @@ UINT UncaughtException(const char* thread, const jthrowable throwable)
 	char*      buf                       = NULL;
 	char*      sjis                      = NULL;
 
-	StringWriter = (*env)->FindClass(env, "java/io/StringWriter");
-	if(StringWriter == NULL)
+	if(thread == NULL || throwable == NULL)
 	{
-		printf(_(MSG_ID_ERR_FIND_CLASS), "java.io.StringWriter");
-		goto EXIT;
-	}
-	StringWriter_init = (*env)->GetMethodID(env, StringWriter, "<init>","()V");
-	if(StringWriter_init == NULL)
-	{
-		printf(_(MSG_ID_ERR_GET_CONSTRUCTOR), "java.io.StringWriter()");
-		goto EXIT;
-	}
-	stringWriter_flush = (*env)->GetMethodID(env, StringWriter, "flush", "()V");
-	if(stringWriter_flush == NULL)
-	{
-		printf(_(MSG_ID_ERR_GET_METHOD), "java.io.StringWriter.flush()");
-		goto EXIT;
-	}
-	stringWriter_toString = (*env)->GetMethodID(env, StringWriter, "toString", "()Ljava/lang/String;");
-	if(stringWriter_toString == NULL)
-	{
-		printf(_(MSG_ID_ERR_GET_METHOD), "java.io.StringWriter.toString()");
-		goto EXIT;
-	}
-	stringWriter = (*env)->NewObject(env, StringWriter, StringWriter_init);
-	if(stringWriter == NULL)
-	{
-		printf(_(MSG_ID_ERR_NEW_OBJECT), "java.io.StringWriter()");
-		goto EXIT;
-	}
-
-	PrintWriter = (*env)->FindClass(env, "java/io/PrintWriter");
-	if(PrintWriter == NULL)
-	{
-		printf(_(MSG_ID_ERR_FIND_CLASS), "java.io.PrintWriter");
-		goto EXIT;
-	}
-	PrintWriter_init = (*env)->GetMethodID(env, PrintWriter, "<init>", "(Ljava/io/Writer;)V");
-	if(PrintWriter_init == NULL)
-	{
-		printf(_(MSG_ID_ERR_GET_CONSTRUCTOR), "java.io.PrintWriter(java.io.Writer)");
-		goto EXIT;
-	}
-	printWriter_flush = (*env)->GetMethodID(env, PrintWriter, "flush", "()V");
-	if(printWriter_flush == NULL)
-	{
-		printf(_(MSG_ID_ERR_GET_METHOD), "java.io.PrintWriter.flush()");
-		goto EXIT;
-	}
-	printWriter = (*env)->NewObject(env, PrintWriter, PrintWriter_init, stringWriter);
-	if(printWriter == NULL)
-	{
-		printf(_(MSG_ID_ERR_NEW_OBJECT), "java.io.PrintWriter(java.io.Writer)");
-		goto EXIT;
-	}
-
-	Throwable = (*env)->FindClass(env, "java/lang/Throwable");
-	if(Throwable == NULL)
-	{
-		printf(_(MSG_ID_ERR_FIND_CLASS), "java.lang.Throwable");
-		goto EXIT;
-	}
-	throwable_printStackTrace = (*env)->GetMethodID(env, Throwable, "printStackTrace", "(Ljava/io/PrintWriter;)V");
-	if(throwable_printStackTrace == NULL)
-	{
-		printf(_(MSG_ID_ERR_GET_METHOD), "java.lang.Throwable.printStackTrace(java.io.PrintWriter)");
 		goto EXIT;
 	}
 	
@@ -328,6 +265,87 @@ UINT UncaughtException(const char* thread, const jthrowable throwable)
 	{
 		goto EXIT;
 	}
+	
+	StringWriter = (*env)->FindClass(env, "java/io/StringWriter");
+	if(StringWriter == NULL)
+	{
+		sprintf(buf, _(MSG_ID_ERR_FIND_CLASS), "java.io.StringWriter");
+		is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, buf) : OutputMessage(buf);
+		goto EXIT;
+	}
+	StringWriter_init = (*env)->GetMethodID(env, StringWriter, "<init>","()V");
+	if(StringWriter_init == NULL)
+	{
+		sprintf(buf, _(MSG_ID_ERR_GET_CONSTRUCTOR), "java.io.StringWriter()");
+		is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, buf) : OutputMessage(buf);
+		goto EXIT;
+	}
+	stringWriter_flush = (*env)->GetMethodID(env, StringWriter, "flush", "()V");
+	if(stringWriter_flush == NULL)
+	{
+		sprintf(buf, _(MSG_ID_ERR_GET_METHOD), "java.io.StringWriter.flush()");
+		is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, buf) : OutputMessage(buf);
+		goto EXIT;
+	}
+	stringWriter_toString = (*env)->GetMethodID(env, StringWriter, "toString", "()Ljava/lang/String;");
+	if(stringWriter_toString == NULL)
+	{
+		sprintf(buf, _(MSG_ID_ERR_GET_METHOD), "java.io.StringWriter.toString()");
+		is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, buf) : OutputMessage(buf);
+		goto EXIT;
+	}
+	stringWriter = (*env)->NewObject(env, StringWriter, StringWriter_init);
+	if(stringWriter == NULL)
+	{
+		sprintf(buf, _(MSG_ID_ERR_NEW_OBJECT), "java.io.StringWriter()");
+		is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, buf) : OutputMessage(buf);
+		goto EXIT;
+	}
+
+	PrintWriter = (*env)->FindClass(env, "java/io/PrintWriter");
+	if(PrintWriter == NULL)
+	{
+		sprintf(buf, _(MSG_ID_ERR_FIND_CLASS), "java.io.PrintWriter");
+		is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, buf) : OutputMessage(buf);
+		goto EXIT;
+	}
+	PrintWriter_init = (*env)->GetMethodID(env, PrintWriter, "<init>", "(Ljava/io/Writer;)V");
+	if(PrintWriter_init == NULL)
+	{
+		sprintf(buf, _(MSG_ID_ERR_GET_CONSTRUCTOR), "java.io.PrintWriter(java.io.Writer)");
+		is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, buf) : OutputMessage(buf);
+		goto EXIT;
+	}
+	printWriter_flush = (*env)->GetMethodID(env, PrintWriter, "flush", "()V");
+	if(printWriter_flush == NULL)
+	{
+		sprintf(buf, _(MSG_ID_ERR_GET_METHOD), "java.io.PrintWriter.flush()");
+		is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, buf) : OutputMessage(buf);
+		goto EXIT;
+	}
+	printWriter = (*env)->NewObject(env, PrintWriter, PrintWriter_init, stringWriter);
+	if(printWriter == NULL)
+	{
+		sprintf(buf, _(MSG_ID_ERR_NEW_OBJECT), "java.io.PrintWriter(java.io.Writer)");
+		is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, buf) : OutputMessage(buf);
+		goto EXIT;
+	}
+
+	Throwable = (*env)->FindClass(env, "java/lang/Throwable");
+	if(Throwable == NULL)
+	{
+		sprintf(buf, _(MSG_ID_ERR_FIND_CLASS), "java.lang.Throwable");
+		is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, buf) : OutputMessage(buf);
+		goto EXIT;
+	}
+	throwable_printStackTrace = (*env)->GetMethodID(env, Throwable, "printStackTrace", "(Ljava/io/PrintWriter;)V");
+	if(throwable_printStackTrace == NULL)
+	{
+		sprintf(buf, _(MSG_ID_ERR_GET_METHOD), "java.lang.Throwable.printStackTrace(java.io.PrintWriter)");
+		is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, buf) : OutputMessage(buf);
+		goto EXIT;
+	}
+	
 	strcpy(buf, "Exception in thread \"");
 	strcat(buf, thread);
 	strcat(buf, "\" ");
@@ -338,16 +356,7 @@ UINT UncaughtException(const char* thread, const jthrowable throwable)
 	stacktrace = (jstring)(*env)->CallObjectMethod(env, stringWriter, stringWriter_toString);
 	sjis = GetShiftJIS(env, stacktrace);
 	strcat(buf, sjis);
-
-	if (is_service)
-	{
-		WriteEventLog(EVENTLOG_ERROR_TYPE, buf);
-	}
-	else
-	{
-		DWORD written;
-		WriteConsole(GetStdHandle(STD_ERROR_HANDLE), buf, (DWORD)strlen(buf), &written, NULL);
-	}
+	is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, buf) : OutputMessage(buf);
 
 EXIT:
 	if(sjis != NULL)
@@ -946,7 +955,7 @@ static void stop_service_main()
 		jthrowable throwable = (*env)->ExceptionOccurred(env);
 		if (throwable != NULL)
 		{
-			UncaughtException("scm", throwable);
+			UncaughtException(env, "scm", throwable);
 			(*env)->DeleteLocalRef(env, throwable);
 		}
 		(*env)->ExceptionClear(env);
