@@ -191,31 +191,28 @@ $(OBJ)\loader.jar : $(OBJ) $(OBJ)\exewrap-loader\Loader.class
 	$(JAR) cvfM $(OBJ)\loader.jar -C $(OBJ) Loader.class
 
 $(OBJ)\exewrap-loader\Loader.class : $(OBJ) java\Loader.java
-	$(JAVAC) -Xlint:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\Loader.java
+	$(JAVAC) -Xlint:none -g:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\Loader.java
 
 
 ### exewrap.core
 
-$(OBJ)\exewrap\core\ExewrapClassLoader.class : $(OBJ) java\exewrap\core\ExewrapClassLoader.java
-	$(JAVAC) -Xlint:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\core\ExewrapClassLoader.java
-
 $(OBJ)\exewrap\core\ByteBufferInputStream.class : $(OBJ) java\exewrap\core\ByteBufferInputStream.java
-	$(JAVAC) -Xlint:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\core\ByteBufferInputStream.java
+	$(JAVAC) -Xlint:none -g:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\core\ByteBufferInputStream.java
 
 $(OBJ)\exewrap\core\NativeMethods.class : $(OBJ) java\exewrap\core\NativeMethods.java
-	$(JAVAC) -Xlint:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\core\NativeMethods.java
+	$(JAVAC) -Xlint:none -g:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\core\NativeMethods.java
 
 $(OBJ)\exewrap\core\PackInputStream.class : $(OBJ) java\exewrap\core\PackInputStream.java
-	$(JAVAC) -Xlint:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\core\PackInputStream.java
+	$(JAVAC) -Xlint:none -g:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\core\PackInputStream.java
 
 $(OBJ)\exewrap\core\URLConnection.class : $(OBJ) java\exewrap\core\URLConnection.java
-	$(JAVAC) -Xlint:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\core\URLConnection.java
+	$(JAVAC) -Xlint:none -g:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\core\URLConnection.java
 
 $(OBJ)\exewrap\core\URLStreamHandler.class : $(OBJ) java\exewrap\core\URLStreamHandler.java
-	$(JAVAC) -Xlint:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\core\URLStreamHandler.java
+	$(JAVAC) -Xlint:none -g:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\core\URLStreamHandler.java
 
 $(OBJ)\exewrap\core\URLStreamHandlerFactory.class : $(OBJ) java\exewrap\core\URLStreamHandlerFactory.java
-	$(JAVAC) -Xlint:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\core\URLStreamHandlerFactory.java
+	$(JAVAC) -Xlint:none -g:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\core\URLStreamHandlerFactory.java
 
 ### exewrap.util
 
@@ -223,19 +220,19 @@ $(OBJ)\util.jar : $(OBJ) $(OBJ)\exewrap\util\EventLogHandler.class $(OBJ)\exewra
 	$(JAR) cvfM $(OBJ)\util.jar -C $(OBJ) exewrap\util
 
 $(OBJ)\exewrap\util\Environment.class : $(OBJ) java\exewrap\util\Environment.java
-	$(JAVAC) -Xlint:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\util\Environment.java
+	$(JAVAC) -Xlint:none -g:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\util\Environment.java
 
 $(OBJ)\exewrap\util\EventLogHandler.class : $(OBJ) java\exewrap\util\EventLogHandler.java
-	$(JAVAC) -Xlint:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\util\EventLogHandler.java
+	$(JAVAC) -Xlint:none -g:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\util\EventLogHandler.java
 
 $(OBJ)\exewrap\util\EventLogStream.class : $(OBJ) java\exewrap\util\EventLogStream.java
-	$(JAVAC) -Xlint:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\util\EventLogStream.java
+	$(JAVAC) -Xlint:none -g:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\util\EventLogStream.java
 
 $(OBJ)\exewrap\util\FileLogStream.class : $(OBJ) java\exewrap\util\FileLogStream.java
-	$(JAVAC) -Xlint:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\util\FileLogStream.java
+	$(JAVAC) -Xlint:none -g:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\util\FileLogStream.java
 
 $(OBJ)\exewrap\util\UncaughtExceptionHandler.class : $(OBJ) java\exewrap\util\UncaughtExceptionHandler.java
-	$(JAVAC) -Xlint:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\util\UncaughtExceptionHandler.java
+	$(JAVAC) -Xlint:none -g:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\util\UncaughtExceptionHandler.java
 
 ### exewrap.tool
 
@@ -243,8 +240,7 @@ $(OBJ)\tool.jar : $(OBJ) $(OBJ)\exewrap\tool\JarProcessor.class $(OBJ)\exewrap\t
 	$(JAR) cvfe $(OBJ)\tool.jar exewrap.tool.JarProcessor -C $(OBJ) exewrap\tool
 
 $(OBJ)\exewrap\tool\PackOutputStream.class : $(OBJ) java\exewrap\tool\PackOutputStream.java
-	$(JAVAC) -Xlint:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\tool\PackOutputStream.java
+	$(JAVAC) -Xlint:none -g:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\tool\PackOutputStream.java
 
 $(OBJ)\exewrap\tool\JarProcessor.class : $(OBJ) java\exewrap\tool\JarProcessor.java
-	$(JAVAC) -Xlint:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\tool\JarProcessor.java
-
+	$(JAVAC) -Xlint:none -g:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\tool\JarProcessor.java

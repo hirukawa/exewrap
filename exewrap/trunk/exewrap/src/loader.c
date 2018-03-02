@@ -27,7 +27,7 @@ static void   print_stack_trace(const char* text);
 static char** split_args(char* buffer, int* p_argc);
 
 extern void   OutputMessage(const char* text);
-extern UINT   UncaughtException(const char* thread, const jthrowable throwable);
+extern UINT   UncaughtException(JNIEnv* env, const char* thread, const jthrowable throwable);
 
 static jclass    Loader = NULL;
 static jobject   resources = NULL;
@@ -547,7 +547,7 @@ DWORD WINAPI RemoteCallMainMethod(void* _shared_memory_handle)
 		jthrowable throwable = (*env)->ExceptionOccurred(env);
 		if (throwable != NULL)
 		{
-			UncaughtException("main", throwable);
+			UncaughtException(env, "main", throwable);
 			(*env)->DeleteLocalRef(env, throwable);
 		}
 		(*env)->ExceptionClear(env);
@@ -692,7 +692,7 @@ void JNICALL JNI_UncaughtException(JNIEnv *env, jobject clazz, jstring thread, j
 
 	sjis_thread = GetShiftJIS(env, thread);
 
-	exit_code = UncaughtException(sjis_thread, throwable);
+	exit_code = UncaughtException(env, sjis_thread, throwable);
 
 	if (sjis_thread != NULL)
 	{

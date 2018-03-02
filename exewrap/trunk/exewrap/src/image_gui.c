@@ -22,7 +22,7 @@
 #include "include/message.h"
 
 void OutputMessage(const char* text);
-UINT UncaughtException(const char* thread, const jthrowable throwable);
+UINT UncaughtException(JNIEnv* env, const char* thread, const jthrowable throwable);
 
 static char** get_args(int* argc);
 static char*  _w2a(LPCWSTR s);
@@ -163,7 +163,7 @@ INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine,
 		jthrowable throwable = (*env)->ExceptionOccurred(env);
 		if (throwable != NULL)
 		{
-			UncaughtException("main", throwable);
+			UncaughtException(env, "main", throwable);
 			(*env)->DeleteLocalRef(env, throwable);
 		}
 		(*env)->ExceptionClear(env);
@@ -209,7 +209,7 @@ void OutputMessage(const char* text)
 	MessageBox(NULL, text, filename, MB_ICONEXCLAMATION | MB_APPLMODAL | MB_OK | MB_SETFOREGROUND);
 }
 
-UINT UncaughtException(const char* thread, const jthrowable throwable)
+UINT UncaughtException(JNIEnv* env, const char* thread, const jthrowable throwable)
 {
 	jclass    System                    = NULL;
 	jfieldID  System_err                = NULL;
@@ -230,66 +230,76 @@ UINT UncaughtException(const char* thread, const jthrowable throwable)
 		goto EXIT;
 	}
 
+	buf = malloc(65536);
+	if(buf == NULL)
+	{
+		goto EXIT;
+	}
+	
 	System = (*env)->FindClass(env, "java/lang/System");
 	if(System == NULL)
 	{
-		printf(_(MSG_ID_ERR_FIND_CLASS), "java.lang.System");
+		sprintf(buf, _(MSG_ID_ERR_FIND_CLASS), "java.lang.System");
+		OutputMessage(buf);
 		goto EXIT;
 	}
 	System_err = (*env)->GetStaticFieldID(env, System, "err", "Ljava/io/PrintStream;");
 	if(System_err == NULL)
 	{
-		printf(_(MSG_ID_ERR_GET_FIELD), "java.lang.System.err");
+		sprintf(buf, _(MSG_ID_ERR_GET_FIELD), "java.lang.System.err");
+		OutputMessage(buf);
 		goto EXIT;
 	}
 	printStream = (*env)->GetStaticObjectField(env, System, System_err);
 	if(printStream == NULL)
 	{
-		printf(_(MSG_ID_ERR_GET_FIELD), "java.lang.System.err");
+		sprintf(buf, _(MSG_ID_ERR_GET_FIELD), "java.lang.System.err");
+		OutputMessage(buf);
 		goto EXIT;
 	}
 	PrintStream = (*env)->FindClass(env, "java/io/PrintStream");
 	if(PrintStream == NULL)
 	{
-		printf(_(MSG_ID_ERR_FIND_CLASS), "java.io.PrintStream");
+		sprintf(buf, _(MSG_ID_ERR_FIND_CLASS), "java.io.PrintStream");
+		OutputMessage(buf);
 		goto EXIT;
 	}
 	printStream_print = (*env)->GetMethodID(env, PrintStream, "print", "(Ljava/lang/String;)V");
 	if(printStream_print == NULL)
 	{
-		printf(_(MSG_ID_ERR_GET_METHOD), "java.io.PrintStream.print(String)");
+		sprintf(buf, _(MSG_ID_ERR_GET_METHOD), "java.io.PrintStream.print(String)");
+		OutputMessage(buf);
 		goto EXIT;
 	}
 	printStream_flush = (*env)->GetMethodID(env, PrintStream, "flush", "()V");
 	if(printStream_flush == NULL)
 	{
-		printf(_(MSG_ID_ERR_GET_METHOD), "java.io.PrintStream.flush()");
+		sprintf(buf, _(MSG_ID_ERR_GET_METHOD), "java.io.PrintStream.flush()");
+		OutputMessage(buf);
 		goto EXIT;
 	}
 	Throwable = (*env)->FindClass(env, "java/lang/Throwable");
 	if(Throwable == NULL)
 	{
-		printf(_(MSG_ID_ERR_FIND_CLASS), "java.lang.Throwable");
+		sprintf(buf, _(MSG_ID_ERR_FIND_CLASS), "java.lang.Throwable");
+		OutputMessage(buf);
 		goto EXIT;
 	}
 	throwable_printStackTrace = (*env)->GetMethodID(env, Throwable, "printStackTrace", "()V");
 	if(throwable_printStackTrace == NULL)
 	{
-		printf(_(MSG_ID_ERR_GET_METHOD), "java.lang.Throwable.printStackTrace()");
+		sprintf(buf, _(MSG_ID_ERR_GET_METHOD), "java.lang.Throwable.printStackTrace()");
+		OutputMessage(buf);
 		goto EXIT;
 	}
 	throwable_getMessage = (*env)->GetMethodID(env, Throwable, "getMessage", "()Ljava/lang/String;");
 	if(throwable_getMessage == NULL)
 	{
-		printf(_(MSG_ID_ERR_GET_METHOD), "java.lang.Throwable.getMessage()");
+		sprintf(buf, _(MSG_ID_ERR_GET_METHOD), "java.lang.Throwable.getMessage()");
+		OutputMessage(buf);
 		goto EXIT;
 	}
 
-	buf = malloc(1024);
-	if(buf == NULL)
-	{
-		goto EXIT;
-	}
 	strcpy(buf, "Exception in thread \"");
 	strcat(buf, thread);
 	strcat(buf, "\" ");
@@ -300,12 +310,11 @@ UINT UncaughtException(const char* thread, const jthrowable throwable)
 	(*env)->CallObjectMethod(env, printStream, printStream_flush);
 	
 	message = (*env)->CallObjectMethod(env, throwable, throwable_getMessage);
-	if(message == NULL)
+	if(message != NULL)
 	{
-		goto EXIT;
+		sjis = GetShiftJIS(env, message);
 	}
-	sjis = GetShiftJIS(env, message);
-	sprintf(buf, "Exception in thread \"%s\"\r\n%s", thread, sjis);
+	sprintf(buf, "Exception in thread \"%s\"\r\n%s", thread, (sjis != NULL) ? sjis : "");
 	OutputMessage(buf);
 	
 EXIT:
