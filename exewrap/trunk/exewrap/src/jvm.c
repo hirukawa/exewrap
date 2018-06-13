@@ -398,6 +398,7 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 	char* buffer;
 	char* token;
 	DWORD size = MAX_PATH;
+	TCHAR jdk1[MAX_PATH+1];
 	TCHAR jre1[MAX_PATH+1];
 	TCHAR jre2[MAX_PATH+1];
 	TCHAR jre3[MAX_PATH+1];
@@ -443,6 +444,49 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 	if(GetFileAttributes(opt_policy_path + 23) == -1)
 	{
 		opt_policy_path[0] = 0x00;
+	}
+
+	// Find local JDK
+	if (useSideBySideJRE && jvmpath[0] == 0)
+	{
+		GetModulePath(jdk1, MAX_PATH);
+		lstrcpy(search, jdk1);
+		lstrcat(search, "\\jdk*");
+		hSearch = FindFirstFile(search, &fd);
+		if (hSearch != INVALID_HANDLE_VALUE)
+		{
+			found = FALSE;
+			do
+			{
+				if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+				{
+					lstrcat(jdk1, "\\");
+					lstrcat(jdk1, fd.cFileName);
+					found = TRUE;
+				}
+			} while (!found && FindNextFile(hSearch, &fd));
+			FindClose(hSearch);
+			if (found)
+			{
+				strcpy(jre1, jdk1);
+				strcat(jre1, "\\jre");
+				
+				if (FindJavaVM(jvmpath, jre1, useServerVM))
+				{
+					int bits = GetArchitectureBits(jvmpath);
+					if (bits == 0 || bits == GetProcessArchitecture())
+					{
+						SetEnvironmentVariable("JAVA_HOME", jdk1);
+						lstrcpy(binpath, jdk1);
+						lstrcat(binpath, "\\bin");
+					}
+					else
+					{
+						jvmpath[0] = '\0';
+					}
+				}
+			}
+		}
 	}
 
 	// Find local JRE
