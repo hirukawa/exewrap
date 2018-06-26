@@ -468,10 +468,11 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 			FindClose(hSearch);
 			if (found)
 			{
-				strcpy(jre1, jdk1);
-				strcat(jre1, "\\jre");
-				
-				if (FindJavaVM(jvmpath, jre1, useServerVM))
+				//JDK9以降、jvm.dllの場所が変更になりました。
+				//JDK8までは jdk-8u152/jre/bin/server/jvm.dll のようにjdkの中にjreがありましたが、
+				//JDK9以降は jdk-9/bin/server/jvm.dll のようにjreフォルダなしで直接binが配置されるようになりました。
+				//そのため、jdk に bin/server/jvm.dll があるか探してなければ従来通り、jre/bin/server/jvm.dll を探します。
+				if (FindJavaVM(jvmpath, jdk1, useServerVM))
 				{
 					int bits = GetArchitectureBits(jvmpath);
 					if (bits == 0 || bits == GetProcessArchitecture())
@@ -483,6 +484,28 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 					else
 					{
 						jvmpath[0] = '\0';
+					}
+				}
+				else
+				{
+					//jdk直下には bin/server/jvm.dll がなかったので、jre を連結して、
+					//jre/bin/server/jvm.dll を探します。 
+					strcpy(jre1, jdk1);
+					strcat(jre1, "\\jre");
+					if(FindJavaVM(jvmpath, jre1, useServerVM))
+					{
+						int bits = GetArchitectureBits(jvmpath);
+						if (bits == 0 || bits == GetProcessArchitecture())
+						{
+							//jdk/jreが見つかってもJAVA_HOMEに設定するのはjdkディレクトリです。
+							SetEnvironmentVariable("JAVA_HOME", jdk1);
+							lstrcpy(binpath, jdk1);
+							lstrcat(binpath, "\\bin");
+						}
+						else
+						{
+							jvmpath[0] = '\0';
+						}
 					}
 				}
 			}
@@ -542,7 +565,7 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 			{
 				if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
 				{
-					lstrcat(jre2, "\\");
+					lstrcat(jre2, "\\..\\");
 					lstrcat(jre2, fd.cFileName);
 					found = TRUE;
 				}
@@ -550,7 +573,7 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 			FindClose(hSearch);
 			if (found)
 			{
-				if (FindJavaVM(jvmpath, jre2, useServerVM) == FALSE)
+				if (FindJavaVM(jvmpath, jre2, useServerVM))
 				{
 					int bits = GetArchitectureBits(jvmpath);
 					if (bits == 0 || bits == GetProcessArchitecture())
@@ -775,8 +798,6 @@ BOOL FindJavaVM(char* output, const char* jre, BOOL useServerVM)
 	}
 	else
 	{
-		lstrcpy(output, jre);
-		lstrcat(output, "\\bin\\client");
 		return FALSE;
 	}
 }
