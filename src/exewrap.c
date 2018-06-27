@@ -40,6 +40,7 @@ int main(int argc, char* argv[])
 	char*    exe_file = NULL;
 	int      architecture_bits = 0;
 	char     image_name[32];
+	char     manifest_name[32];
 	BYTE*    image_buf;
 	DWORD    image_len;
 	DWORD    previous_revision = 0;
@@ -83,7 +84,7 @@ int main(int argc, char* argv[])
 			exe_file = argv[0];
 		}
 		
-		printf("exewrap 1.2.4 for %s (%d-bit) \r\n"
+		printf("exewrap 1.2.6 for %s (%d-bit) \r\n"
 			   "Native executable java application wrapper.\r\n"
 			   "Copyright (C) 2005-2018 HIRUKAWA Ryo. All rights reserved.\r\n"
 			   "\r\n"
@@ -100,6 +101,7 @@ int main(int argc, char* argv[])
 			   "  -a <vm-args>        \t Set Java VM arguments.\r\n"
 			   "  -b <vm-args>        \t This arguments will be applied when the service was started without the SCM.\r\n"
 			   "  -i <icon-file>      \t Set application icon.\r\n"
+			   "  -P <privilege>      \t Set privilege. (asInvoker | highestAvailable | requireAdministrator)\r\n"
 			   "  -v <version>        \t Set version number.\r\n"
 			   "  -d <description>    \t Set file description.\r\n"
 			   "  -c <copyright>      \t Set copyright.\r\n"
@@ -184,6 +186,32 @@ int main(int argc, char* argv[])
 		sprintf(image_name, "IMAGE_CONSOLE_%d", architecture_bits);
 	}
 
+	if(opt['P'])
+	{
+		if(stricmp(opt['P'], "asInvoker") == 0)
+		{
+			sprintf(manifest_name, "%s%s", image_name, "_MF_INVOKER");
+			printf("Privilege: asInvoker\n");
+		}
+		else if(stricmp(opt['P'], "highestAvailable") == 0)
+		{
+			sprintf(manifest_name, "%s%s", image_name, "_MF_HIGHEST");
+			printf("Privilege: highestAvailable\n");
+		}
+		else if(stricmp(opt['P'], "requireAdministrator") == 0)
+		{
+			sprintf(manifest_name, "%s%s", image_name, "_MF_ADMIN");
+			printf("Privilege: requireAdministrator\n");
+		}
+		else
+		{
+			printf("Invalid privilege value: %s\n", opt['P']);
+			return 3;
+		}
+	} else {
+		sprintf(manifest_name, "%s%s", image_name, "_MF_DEFAULT");
+	}
+	
 	GetResource(image_name, &res);
 	image_buf = res.buf;
 	image_len = res.len;
@@ -196,6 +224,9 @@ int main(int argc, char* argv[])
 	{
 		goto EXIT;
 	}
+
+	GetResource(manifest_name, &res);
+	set_resource(exe_file, CREATEPROCESS_MANIFEST_RESOURCE_ID, RT_MANIFEST, res.buf, res.len);
 
 	if(opt['t'])
 	{
