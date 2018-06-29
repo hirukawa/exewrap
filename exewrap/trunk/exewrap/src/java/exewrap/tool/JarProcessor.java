@@ -8,6 +8,8 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarInputStream;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.jar.Attributes.Name;
 import java.util.zip.CRC32;
 import java.util.zip.GZIPOutputStream;
@@ -52,22 +54,42 @@ public class JarProcessor {
 		jarOut.setMethod(method);
 		
 		JarEntry entryIn;
+		Map<String, Long> entries = new HashMap<String, Long>();
+		while((entryIn = jarIn.getNextJarEntry()) != null) {
+			if(!isManifest(entryIn)) {
+				String name = entryIn.getName();
+				Long time = entries.get(name);
+				if(time == null || entryIn.getTime() > time.longValue()) {
+					entries.put(name, entryIn.getTime());
+				}
+			}
+			jarIn.closeEntry();
+		}
+		jarIn.close();
+		jarIn = getJarInputStream(buf);
 		while((entryIn = jarIn.getNextJarEntry()) != null) {
 			if(!isManifest(entryIn)) {
 				byte[] data = getBytes(jarIn);
 				if(splashScreenName != null && entryIn.getName().equals(splashScreenName)) {
 					splashScreenImage = data;
 				} else {
-					JarEntry entryOut = new JarEntry(entryIn.getName());
-					entryOut.setMethod(method);
-					if(method == JarEntry.STORED) {
-						entryOut.setSize(data.length);
-						entryOut.setCrc(getCrc(data));
+					String name = entryIn.getName();
+					Long time = entries.get(name);
+					if(time != null && entryIn.getTime() == time.longValue()) {
+						JarEntry entryOut = new JarEntry(entryIn.getName());
+						entryOut.setMethod(method);
+						if(method == JarEntry.STORED) {
+							entryOut.setSize(data.length);
+							entryOut.setCrc(getCrc(data));
+						}
+						jarOut.putNextEntry(entryOut);
+						jarOut.write(data);
+						jarOut.flush();
+						jarOut.closeEntry();
+						entries.remove(name);
+					} else {
+						System.err.println("WARNING: duplicate entry: " + entryIn.getName());
 					}
-					jarOut.putNextEntry(entryOut);
-					jarOut.write(data);
-					jarOut.flush();
-					jarOut.closeEntry();
 				}
 			}
 			jarIn.closeEntry();
