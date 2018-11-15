@@ -21,7 +21,7 @@ BOOL    FindJavaVM(char* output, const char* jre, BOOL useServerVM);
 LPTSTR  FindJavaHomeFromRegistry(LPCTSTR _subkey, char* output);
 void    AddPath(LPCTSTR path);
 LPTSTR  GetModulePath(LPTSTR buffer, DWORD size);
-LPTSTR	GetModuleVersion(LPTSTR buffer);
+LPTSTR  GetModuleVersion(LPTSTR buffer);
 BOOL    IsDirectory(LPTSTR path);
 char*   GetSubDirs(char* dir);
 char*   AddSubDirs(char* buf, char* dir, int* size);
@@ -34,6 +34,8 @@ static  LPSTR W2A(LPCWSTR s);
 static  char* get_line(FILE* fp);
 
 
+typedef PVOID (WINAPI* Kernel32_AddDllDirectory)(PCWSTR);
+typedef BOOL  (WINAPI* Kernel32_SetDefaultDllDirectories)(DWORD);
 typedef jint (WINAPI* JNIGetDefaultJavaVMInitArgs)(JavaVMInitArgs*);
 typedef jint (WINAPI* JNICreateJavaVM)(JavaVM**, void**, JavaVMInitArgs*);
 
@@ -44,14 +46,17 @@ DWORD   javaRuntimeVersion = 0xFFFFFFFF;
 char    opt_system_class_loader[512];
 char    opt_app_path[MAX_PATH + 32];
 char    opt_app_name[MAX_PATH + 32];
-char	opt_app_version[64];
+char    opt_app_version[64];
 char    opt_policy_path[MAX_PATH + 32];
 BOOL    path_initialized = FALSE;
 char    binpath[MAX_PATH];
 char    jvmpath[MAX_PATH];
 char*   classpath = NULL;
-char*	libpath = NULL;
-HMODULE jvmdll;
+char*   libpath = NULL;
+HMODULE jvmdll = NULL;
+HMODULE kernel32 = NULL;
+Kernel32_AddDllDirectory addDllDirectory = NULL;
+Kernel32_SetDefaultDllDirectories setDefaultDllDirectories = NULL;
 
 /* このプロセスのアーキテクチャ(32ビット/64ビット)を返します。
 　* 64ビットOSで32ビットプロセスを実行している場合、この関数は32を返します。
@@ -409,6 +414,16 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 
 	path_initialized = TRUE;
 
+	if(kernel32 == NULL)
+	{
+		kernel32 = LoadLibrary("kernel32");
+	}
+	if(kernel32 != NULL)
+	{
+		addDllDirectory = (Kernel32_AddDllDirectory)GetProcAddress(kernel32, "AddDllDirectory");
+		setDefaultDllDirectories = (Kernel32_SetDefaultDllDirectories)GetProcAddress(kernel32, "SetDefaultDllDirectories");
+	}
+
 	if (classpath == NULL)
 	{
 		classpath = (char*)HeapAlloc(GetProcessHeap(), 0, 64 * 1024);
@@ -741,6 +756,12 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 	AddPath(binpath);
 	AddPath(jvmpath);
 
+	if(setDefaultDllDirectories != NULL)
+	{
+		//LOAD_LIBRARY_SEARCH_DEFAULT_DIRS= 0x00001000
+		BOOL ret = setDefaultDllDirectories(0x00001000); 
+	}
+
 	HeapFree(GetProcessHeap(), 0, buffer);
 }
 
@@ -866,6 +887,13 @@ void AddPath(LPCTSTR path)
 	lstrcat(buf, ";");
 	lstrcat(buf, old_path);
 	SetEnvironmentVariable("PATH", buf);
+
+	if(addDllDirectory != NULL)
+	{
+		LPCWSTR wPath = A2W(path);
+		addDllDirectory(wPath);
+		HeapFree(GetProcessHeap(), 0, wPath);
+	}
 
 	HeapFree(GetProcessHeap(), 0, buf);
 	HeapFree(GetProcessHeap(), 0, old_path);
