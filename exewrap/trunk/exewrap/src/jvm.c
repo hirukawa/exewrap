@@ -76,15 +76,15 @@ int GetPlatformArchitecture()
 	char buf[256];
 	if(GetEnvironmentVariable("PROCESSOR_ARCHITECTURE", buf, 256))
 	{
-		if(strstr(buf, "64") >= 0)
+		if(strstr(buf, "64") != NULL)
 		{
 			return 64;
 		}
 		else if(GetEnvironmentVariable("PROCESSOR_ARCHITEW6432", buf, 256))
 		{
-			if(strstr(buf, "64") >= 0)
+			if(strstr(buf, "64") != NULL)
 			{
-			return 64;
+				return 64;
 			}
 		}
 	}

@@ -1,4 +1,4 @@
-Copyright (C) 2005-2017 HIRUKAWA Ryo. All rights reserved.
+Copyright (C) 2005-2019 HIRUKAWA Ryo. All rights reserved.
 
 ソースコード形式であれバイナリ形式であれ、変更の有無に関わらず、
 以下の条件を満たす限りにおいて、再配布および使用を許可します:
@@ -12,93 +12,4 @@ Copyright (C) 2005-2017 HIRUKAWA Ryo. All rights reserved.
 本ソフトウェアの実行により生成されたファイルの利用および配布について一切の制限を行いません。上記著作権表示、本状条件書、下記責任限定規定を含まずに、本ソフトウェアの実行により生成されたファイルを完全に自由に利用および配布することができます。
 
 本ソフトウェアは HIRUKAWA Ryo によって、"現状のまま" 提供されるものとします。本ソフトウェアについては、明示黙示を問わず、商用品として通常そなえるべき品質をそなえているとの保証も、特定の目的に適合するとの保証を含め、何の保証もなされません。事由のいかんを問わず、損害発生の原因いかんを問わず、且つ、責任の根拠が契約であるか厳格責任であるか (過失その他) 不法行為であるかを問わず、HIRUKAWA Ryo も寄与者も、仮にそのような損害が発生する可能性を知らされていたとしても、本ソフトウェアの使用から発生した直接損害、間接損害、偶発的な損害、 特別損害、懲罰的損害または結果損害のいずれに対しても (代替品または サービスの提供; 使用機会、データまたは利益の損失の補償;または、業務の中断に対する補償を含め) 責任をいっさい負いません。
-
-
-#
-# MinHook
-#
-トレース用バイナリ(exewrap-trace.exe)は Tsuda Kageyu さんの作成した MinHook を含んでいます。(通常出力のバイナリには MinHook のコードは含まれません。)
-
-MinHook - The Minimalistic API Hooking Library for x64/x86
-Copyright (C) 2009-2015 Tsuda Kageyu.
-All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions
-are met:
-
- 1. Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
- 2. Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
-TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
-PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER
-OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-================================================================================
-Portions of this software are Copyright (c) 2008-2009, Vyacheslav Patkov.
-================================================================================
-Hacker Disassembler Engine 32 C
-Copyright (c) 2008-2009, Vyacheslav Patkov.
-All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions
-are met:
-
- 1. Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
- 2. Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
-TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
-PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR
-CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
--------------------------------------------------------------------------------
-Hacker Disassembler Engine 64 C
-Copyright (c) 2008-2009, Vyacheslav Patkov.
-All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions
-are met:
-
- 1. Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
- 2. Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
-TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
-PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR
-CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 
