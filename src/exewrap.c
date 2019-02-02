@@ -84,9 +84,9 @@ int main(int argc, char* argv[])
 			exe_file = argv[0];
 		}
 		
-		printf("exewrap 1.3.0 for %s (%d-bit) \r\n"
+		printf("exewrap 1.3.1 for %s (%d-bit) \r\n"
 			   "Native executable java application wrapper.\r\n"
-			   "Copyright (C) 2005-2018 HIRUKAWA Ryo. All rights reserved.\r\n"
+			   "Copyright (C) 2005-2019 HIRUKAWA Ryo. All rights reserved.\r\n"
 			   "\r\n"
 			   "Usage: %s <options> <jar-file>\r\n"
 			   "Options:\r\n"
@@ -825,8 +825,30 @@ static char* get_target_java_runtime_version_string(DWORD version, char* buf)
 
 	*(DWORD*)buf = version;
 	
-	//1.7-
-	if (major == 1 && minor >= 7 && build == 0)
+	//JDK9-
+	if(major >= 5)
+	{
+		if(minor == 0 && build == 0 && revision == 0)
+		{
+			sprintf(buf + 4, "Java %d", major);
+		}
+		else if(build == 0 && revision == 0)
+		{
+			sprintf(buf + 4, "Java %d.%d", major, minor);
+		}
+		else if(revision == 0)
+		{
+			sprintf(buf + 4, "Java %d.%d.%d", major, minor, build);
+		}
+		else
+		{
+			sprintf(buf + 4, "Java %d.%d.%d", major, minor, build, revision);
+		}
+		return buf;
+	}
+	
+	//1.7, 1.8
+	if (major == 1 && (minor == 7 || minor == 8))
 	{
 		if(revision == 0)
 		{
