@@ -7,10 +7,10 @@
 
 #include "include/jvm.h"
 
-void    InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useServerVM, BOOL useSideBySideJRE);
+void    InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useServerVM, BOOL useSideBySideJRE, SYSTEMTIME* startup);
 int     GetProcessArchitecture();
 int     GetPlatformArchitecture();
-JNIEnv* CreateJavaVM(LPTSTR vm_args_opt, LPTSTR systemClassLoader, BOOL useServerVM, BOOL useSideBySideJRE, int* err);
+JNIEnv* CreateJavaVM(LPTSTR vm_args_opt, LPTSTR systemClassLoader, BOOL useServerVM, BOOL useSideBySideJRE, SYSTEMTIME* startup, int* err);
 void    DestroyJavaVM();
 JNIEnv* AttachJavaVM();
 void    DetachJavaVM();
@@ -47,6 +47,7 @@ char    opt_system_class_loader[512];
 char    opt_app_path[MAX_PATH + 32];
 char    opt_app_name[MAX_PATH + 32];
 char    opt_app_version[64];
+char    opt_app_startup[64];
 char    opt_policy_path[MAX_PATH + 32];
 BOOL    path_initialized = FALSE;
 char    binpath[MAX_PATH];
@@ -91,7 +92,7 @@ int GetPlatformArchitecture()
 	return 32;
 }
 
-JNIEnv* CreateJavaVM(LPTSTR vm_args_opt, LPTSTR systemClassLoader, BOOL useServerVM, BOOL useSideBySideJRE, int* err)
+JNIEnv* CreateJavaVM(LPTSTR vm_args_opt, LPTSTR systemClassLoader, BOOL useServerVM, BOOL useSideBySideJRE, SYSTEMTIME* startup, int* err)
 {
 	JNIGetDefaultJavaVMInitArgs getDefaultJavaVMInitArgs;
 	JNICreateJavaVM createJavaVM;
@@ -105,7 +106,7 @@ JNIEnv* CreateJavaVM(LPTSTR vm_args_opt, LPTSTR systemClassLoader, BOOL useServe
 
 	if (!path_initialized)
 	{
-		InitializePath(NULL, "lib", useServerVM, useSideBySideJRE);
+		InitializePath(NULL, "lib", useServerVM, useSideBySideJRE, startup);
 	}
 
 	jvmdll = LoadLibrary("jvm.dll");
@@ -125,12 +126,13 @@ JNIEnv* CreateJavaVM(LPTSTR vm_args_opt, LPTSTR systemClassLoader, BOOL useServe
 	options[0].optionString = opt_app_path;
 	options[1].optionString = opt_app_name;
 	options[2].optionString = opt_app_version;
-	options[3].optionString = classpath;
-	options[4].optionString = libpath;
+	options[3].optionString = opt_app_startup;
+	options[4].optionString = classpath;
+	options[5].optionString = libpath;
 	
 	vm_args.version = JNI_VERSION_1_2;
 	vm_args.options = options;
-	vm_args.nOptions = 5;
+	vm_args.nOptions = 6;
 	vm_args.ignoreUnrecognized = 1;
 
 	if(systemClassLoader != NULL)
@@ -397,7 +399,7 @@ char* GetShiftJIS(JNIEnv* _env, jstring src)
 	return ret;
 }
 
-void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useServerVM, BOOL useSideBySideJRE) {
+void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useServerVM, BOOL useSideBySideJRE, SYSTEMTIME* startup) {
 	char modulePath[_MAX_PATH];
 	char moduleFileFullPath[_MAX_PATH];
 	char* buffer;
@@ -438,6 +440,13 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 	libpath[0] = '\0';
 
 	buffer = HeapAlloc(GetProcessHeap(), 0, 64 * 1024);
+
+	sprintf(buffer, "%u-%02u-%02uT%02u:%02u:%02u.%03u",
+		startup->wYear, startup->wMonth, startup->wDay,
+		startup->wHour, startup->wMinute, startup->wSecond,
+		startup->wMilliseconds);
+	lstrcpy(opt_app_startup, "-Djava.application.startup=");
+	lstrcat(opt_app_startup, buffer);
 
 	lstrcpy(opt_app_version, "-Djava.application.version=");
 	lstrcat(opt_app_version, GetModuleVersion(buffer));
