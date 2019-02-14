@@ -35,6 +35,7 @@ static char*  set_version_info(const char* filename, const char* version_number,
 
 int main(int argc, char* argv[])
 {
+	SYSTEMTIME startup;
 	char**   opt = NULL;
 	char*    jar_file = NULL;
 	char*    exe_file = NULL;
@@ -68,6 +69,8 @@ int main(int argc, char* argv[])
 	char*    ptr = NULL;
 	RESOURCE res;
 	BOOL     b;
+
+	GetLocalTime(&startup);
 	
 	opt = parse_opt(argc, argv);
 
@@ -84,7 +87,7 @@ int main(int argc, char* argv[])
 			exe_file = argv[0];
 		}
 		
-		printf("exewrap 1.3.1 for %s (%d-bit) \r\n"
+		printf("exewrap 1.3.2 for %s (%d-bit) \r\n"
 			   "Native executable java application wrapper.\r\n"
 			   "Copyright (C) 2005-2019 HIRUKAWA Ryo. All rights reserved.\r\n"
 			   "\r\n"
@@ -254,7 +257,7 @@ int main(int argc, char* argv[])
 		set_resource(exe_file, "EXTDIRS", RT_RCDATA, "lib", 4);
 	}
 
-	enable_java = CreateJavaVM(NULL, "Loader", FALSE, TRUE, NULL) != NULL;
+	enable_java = CreateJavaVM(NULL, "Loader", FALSE, TRUE, &startup, NULL) != NULL;
 	if (enable_java)
 	{
 		LOAD_RESULT result;

@@ -39,6 +39,7 @@ INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine,
 {
 	int         argc;
 	char**      argv;
+	SYSTEMTIME  startup;
 	int         err;
 	char*       relative_classpath;
 	char*       relative_extdirs;
@@ -53,6 +54,8 @@ INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine,
 	RESOURCE    res;
 	LOAD_RESULT result;
 
+	GetLocalTime(&startup);
+
 	utilities[0] = '\0';
 
 	argv = get_args(&argc);
@@ -63,7 +66,7 @@ INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine,
 	ext_flags = (char*)GetResource("EXTFLAGS", NULL);
 	use_server_vm = (ext_flags != NULL && strstr(ext_flags, "SERVER") != NULL);
 	use_side_by_side_jre = (ext_flags == NULL) || (strstr(ext_flags, "NOSIDEBYSIDE") == NULL);
-	InitializePath(relative_classpath, relative_extdirs, use_server_vm, use_side_by_side_jre);
+	InitializePath(relative_classpath, relative_extdirs, use_server_vm, use_side_by_side_jre, &startup);
 
 	if (ext_flags != NULL && strstr(ext_flags, "SHARE") != NULL)
 	{
@@ -106,7 +109,7 @@ INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine,
 	{
 		vm_args_opt = (char*)GetResource("VMARGS", NULL);
 	}
-	CreateJavaVM(vm_args_opt, "Loader", use_server_vm, use_side_by_side_jre, &err);
+	CreateJavaVM(vm_args_opt, "Loader", use_server_vm, use_side_by_side_jre, &startup, &err);
 	if (err != JNI_OK)
 	{
 		OutputMessage(GetJniErrorMessage(err, &result.msg_id, result.msg));

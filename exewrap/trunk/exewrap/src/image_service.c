@@ -53,6 +53,7 @@ static HANDLE    hConOut = NULL;
 
 static int service_main(int argc, char* argv[])
 {
+	SYSTEMTIME   startup;
 	int          err;
 	char*        service_name = NULL;
 	BOOL         is_service;
@@ -69,6 +70,8 @@ static int service_main(int argc, char* argv[])
 	jobjectArray MainClass_start_args;
 	int          i;
 
+	GetLocalTime(&startup);
+
 	utilities[0] = '\0';
 
 	service_name = get_service_name(NULL);
@@ -81,7 +84,7 @@ static int service_main(int argc, char* argv[])
 	ext_flags = (char*)GetResource("EXTFLAGS", NULL);
 	use_server_vm = (ext_flags != NULL && strstr(ext_flags, "SERVER") != NULL);
 	use_side_by_side_jre = (ext_flags == NULL) || (strstr(ext_flags, "NOSIDEBYSIDE") == NULL);
-	InitializePath(relative_classpath, relative_extdirs, use_server_vm, use_side_by_side_jre);
+	InitializePath(relative_classpath, relative_extdirs, use_server_vm, use_side_by_side_jre, &startup);
 
 	if(!is_service) {
 		vm_args_opt = (char*)GetResource("VMARGS_B", NULL);
@@ -89,7 +92,7 @@ static int service_main(int argc, char* argv[])
 	if(vm_args_opt == NULL) {
 		vm_args_opt = (char*)GetResource("VMARGS", NULL);
 	}
-	CreateJavaVM(vm_args_opt, "Loader", use_server_vm, use_side_by_side_jre, &err);
+	CreateJavaVM(vm_args_opt, "Loader", use_server_vm, use_side_by_side_jre, &startup, &err);
 	if (err != JNI_OK)
 	{
 		GetJniErrorMessage(err, &result.msg_id, result.msg);
