@@ -32,7 +32,7 @@ int     GetArchitectureBits(const char* jvmpath);
 static  LPWSTR A2W(LPCSTR s);
 static  LPSTR W2A(LPCWSTR s);
 static  char* get_line(FILE* fp);
-
+static  char* urldecode(char *dst, const char *src);
 
 typedef PVOID (WINAPI* Kernel32_AddDllDirectory)(PCWSTR);
 typedef BOOL  (WINAPI* Kernel32_SetDefaultDllDirectories)(DWORD);
@@ -693,6 +693,8 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 	{
 		while((token = strtok(relative_classpath, " ")) != NULL)
 		{
+			token = urldecode(buffer, token);
+		
 			if(strstr(token, ":") == NULL)
 			{
 				lstrcat(classpath, modulePath);
@@ -743,8 +745,10 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 					lstrcat(classpath, ";");
 					lstrcat(classpath, dir);
 
+					/*
 					lstrcat(libpath, dir);
 					lstrcat(libpath, ";");
+					*/
 					AddPath(dir);
 
 					dir += lstrlen(dir) + 1;
@@ -1240,4 +1244,58 @@ static char* get_line(FILE* fp)
 	}
 	buf[pos] = '\0';
 	return buf;
+}
+
+static char* urldecode(char *dst, const char *src)
+{
+	char* result = dst;
+	char a;
+	char b;
+	while(*src)
+	{
+		if((*src == '%') && ((a = src[1]) && (b = src[2])) && (isxdigit(a) && isxdigit(b)))
+		{
+			if(a >= 'a')
+			{
+				a -= 'a'-'A';
+			}
+			
+			if(a >= 'A')
+			{
+				a -= ('A' - 10);
+			}
+			else
+			{
+				a -= '0';
+			}
+			
+			if(b >= 'a')
+			{
+				b -= 'a'-'A';
+			}
+			
+			if(b >= 'A')
+			{
+				b -= ('A' - 10);
+			}
+			else
+			{
+				b -= '0';
+			}
+			
+			*dst++ = 16*a+b;
+			src+=3;
+		}
+		else if(*src == '+')
+		{
+			*dst++ = ' ';
+			src++;
+		}
+		else
+		{
+			*dst++ = *src++;
+		}
+	}
+	*dst++ = '\0';
+	return result;
 }
