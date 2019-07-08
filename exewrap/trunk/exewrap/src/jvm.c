@@ -1,6 +1,7 @@
 #define _CRT_SECURE_NO_WARNINGS
 
 #include <windows.h>
+#include <shlwapi.h>
 #include <stdio.h>
 #include <shlobj.h>
 #include <jni.h>
@@ -140,6 +141,7 @@ JNIEnv* CreateJavaVM(LPTSTR vm_args_opt, LPTSTR systemClassLoader, BOOL useServe
 		lstrcpy(opt_system_class_loader, "-Djava.system.class.loader=");
 		lstrcat(opt_system_class_loader, systemClassLoader);
 		options[vm_args.nOptions++].optionString = opt_system_class_loader;
+		options[vm_args.nOptions++].optionString = (char*)"-XX:-UseSharedSpaces";
 	}
 	
 	if(opt_policy_path[0] != 0x00)
@@ -409,6 +411,7 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 	TCHAR jre1[MAX_PATH+1];
 	TCHAR jre2[MAX_PATH+1];
 	TCHAR jre3[MAX_PATH+1];
+	TCHAR jre4[MAX_PATH+1];
 	TCHAR search[MAX_PATH + 1];
 	WIN32_FIND_DATA fd;
 	HANDLE hSearch;
@@ -576,6 +579,7 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 		}
 	}
 
+	// Find local JRE (from parent folder)
 	if (useSideBySideJRE && jvmpath[0] == 0)
 	{
 		GetModulePath(jre2, MAX_PATH);
@@ -615,6 +619,7 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 		}
 	}
 
+	// Find JDK/JRE from JAVA_HOME or registry
 	if(jvmpath[0] == 0)
 	{
 		jre3[0] = '\0';
@@ -681,6 +686,20 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 				lstrcat(binpath, "\\bin");
 				FindJavaVM(jvmpath, jre3, useServerVM);
 			}
+		}
+	}
+
+	// Find java.exe from PATH environment
+	if(jvmpath[0] == 0)
+	{
+		strcpy(jre4, "java.exe");
+		if(PathFindOnPath(jre4, NULL))
+		{
+			*(strrchr(jre4, '\\')) = '\0'; // remove filename(java.exe)
+			*(strrchr(jre4, '\\')) = '\0'; // remove dirname(bin)
+			lstrcpy(binpath, jre4);
+			lstrcat(binpath, "\\bin");
+			FindJavaVM(jvmpath, jre4, useServerVM);
 		}
 	}
 
@@ -903,7 +922,7 @@ void AddPath(LPCTSTR path)
 
 	if(addDllDirectory != NULL)
 	{
-		LPCWSTR wPath = A2W(path);
+		LPWSTR wPath = A2W(path);
 		addDllDirectory(wPath);
 		HeapFree(GetProcessHeap(), 0, wPath);
 	}
