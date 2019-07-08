@@ -695,8 +695,15 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 		strcpy(jre4, "java.exe");
 		if(PathFindOnPath(jre4, NULL))
 		{
-			*(strrchr(jre4, '\\')) = '\0'; // remove filename(java.exe)
-			*(strrchr(jre4, '\\')) = '\0'; // remove dirname(bin)
+			char* p;
+			if((p = strrchr(jre4, '\\')) != 0)
+			{
+				*(p) = '\0'; // remove filename(java.exe)
+			}
+			if((p = strrchr(jre4, '\\')) != 0)
+			{
+				*(p) = '\0'; // remove dirname(bin)
+			}
 			lstrcpy(binpath, jre4);
 			lstrcat(binpath, "\\bin");
 			FindJavaVM(jvmpath, jre4, useServerVM);
