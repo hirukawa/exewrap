@@ -64,8 +64,9 @@ $(BIN)\exewrap.exe : $(BIN) $(OBJ) $(OBJ)\exewrap.res $(OBJ)\exewrap.obj \
 		$(OBJ)\exewrap\core\ByteBufferInputStream.class $(OBJ)\exewrap\core\NativeMethods.class $(OBJ)\exewrap\core\PackInputStream.class \
 		$(OBJ)\exewrap\core\URLConnection.class $(OBJ)\exewrap\core\URLStreamHandler.class $(OBJ)\exewrap\core\URLStreamHandlerFactory.class \
 		$(OBJ)\util.jar $(OBJ)\tool.jar $(OBJ)\loader.jar
-	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE$(TARGET_VER) /MANIFEST /MANIFESTFILE:$(OBJ)\exewrap.exe.manifest /OUT:$(OBJ)\exewrap.exe $(OBJ)\exewrap.res $(OBJ)\exewrap.obj \
+	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE$(TARGET_VER) /OUT:$(OBJ)\exewrap.exe $(OBJ)\exewrap.res $(OBJ)\exewrap.obj \
 		$(OBJ)\jvm.obj $(OBJ)\loader.obj $(OBJ)\message.obj $(OBJ)\eventlog.obj $(LIBS) $(MSVCRT_PATCH)
+	copy /V /Y /B resources\exewrap.$(ARCHITECTURE).manifest $(OBJ)\exewrap.exe.manifest
 	$(MT) -manifest $(OBJ)\exewrap.exe.manifest -outputresource:$(OBJ)\exewrap.exe;1
 	$(OBJ)\bindres.exe    $(OBJ)\exewrap.exe VERSION_INFO               resources\versioninfo.bin
 	$(OBJ)\bindres.exe -r $(OBJ)\exewrap.exe IMAGE_CONSOLE_32            $(OBJ)\..\x86\image_console.exe
@@ -121,8 +122,9 @@ $(OBJ)\image_console.exe : $(OBJ) $(OBJ)\image_console.res $(OBJ)\image_console.
 		$(OBJ)\exewrap\core\ByteBufferInputStream.class $(OBJ)\exewrap\core\NativeMethods.class $(OBJ)\exewrap\core\PackInputStream.class \
 		$(OBJ)\exewrap\core\URLConnection.class $(OBJ)\exewrap\core\URLStreamHandler.class $(OBJ)\exewrap\core\URLStreamHandlerFactory.class \
 		$(OBJ)\util.jar
-	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE$(TARGET_VER) /MANIFEST /OUT:$(OBJ)\image_console.exe $(OBJ)\image_console.res $(OBJ)\image_console.obj \
+	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE$(TARGET_VER) /OUT:$(OBJ)\image_console.exe $(OBJ)\image_console.res $(OBJ)\image_console.obj \
 		$(OBJ)\jvm.obj $(OBJ)\loader.obj $(OBJ)\message.obj $(OBJ)\notify.obj $(OBJ)\eventlog.obj $(LIBS) $(MSVCRT_PATCH)
+	copy /V /Y /B resources\image_console.$(ARCHITECTURE).manifest $(OBJ)\image_console.exe.manifest
 	$(JAVA) -cp $(OBJ) CopyManifest $(OBJ)\image_console.exe.manifest
 	$(OBJ)\bindres.exe $(OBJ)\image_console.exe BYTE_BUFFER_INPUT_STREAM   $(OBJ)\exewrap\core\ByteBufferInputStream.class
 	$(OBJ)\bindres.exe $(OBJ)\image_console.exe NATIVE_METHODS             $(OBJ)\exewrap\core\NativeMethods.class
@@ -144,8 +146,9 @@ $(OBJ)\image_gui.exe : $(OBJ) $(OBJ)\image_gui.res $(OBJ)\image_gui.obj \
 		$(OBJ)\exewrap\core\ByteBufferInputStream.class $(OBJ)\exewrap\core\NativeMethods.class $(OBJ)\exewrap\core\PackInputStream.class \
 		$(OBJ)\exewrap\core\URLConnection.class $(OBJ)\exewrap\core\URLStreamHandler.class $(OBJ)\exewrap\core\URLStreamHandlerFactory.class \
 		$(OBJ)\util.jar
-	$(LINK) $(LDFLAGS) /SUBSYSTEM:WINDOWS$(TARGET_VER) /MANIFEST /OUT:$(OBJ)\image_gui.exe $(OBJ)\image_gui.res $(OBJ)\image_gui.obj \
+	$(LINK) $(LDFLAGS) /SUBSYSTEM:WINDOWS$(TARGET_VER) /OUT:$(OBJ)\image_gui.exe $(OBJ)\image_gui.res $(OBJ)\image_gui.obj \
 		$(OBJ)\jvm.obj $(OBJ)\loader.obj $(OBJ)\message.obj $(OBJ)\notify.obj $(OBJ)\eventlog.obj $(LIBS) $(MSVCRT_PATCH)
+	copy /V /Y /B resources\image_gui.$(ARCHITECTURE).manifest $(OBJ)\image_gui.exe.manifest
 	$(JAVA) -cp $(OBJ) CopyManifest $(OBJ)\image_gui.exe.manifest
 	$(OBJ)\bindres.exe $(OBJ)\image_gui.exe BYTE_BUFFER_INPUT_STREAM   $(OBJ)\exewrap\core\ByteBufferInputStream.class
 	$(OBJ)\bindres.exe $(OBJ)\image_gui.exe NATIVE_METHODS             $(OBJ)\exewrap\core\NativeMethods.class
@@ -167,8 +170,9 @@ $(OBJ)\image_service.exe : $(OBJ) $(OBJ)\image_service.res $(OBJ)\image_service.
 		$(OBJ)\exewrap\core\ByteBufferInputStream.class $(OBJ)\exewrap\core\NativeMethods.class $(OBJ)\exewrap\core\PackInputStream.class \
 		$(OBJ)\exewrap\core\URLConnection.class $(OBJ)\exewrap\core\URLStreamHandler.class $(OBJ)\exewrap\core\URLStreamHandlerFactory.class \
 		$(OBJ)\util.jar
-	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE$(TARGET_VER) /MANIFEST /OUT:$(OBJ)\image_service.exe $(OBJ)\image_service.res $(OBJ)\image_service.obj \
+	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE$(TARGET_VER) /OUT:$(OBJ)\image_service.exe $(OBJ)\image_service.res $(OBJ)\image_service.obj \
 		$(OBJ)\jvm.obj $(OBJ)\loader.obj $(OBJ)\message.obj $(OBJ)\eventlog.obj $(LIBS) $(MSVCRT_PATCH)
+	copy /V /Y /B resources\image_service.$(ARCHITECTURE).manifest $(OBJ)\image_service.exe.manifest
 	$(JAVA) -cp $(OBJ) CopyManifest $(OBJ)\image_service.exe.manifest
 	$(OBJ)\bindres.exe $(OBJ)\image_service.exe BYTE_BUFFER_INPUT_STREAM   $(OBJ)\exewrap\core\ByteBufferInputStream.class
 	$(OBJ)\bindres.exe $(OBJ)\image_service.exe NATIVE_METHODS             $(OBJ)\exewrap\core\NativeMethods.class
