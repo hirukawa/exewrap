@@ -742,6 +742,13 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 		lstrcpy(buf_extdirs, relative_extdirs);
 		while((token = strtok(p, ";")) != NULL)
 		{
+			p = NULL;
+
+			if(strlen(token) == 0)
+			{
+				continue;
+			}
+
 			extdir[0] = '\0';
 			if(strstr(token, ":") == NULL)
 			{
@@ -781,7 +788,6 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 				}
 				HeapFree(GetProcessHeap(), 0, dirs);
 			}
-			p = NULL;
 		}
 		HeapFree(GetProcessHeap(), 0, buf_extdirs);
 		HeapFree(GetProcessHeap(), 0, extdir);
