@@ -64,6 +64,7 @@ int main(int argc, char* argv[])
 	char*    new_version;
 	BOOL     contains_visualvm_display_name = FALSE;
 	BOOL     is_icon_set = FALSE;
+	BOOL     is_dirty_exe = FALSE;
 
 	char*    buf = NULL;
 	char*    ptr = NULL;
@@ -221,7 +222,8 @@ int main(int argc, char* argv[])
 	
 	previous_revision = get_version_revision(exe_file);
 	DeleteFile(exe_file);
-	
+
+	is_dirty_exe = TRUE;
 	b = create_exe_file(exe_file, image_buf, image_len, TRUE);
 	if (b == FALSE)
 	{
@@ -406,10 +408,11 @@ int main(int argc, char* argv[])
 	else
 	{
 		jar_buf = get_jar_buf(jar_file, &jar_len);
-		if (jar_buf != NULL)
+		if (jar_buf == NULL)
 		{
-			set_resource(exe_file, "JAR", RT_RCDATA, jar_buf, jar_len);
+			goto EXIT;
 		}
+		set_resource(exe_file, "JAR", RT_RCDATA, jar_buf, jar_len);
 		printf("Pack200: disable / JavaVM (%d-bit) not found.\r\n", GetProcessArchitecture());
 	}
 	
@@ -579,8 +582,14 @@ int main(int argc, char* argv[])
 	}
 	
 	printf("%s (%d-bit) version %s\r\n", strrchr(exe_file, '\\') + 1, architecture_bits, new_version);
+	is_dirty_exe = FALSE;
 	
 EXIT:
+	if(is_dirty_exe)
+	{
+		DeleteFile(exe_file);
+	}
+
 	if (env != NULL)
 	{
 		if ((*env)->ExceptionCheck(env) == JNI_TRUE)
