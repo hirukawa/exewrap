@@ -32,6 +32,7 @@ static BYTE*  get_jar_buf(const char* jar_file, DWORD* jar_len);
 static void   set_application_icon(const char* filename, const char* icon_file);
 static char*  set_version_info(const char* filename, const char* version_number, DWORD previous_revision, char* file_description, char* copyright, char* company_name, char* product_name, char* product_version, char* original_filename, char* jar_file);
 
+static BOOL   g_is_dirty_exe = FALSE;
 
 int main(int argc, char* argv[])
 {
@@ -64,7 +65,6 @@ int main(int argc, char* argv[])
 	char*    new_version;
 	BOOL     contains_visualvm_display_name = FALSE;
 	BOOL     is_icon_set = FALSE;
-	BOOL     is_dirty_exe = FALSE;
 
 	char*    buf = NULL;
 	char*    ptr = NULL;
@@ -223,7 +223,6 @@ int main(int argc, char* argv[])
 	previous_revision = get_version_revision(exe_file);
 	DeleteFile(exe_file);
 
-	is_dirty_exe = TRUE;
 	b = create_exe_file(exe_file, image_buf, image_len, TRUE);
 	if (b == FALSE)
 	{
@@ -582,10 +581,10 @@ int main(int argc, char* argv[])
 	}
 	
 	printf("%s (%d-bit) version %s\r\n", strrchr(exe_file, '\\') + 1, architecture_bits, new_version);
-	is_dirty_exe = FALSE;
+	g_is_dirty_exe = FALSE;
 	
 EXIT:
-	if(is_dirty_exe)
+	if(g_is_dirty_exe)
 	{
 		DeleteFile(exe_file);
 	}
@@ -647,7 +646,7 @@ static DWORD get_version_revision(char* filename)
 	 * リビジョンナンバーを取り出すように変更しました。
 	 */
 	int    SCAN_SIZE = 8192 * 3;
-	DWORD  revision = 0;
+	DWORD  revision = MAXDWORD;
 	HANDLE hFile;
 	char   HEADER[] = "VS_VERSION_INFO";
 	size_t len;
@@ -723,6 +722,7 @@ static BOOL create_exe_file(const char* filename, BYTE* image_buf, DWORD image_l
 			goto EXIT;
 		}
 	}
+	g_is_dirty_exe = TRUE;
 
 	if (is_reverse)
 	{
@@ -1162,7 +1162,7 @@ static char* set_version_info(const char* filename, const char* version_number, 
 	product_version_build = atoi(strtok(NULL, "."));
 	product_version_revision = atoi(strtok(NULL, "."));
 
-	// revison が明示的に指定されていなかった場合、既存ファイルから取得した値に 1　を加算して revision とする。
+	// revision が明示的に指定されていなかった場合、既存ファイルから取得した値に 1　を加算して revision とする。
 	strcpy(buffer, version_number);
 	if (strtok(buffer, ".") != NULL)
 	{
@@ -1172,13 +1172,17 @@ static char* set_version_info(const char* filename, const char* version_number, 
 			{
 				if (strtok(NULL, ".") != NULL)
 				{
-					previous_revision = file_version_revision - 1;
+				    // revision が明示的に指定されているので previous_revision を無効値にする。
+				    previous_revision = MAXDWORD;
 				}
 			}
 		}
 	}
 
-	file_version_revision = (short)previous_revision + 1;
+    // revision が無効値でないなら revision を 1 加算します。
+    if(previous_revision != MAXDWORD) {
+    	file_version_revision = (short)previous_revision + 1;
+    }
 	// build 加算判定ここまで。
 	sprintf(file_version, "%d.%d.%d.%d", file_version_major, file_version_minor, file_version_build, file_version_revision);
 
