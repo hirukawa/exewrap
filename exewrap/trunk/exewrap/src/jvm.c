@@ -442,7 +442,7 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 
 	buffer = HeapAlloc(GetProcessHeap(), 0, 64 * 1024);
 
-	sprintf(buffer, "%u-%02u-%02uT%02u:%02u:%02u.%03u",
+	sprintf(buffer, "%u-%02u-%02uT%02u:%02u:%02u.%03uZ",
 		startup->wYear, startup->wMonth, startup->wDay,
 		startup->wHour, startup->wMinute, startup->wSecond,
 		startup->wMilliseconds);

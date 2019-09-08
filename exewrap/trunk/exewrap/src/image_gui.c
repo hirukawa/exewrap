@@ -54,7 +54,7 @@ INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine,
 	RESOURCE    res;
 	LOAD_RESULT result;
 
-	GetLocalTime(&startup);
+	GetSystemTime(&startup);
 
 	utilities[0] = '\0';
 

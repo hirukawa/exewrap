@@ -29,7 +29,7 @@ int main(int argc, char* argv[])
 	RESOURCE    res;
 	LOAD_RESULT result;
 
-	GetLocalTime(&startup);
+	GetSystemTime(&startup);
 
 	utilities[0] = '\0';
 
