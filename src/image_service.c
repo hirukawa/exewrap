@@ -70,7 +70,7 @@ static int service_main(int argc, char* argv[])
 	jobjectArray MainClass_start_args;
 	int          i;
 
-	GetLocalTime(&startup);
+	GetSystemTime(&startup);
 
 	utilities[0] = '\0';
 

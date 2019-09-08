@@ -71,7 +71,7 @@ int main(int argc, char* argv[])
 	RESOURCE res;
 	BOOL     b;
 
-	GetLocalTime(&startup);
+	GetSystemTime(&startup);
 	
 	opt = parse_opt(argc, argv);
 
