@@ -12,54 +12,78 @@ public class FileLogStream extends OutputStream {
 		String path = System.getProperty("java.application.path");
 		String name = System.getProperty("java.application.name");
 		name = name.substring(0, name.lastIndexOf('.')) + ".log";
-		FileLogStream stream = new FileLogStream(new File(path, name));
+		FileLogStream stream = new FileLogStream(path, name);
 		System.setOut(new PrintStream(stream));
 		System.setErr(new PrintStream(stream));
 	}
 
-	private File file;
+	private String path;
+	private String name;
 	private FileOutputStream out;
 	
-	public FileLogStream(File file) {
-		this.file = file;
+	public FileLogStream(String path, String name) {
+		this.path = path;
+		this.name = name;
 	}
 	
 	private void open() {
-		try {
-			this.out = new FileOutputStream(this.file);
-		} catch(FileNotFoundException e) {}
+		if(out == null) {
+			try {
+				out = new FileOutputStream(new File(path, name));
+			} catch(Exception ignore) {}
+		}
+		if(out == null) {
+			try {
+				out = new FileOutputStream(new File(System.getProperty("java.io.tmpdir"), name));
+			} catch(Exception ignore) {}
+		}
 	}
 	
 	public void close() throws IOException {
-		if(this.out != null) {
-			this.out.close();
-		}
+		try {
+			if(out != null) {
+				out.close();
+				out = null;
+			}
+		} catch(Exception ignore) {}
 	}
 	
 	public void flush() throws IOException {
 	}
 	
 	public void write(byte[] b, int off, int len) throws IOException {
-		if(this.out == null) {
-			open();
-		}
-		this.out.write(b, off, len);
-		this.out.flush();
+		try {
+			if(out == null) {
+				open();
+			}
+			if(out != null) {
+				out.write(b, off, len);
+				out.flush();
+			}
+		} catch(Exception ignore) {}
 	}
 	
 	public void write(byte[] b) throws IOException {
-		if(out == null) {
-			open();
-		}
-		this.out.write(b);
-		this.out.flush();
+		try {
+			if(out == null) {
+				open();
+			}
+			if(out != null) {
+				out.write(b);
+				out.flush();
+			}
+		} catch(Exception ignore) {}
 	}
 	
 	public void write(int b) throws IOException {
-		if(out == null) {
-			open();
-		}
-		this.out.write(b);
-		this.out.flush();
+		try {
+			if(out == null) {
+				open();
+			}
+			if(out != null) {
+				out.write(b);
+				out.flush();
+			}
+		} catch(Exception ignore) {}
 	}
 }
