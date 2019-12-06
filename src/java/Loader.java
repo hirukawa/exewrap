@@ -1,7 +1,9 @@
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.net.URLStreamHandler;
 import java.net.URLStreamHandlerFactory;
 import java.security.CodeSource;
@@ -101,8 +103,15 @@ public class Loader extends ClassLoader {
 		if(name == null) {
 			name = "";
 		}
-		
-		CONTEXT_PATH = "file:/" + path.replace('\\', '/') + '/' + name;
+
+		try {
+			String s = path.replace('\\', '/') + '/' + name;
+			String urlEncoded = URLEncoder.encode(s.replace(":", "*:").replace("/", "*/").replace(" ", "*|"), "UTF-8")
+					.replace("*%3A", ":").replace("*%2F", "/").replace("*%7C", "%20");
+			CONTEXT_PATH = "file:/" + urlEncoded;
+		} catch(UnsupportedEncodingException e) {
+			CONTEXT_PATH = "file:/" + path.replace('\\', '/') + '/' + name;
+		}
 		URL url = new URL(CONTEXT_PATH);
 		CodeSource codesource = new CodeSource(url, (Certificate[])null);
 		PermissionCollection permissions = Policy.getPolicy().getPermissions(new CodeSource(null, (Certificate[])null));
