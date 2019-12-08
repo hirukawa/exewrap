@@ -48,7 +48,6 @@ int main(int argc, char* argv[])
 	DWORD    previous_revision = 0;
 	DWORD    target_version;
 	char*    target_version_string;
-	BOOL     disable_pack200 = FALSE;
 	BOOL     enable_java = FALSE;
 	BYTE*    jar_buf;
 	DWORD    jar_len;
@@ -88,7 +87,7 @@ int main(int argc, char* argv[])
 			exe_file = argv[0];
 		}
 		
-		printf("exewrap 1.4.2 for %s (%d-bit) \r\n"
+		printf("exewrap 1.5.0 for %s (%d-bit) \r\n"
 			   "Native executable java application wrapper.\r\n"
 			   "Copyright (C) 2005-2019 HIRUKAWA Ryo. All rights reserved.\r\n"
 			   "\r\n"
@@ -98,7 +97,6 @@ int main(int argc, char* argv[])
 			   "  -s                  \t Create Windows Service application.\r\n"
 			   "  -A <architecture>   \t Select exe-file architecture. (default %s)\r\n"
 			   "  -t <version>        \t Set target java runtime version. (default 1.5)\r\n"
-			   "  -2                  \t Disable Pack200.\r\n"
 			   "  -M <main-class>     \t Set main-class.\r\n"
 			   "  -L <ext-dirs>       \t Set ext-dirs.\r\n"
 			   "  -e <ext-flags>      \t Set extended flags.\r\n"
@@ -244,11 +242,6 @@ int main(int argc, char* argv[])
 	printf("Target: %s (%d.%d.%d.%d)\n", target_version_string + 4, target_version >> 25 & 0x7F, target_version >> 18 & 0x7F, target_version >> 11 & 0x7F, target_version & 0x7FF);
 	set_resource(exe_file, "TARGET_VERSION", RT_RCDATA, target_version_string, (DWORD)(4 + strlen(target_version_string + 4) + 1));
 	
-	if(opt['2'])
-	{
-		disable_pack200 = TRUE;
-	}
-
 	if(opt['L'] && *opt['L'] != '-' && *opt['L'] != '\0')
 	{
 		if(strcmp(opt['L'], ";") == 0)
@@ -305,18 +298,18 @@ int main(int argc, char* argv[])
 		}
 		(*env)->SetByteArrayRegion(env, buf, 0, jar_len, (jbyte*)jar_buf);
 
-		JarProcessor_init = (*env)->GetMethodID(env, JarProcessor, "<init>", "([BZ)V");
+		JarProcessor_init = (*env)->GetMethodID(env, JarProcessor, "<init>", "([B)V");
 		if (JarProcessor_init == NULL)
 		{
 			result.msg_id = MSG_ID_ERR_GET_CONSTRUCTOR;
-			printf(_(MSG_ID_ERR_GET_CONSTRUCTOR), "exewrap.tool.JarProcessor(byte[], boolean)");
+			printf(_(MSG_ID_ERR_GET_CONSTRUCTOR), "exewrap.tool.JarProcessor(byte[])");
 			goto EXIT;
 		}
-		jarProcessor = (*env)->NewObject(env, JarProcessor, JarProcessor_init, buf, !disable_pack200);
+		jarProcessor = (*env)->NewObject(env, JarProcessor, JarProcessor_init, buf);
 		if (jarProcessor == NULL)
 		{
 			result.msg_id = MSG_ID_ERR_NEW_OBJECT;
-			printf(_(MSG_ID_ERR_NEW_OBJECT), "exewrap.tool.JarProcessor(byte[], boolean)");
+			printf(_(MSG_ID_ERR_NEW_OBJECT), "exewrap.tool.JarProcessor(byte[])");
 			goto EXIT;
 		}
 		jarProcessor_getMainClass = (*env)->GetMethodID(env, JarProcessor, "getMainClass", "()Ljava/lang/String;");
@@ -400,7 +393,7 @@ int main(int argc, char* argv[])
 			jint len;
 			bytes  = (*env)->GetByteArrayElements(env, buf, &isCopy);
 			len = (*env)->GetArrayLength(env, buf);
-			set_resource(exe_file, (disable_pack200 ? "JAR" : "PACK_GZ"), RT_RCDATA, bytes, (DWORD)len);
+			set_resource(exe_file, "JAR", RT_RCDATA, bytes, (DWORD)len);
 			(*env)->ReleaseByteArrayElements(env, buf, bytes, 0);
 		}
 	}
@@ -412,7 +405,7 @@ int main(int argc, char* argv[])
 			goto EXIT;
 		}
 		set_resource(exe_file, "JAR", RT_RCDATA, jar_buf, jar_len);
-		printf("Pack200: disable / JavaVM (%d-bit) not found.\r\n", GetProcessArchitecture());
+		printf("JavaVM (%d-bit) not found.\r\n", GetProcessArchitecture());
 	}
 	
 	ext_flags = (char*)malloc(1024);

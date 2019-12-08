@@ -25,7 +25,7 @@ public class JarProcessor {
 	public static void main(String[] args) {
 	}
 	
-	public JarProcessor(byte[] buf, boolean usePack200) throws IOException {
+	public JarProcessor(byte[] buf) throws IOException {
 		TimeZone tz = TimeZone.getDefault();
 		try {
 			TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
@@ -46,16 +46,8 @@ public class JarProcessor {
 			
 			this.out = new ByteArrayOutputStream();
 			JarOutputStream jarOut;
-			int method;
-			if(usePack200) {
-				method = JarEntry.STORED;
-				GZIPOutputStream gzOut = new GZIPOutputStream(this.out);
-				PackOutputStream packOut = new PackOutputStream(gzOut);
-				jarOut = new JarOutputStream(packOut, manifest);
-			} else {
-				method = JarEntry.DEFLATED;
-				jarOut = new JarOutputStream(this.out, manifest);
-			}
+			int method = JarEntry.DEFLATED;
+			jarOut = new JarOutputStream(this.out, manifest);
 			jarOut.setMethod(method);
 			
 			JarEntry entryIn;

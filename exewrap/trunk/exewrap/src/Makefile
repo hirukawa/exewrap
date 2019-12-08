@@ -61,7 +61,7 @@ $(BIN)\exewrap.exe : $(BIN) $(OBJ) $(OBJ)\exewrap.res $(OBJ)\exewrap.obj \
 		$(OBJ)\jvm.obj $(OBJ)\loader.obj $(OBJ)\message.obj $(OBJ)\eventlog.obj \
 		$(OBJ)\bindres.exe \
 		$(OBJ)\image_console.exe $(OBJ)\image_gui.exe $(OBJ)\image_service.exe \
-		$(OBJ)\exewrap\core\ByteBufferInputStream.class $(OBJ)\exewrap\core\NativeMethods.class $(OBJ)\exewrap\core\PackInputStream.class \
+		$(OBJ)\exewrap\core\ByteBufferInputStream.class $(OBJ)\exewrap\core\NativeMethods.class \
 		$(OBJ)\exewrap\core\URLConnection.class $(OBJ)\exewrap\core\URLStreamHandler.class $(OBJ)\exewrap\core\URLStreamHandlerFactory.class \
 		$(OBJ)\util.jar $(OBJ)\tool.jar $(OBJ)\loader.jar
 	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE$(TARGET_VER) /OUT:$(OBJ)\exewrap.exe $(OBJ)\exewrap.res $(OBJ)\exewrap.obj \
@@ -101,7 +101,6 @@ $(BIN)\exewrap.exe : $(BIN) $(OBJ) $(OBJ)\exewrap.res $(OBJ)\exewrap.obj \
 	$(OBJ)\bindres.exe    $(OBJ)\exewrap.exe IMAGE_SERVICE_64_MF_INVOKER $(OBJ)\..\x64\image_service.exe.manifest.asInvoker
 	$(OBJ)\bindres.exe    $(OBJ)\exewrap.exe BYTE_BUFFER_INPUT_STREAM    $(OBJ)\exewrap\core\ByteBufferInputStream.class
 	$(OBJ)\bindres.exe    $(OBJ)\exewrap.exe NATIVE_METHODS              $(OBJ)\exewrap\core\NativeMethods.class
-	$(OBJ)\bindres.exe    $(OBJ)\exewrap.exe PACK_INPUT_STREAM           $(OBJ)\exewrap\core\PackInputStream.class
 	$(OBJ)\bindres.exe    $(OBJ)\exewrap.exe URL_CONNECTION              $(OBJ)\exewrap\core\URLConnection.class
 	$(OBJ)\bindres.exe    $(OBJ)\exewrap.exe URL_STREAM_HANDLER          $(OBJ)\exewrap\core\URLStreamHandler.class
 	$(OBJ)\bindres.exe    $(OBJ)\exewrap.exe URL_STREAM_HANDLER_FACTORY  $(OBJ)\exewrap\core\URLStreamHandlerFactory.class
@@ -119,7 +118,7 @@ $(OBJ)\exewrap.res : $(OBJ) resources\exewrap.rc
 $(OBJ)\image_console.exe : $(OBJ) $(OBJ)\image_console.res $(OBJ)\image_console.obj \
 		$(OBJ)\jvm.obj $(OBJ)\loader.obj $(OBJ)\message.obj $(OBJ)\notify.obj $(OBJ)\eventlog.obj \
 		$(OBJ)\bindres.exe $(OBJ)\CopyManifest.class \
-		$(OBJ)\exewrap\core\ByteBufferInputStream.class $(OBJ)\exewrap\core\NativeMethods.class $(OBJ)\exewrap\core\PackInputStream.class \
+		$(OBJ)\exewrap\core\ByteBufferInputStream.class $(OBJ)\exewrap\core\NativeMethods.class \
 		$(OBJ)\exewrap\core\URLConnection.class $(OBJ)\exewrap\core\URLStreamHandler.class $(OBJ)\exewrap\core\URLStreamHandlerFactory.class \
 		$(OBJ)\util.jar
 	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE$(TARGET_VER) /OUT:$(OBJ)\image_console.exe $(OBJ)\image_console.res $(OBJ)\image_console.obj \
@@ -128,7 +127,6 @@ $(OBJ)\image_console.exe : $(OBJ) $(OBJ)\image_console.res $(OBJ)\image_console.
 	$(JAVA) -cp $(OBJ) CopyManifest $(OBJ)\image_console.exe.manifest
 	$(OBJ)\bindres.exe $(OBJ)\image_console.exe BYTE_BUFFER_INPUT_STREAM   $(OBJ)\exewrap\core\ByteBufferInputStream.class
 	$(OBJ)\bindres.exe $(OBJ)\image_console.exe NATIVE_METHODS             $(OBJ)\exewrap\core\NativeMethods.class
-	$(OBJ)\bindres.exe $(OBJ)\image_console.exe PACK_INPUT_STREAM          $(OBJ)\exewrap\core\PackInputStream.class
 	$(OBJ)\bindres.exe $(OBJ)\image_console.exe URL_CONNECTION             $(OBJ)\exewrap\core\URLConnection.class
 	$(OBJ)\bindres.exe $(OBJ)\image_console.exe URL_STREAM_HANDLER         $(OBJ)\exewrap\core\URLStreamHandler.class
 	$(OBJ)\bindres.exe $(OBJ)\image_console.exe URL_STREAM_HANDLER_FACTORY $(OBJ)\exewrap\core\URLStreamHandlerFactory.class
@@ -143,7 +141,7 @@ $(OBJ)\image_console.obj : $(OBJ) image_console.c
 $(OBJ)\image_gui.exe : $(OBJ) $(OBJ)\image_gui.res $(OBJ)\image_gui.obj \
 		$(OBJ)\jvm.obj $(OBJ)\loader.obj $(OBJ)\message.obj $(OBJ)\notify.obj $(OBJ)\eventlog.obj \
 		$(OBJ)\bindres.exe $(OBJ)\CopyManifest.class \
-		$(OBJ)\exewrap\core\ByteBufferInputStream.class $(OBJ)\exewrap\core\NativeMethods.class $(OBJ)\exewrap\core\PackInputStream.class \
+		$(OBJ)\exewrap\core\ByteBufferInputStream.class $(OBJ)\exewrap\core\NativeMethods.class \
 		$(OBJ)\exewrap\core\URLConnection.class $(OBJ)\exewrap\core\URLStreamHandler.class $(OBJ)\exewrap\core\URLStreamHandlerFactory.class \
 		$(OBJ)\util.jar
 	$(LINK) $(LDFLAGS) /SUBSYSTEM:WINDOWS$(TARGET_VER) /OUT:$(OBJ)\image_gui.exe $(OBJ)\image_gui.res $(OBJ)\image_gui.obj \
@@ -152,7 +150,6 @@ $(OBJ)\image_gui.exe : $(OBJ) $(OBJ)\image_gui.res $(OBJ)\image_gui.obj \
 	$(JAVA) -cp $(OBJ) CopyManifest $(OBJ)\image_gui.exe.manifest
 	$(OBJ)\bindres.exe $(OBJ)\image_gui.exe BYTE_BUFFER_INPUT_STREAM   $(OBJ)\exewrap\core\ByteBufferInputStream.class
 	$(OBJ)\bindres.exe $(OBJ)\image_gui.exe NATIVE_METHODS             $(OBJ)\exewrap\core\NativeMethods.class
-	$(OBJ)\bindres.exe $(OBJ)\image_gui.exe PACK_INPUT_STREAM          $(OBJ)\exewrap\core\PackInputStream.class
 	$(OBJ)\bindres.exe $(OBJ)\image_gui.exe URL_CONNECTION             $(OBJ)\exewrap\core\URLConnection.class
 	$(OBJ)\bindres.exe $(OBJ)\image_gui.exe URL_STREAM_HANDLER         $(OBJ)\exewrap\core\URLStreamHandler.class
 	$(OBJ)\bindres.exe $(OBJ)\image_gui.exe URL_STREAM_HANDLER_FACTORY $(OBJ)\exewrap\core\URLStreamHandlerFactory.class
@@ -167,7 +164,7 @@ $(OBJ)\image_gui.obj : $(OBJ) image_gui.c
 $(OBJ)\image_service.exe : $(OBJ) $(OBJ)\image_service.res $(OBJ)\image_service.obj \
 		$(OBJ)\jvm.obj $(OBJ)\loader.obj $(OBJ)\message.obj $(OBJ)\eventlog.obj \
 		$(OBJ)\bindres.exe $(OBJ)\CopyManifest.class \
-		$(OBJ)\exewrap\core\ByteBufferInputStream.class $(OBJ)\exewrap\core\NativeMethods.class $(OBJ)\exewrap\core\PackInputStream.class \
+		$(OBJ)\exewrap\core\ByteBufferInputStream.class $(OBJ)\exewrap\core\NativeMethods.class \
 		$(OBJ)\exewrap\core\URLConnection.class $(OBJ)\exewrap\core\URLStreamHandler.class $(OBJ)\exewrap\core\URLStreamHandlerFactory.class \
 		$(OBJ)\util.jar
 	$(LINK) $(LDFLAGS) /SUBSYSTEM:CONSOLE$(TARGET_VER) /OUT:$(OBJ)\image_service.exe $(OBJ)\image_service.res $(OBJ)\image_service.obj \
@@ -176,7 +173,6 @@ $(OBJ)\image_service.exe : $(OBJ) $(OBJ)\image_service.res $(OBJ)\image_service.
 	$(JAVA) -cp $(OBJ) CopyManifest $(OBJ)\image_service.exe.manifest
 	$(OBJ)\bindres.exe $(OBJ)\image_service.exe BYTE_BUFFER_INPUT_STREAM   $(OBJ)\exewrap\core\ByteBufferInputStream.class
 	$(OBJ)\bindres.exe $(OBJ)\image_service.exe NATIVE_METHODS             $(OBJ)\exewrap\core\NativeMethods.class
-	$(OBJ)\bindres.exe $(OBJ)\image_service.exe PACK_INPUT_STREAM          $(OBJ)\exewrap\core\PackInputStream.class
 	$(OBJ)\bindres.exe $(OBJ)\image_service.exe URL_CONNECTION             $(OBJ)\exewrap\core\URLConnection.class
 	$(OBJ)\bindres.exe $(OBJ)\image_service.exe URL_STREAM_HANDLER         $(OBJ)\exewrap\core\URLStreamHandler.class
 	$(OBJ)\bindres.exe $(OBJ)\image_service.exe URL_STREAM_HANDLER_FACTORY $(OBJ)\exewrap\core\URLStreamHandlerFactory.class
@@ -237,9 +233,6 @@ $(OBJ)\exewrap\core\ByteBufferInputStream.class : $(OBJ) java\exewrap\core\ByteB
 $(OBJ)\exewrap\core\NativeMethods.class : $(OBJ) java\exewrap\core\NativeMethods.java
 	$(JAVAC) -Xlint:none -g:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\core\NativeMethods.java
 
-$(OBJ)\exewrap\core\PackInputStream.class : $(OBJ) java\exewrap\core\PackInputStream.java
-	$(JAVAC) -Xlint:none -g:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\core\PackInputStream.java
-
 $(OBJ)\exewrap\core\URLConnection.class : $(OBJ) java\exewrap\core\URLConnection.java
 	$(JAVAC) -Xlint:none -g:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\core\URLConnection.java
 
@@ -271,11 +264,8 @@ $(OBJ)\exewrap\util\UncaughtExceptionHandler.class : $(OBJ) java\exewrap\util\Un
 
 ### exewrap.tool
 
-$(OBJ)\tool.jar : $(OBJ) $(OBJ)\exewrap\tool\JarProcessor.class $(OBJ)\exewrap\tool\PackOutputStream.class
+$(OBJ)\tool.jar : $(OBJ) $(OBJ)\exewrap\tool\JarProcessor.class
 	$(JAR) cvfe $(OBJ)\tool.jar exewrap.tool.JarProcessor -C $(OBJ) exewrap\tool
-
-$(OBJ)\exewrap\tool\PackOutputStream.class : $(OBJ) java\exewrap\tool\PackOutputStream.java
-	$(JAVAC) -Xlint:none -g:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\tool\PackOutputStream.java
 
 $(OBJ)\exewrap\tool\JarProcessor.class : $(OBJ) java\exewrap\tool\JarProcessor.java
 	$(JAVAC) -Xlint:none -g:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\tool\JarProcessor.java
