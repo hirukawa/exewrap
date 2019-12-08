@@ -796,6 +796,15 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 	if(GetEnvironmentVariable("PATH", buffer, 64 * 1024))
 	{
 		lstrcat(libpath, buffer);
+
+		while((token = strtok(buffer, ";")) != NULL)
+		{
+			buffer = NULL;
+			if(strlen(token) > 0)
+			{
+			    AddDllDir(token);
+			}
+        }
 	}
 
 	AddPath(binpath);
