@@ -295,20 +295,15 @@ BOOL LoadMainClass(int argc, char* argv[], char* utilities, LOAD_RESULT* result)
 
 	// user.jar or user.pack.gz
 	{
-		BOOL     isPackGz = TRUE;
 		jobject  byteBuffer;
 		jobject  byteBufferInputStream;
 		jobject  jarInputStream;
 
-		if (GetResource("PACK_GZ", &res) == NULL)
+    	if (GetResource("JAR", &res) == NULL)
 		{
-			isPackGz = FALSE;
-			if (GetResource("JAR", &res) == NULL)
-			{
-				result->msg_id = MSG_ID_ERR_RESOURCE_NOT_FOUND;
-				sprintf(result->msg, _(MSG_ID_ERR_RESOURCE_NOT_FOUND), "RT_RCDATA: JAR, RT_RCDATA: PACK_GZ");
-				goto EXIT;
-			}
+			result->msg_id = MSG_ID_ERR_RESOURCE_NOT_FOUND;
+			sprintf(result->msg, _(MSG_ID_ERR_RESOURCE_NOT_FOUND), "RT_RCDATA: JAR");
+			goto EXIT;
 		}
 		byteBuffer = (*env)->NewDirectByteBuffer(env, res.buf, res.len);
 		if (byteBuffer == NULL)
@@ -324,87 +319,14 @@ BOOL LoadMainClass(int argc, char* argv[], char* utilities, LOAD_RESULT* result)
 			sprintf(result->msg, _(MSG_ID_ERR_NEW_OBJECT), "exewrap.core.ByteBufferInputStream(java.nio.ByteBuffer)");
 			goto EXIT;
 		}
-		if (isPackGz)
-		{
-			jclass    GZIPInputStream;
-			jmethodID GZIPInputStream_init;
-			jobject   gzipInputStream;
-			jclass    PackInputStream;
-			jmethodID PackInputStream_init;
-			jobject   packInputStream;
-
-			// GZIPInputStream
-			GZIPInputStream = (*env)->FindClass(env, "java/util/zip/GZIPInputStream");
-			if (GZIPInputStream == NULL)
-			{
-				result->msg_id = MSG_ID_ERR_FIND_CLASS;
-				sprintf(result->msg, _(MSG_ID_ERR_FIND_CLASS), "java.util.zip.GZIPInputStream");
-				goto EXIT;
-			}
-			GZIPInputStream_init = (*env)->GetMethodID(env, GZIPInputStream, "<init>", "(Ljava/io/InputStream;)V");
-			if (GZIPInputStream_init == NULL)
-			{
-				result->msg_id = MSG_ID_ERR_GET_CONSTRUCTOR;
-				sprintf(result->msg, _(MSG_ID_ERR_GET_CONSTRUCTOR), "java.util.zip.GZIPInputStream(java.io.InputStream)");
-				goto EXIT;
-			}
-			gzipInputStream = (*env)->NewObject(env, GZIPInputStream, GZIPInputStream_init, byteBufferInputStream);
-			if (gzipInputStream == NULL)
-			{
-				result->msg_id = MSG_ID_ERR_NEW_OBJECT;
-				sprintf(result->msg, _(MSG_ID_ERR_NEW_OBJECT), "java.util.zip.GZIPInputStream(ByteBufferInputStream)");
-				goto EXIT;
-			}
-
-			// PackInputStream
-			if (GetResource("PACK_INPUT_STREAM", &res) == NULL)
-			{
-				result->msg_id = MSG_ID_ERR_RESOURCE_NOT_FOUND;
-				sprintf(result->msg, _(MSG_ID_ERR_RESOURCE_NOT_FOUND), "RT_RCDATA: PACK_INPUT_STREAM");
-				goto EXIT;
-			}
-			PackInputStream = (*env)->DefineClass(env, "exewrap/core/PackInputStream", systemClassLoader, res.buf, res.len);
-			if (PackInputStream == NULL)
-			{
-				result->msg_id = MSG_ID_ERR_FIND_CLASS;
-				sprintf(result->msg, _(MSG_ID_ERR_FIND_CLASS), "exewrap.core.PackInputStream");
-				goto EXIT;
-			}
-			PackInputStream_init = (*env)->GetMethodID(env, PackInputStream, "<init>", "(Ljava/io/InputStream;)V");
-			if (PackInputStream_init == NULL)
-			{
-				result->msg_id = MSG_ID_ERR_GET_CONSTRUCTOR;
-				sprintf(result->msg, _(MSG_ID_ERR_GET_CONSTRUCTOR), "exewrap.core.PackInputStream(java.io.InputStream)");
-				goto EXIT;
-			}
-			packInputStream = (*env)->NewObject(env, PackInputStream, PackInputStream_init, gzipInputStream);
-			if (packInputStream == NULL)
-			{
-				result->msg_id = MSG_ID_ERR_NEW_OBJECT;
-				sprintf(result->msg, _(MSG_ID_ERR_NEW_OBJECT), "exewrap.core.PackInputStream(java.util.zip.GZIPInputStream)");
-				goto EXIT;
-			}
-
-			// JarInputStream
-			jarInputStream = (*env)->NewObject(env, JarInputStream, JarInputStream_init, packInputStream);
-			if (jarInputStream == NULL)
-			{
-				result->msg_id = MSG_ID_ERR_NEW_OBJECT;
-				sprintf(result->msg, _(MSG_ID_ERR_NEW_OBJECT), "java.util.jar.JarInputStream(PackInputStream)");
-				goto EXIT;
-			}
-		}
-		else
-		{
-			// JarInputStream
-			jarInputStream = (*env)->NewObject(env, JarInputStream, JarInputStream_init, byteBufferInputStream);
-			if (jarInputStream == NULL)
-			{
-				result->msg_id = MSG_ID_ERR_NEW_OBJECT;
-				sprintf(result->msg, _(MSG_ID_ERR_NEW_OBJECT), "java.util.jar.JarInputStream(ByteBufferInputStream)");
-				goto EXIT;
-			}
-		}
+        // JarInputStream
+        jarInputStream = (*env)->NewObject(env, JarInputStream, JarInputStream_init, byteBufferInputStream);
+        if (jarInputStream == NULL)
+        {
+            result->msg_id = MSG_ID_ERR_NEW_OBJECT;
+            sprintf(result->msg, _(MSG_ID_ERR_NEW_OBJECT), "java.util.jar.JarInputStream(ByteBufferInputStream)");
+            goto EXIT;
+        }
 		(*env)->SetObjectArrayElement(env, jars, 1, jarInputStream);
 	}
 	
