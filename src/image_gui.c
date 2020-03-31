@@ -89,7 +89,7 @@ INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine,
 	// Display Splash Screen
 	if (GetResource("SPLASH_SCREEN_IMAGE", &res) != NULL)
 	{
-		splashscreendll = LoadLibrary("splashscreen.dll");
+		splashscreendll = LoadLibraryEx("splashscreen.dll", NULL, 0x00001000); // LOAD_LIBRARY_SEARCH_DEFAULT_DIRS (0x00001000)
 		if (splashscreendll != NULL)
 		{
 			SplashInit = (SplashInit_t)GetProcAddress(splashscreendll, "SplashInit");
