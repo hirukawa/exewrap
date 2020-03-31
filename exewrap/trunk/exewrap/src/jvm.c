@@ -109,7 +109,7 @@ JNIEnv* CreateJavaVM(LPTSTR vm_args_opt, LPTSTR systemClassLoader, BOOL useServe
 		InitializePath(NULL, "lib", useServerVM, useSideBySideJRE, startup);
 	}
 
-	jvmdll = LoadLibrary("jvm.dll");
+	jvmdll = LoadLibraryEx("jvm.dll", NULL, 0x00001000); // LOAD_LIBRARY_SEARCH_DEFAULT_DIRS (0x00001000)
 	if (jvmdll == NULL)
 	{
 		if(err != NULL)
@@ -717,6 +717,12 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 	lstrcat(libpath, binpath);
 	lstrcat(libpath, ";");
 
+	AddPath(jvmpath);
+	AddDllDir(jvmpath);
+
+	AddPath(binpath);
+	AddDllDir(binpath);
+
 	if(relative_classpath != NULL)
 	{
 		while((token = strtok(relative_classpath, " ")) != NULL)
@@ -780,7 +786,6 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 					lstrcat(classpath, ";");
 					lstrcat(classpath, dir);
 
-
 					AddPath(dir);
 					AddDllDir(dir);
 
@@ -796,22 +801,7 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 	if(GetEnvironmentVariable("PATH", buffer, 64 * 1024))
 	{
 		lstrcat(libpath, buffer);
-
-		while((token = strtok(buffer, ";")) != NULL)
-		{
-			buffer = NULL;
-			if(strlen(token) > 0)
-			{
-			    AddDllDir(token);
-			}
-        }
 	}
-
-	AddPath(binpath);
-	AddDllDir(binpath);
-
-	AddPath(jvmpath);
-	AddDllDir(jvmpath);
 
 	HeapFree(GetProcessHeap(), 0, buffer);
 }
