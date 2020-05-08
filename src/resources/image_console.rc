@@ -2,5 +2,3 @@
 
 LANGUAGE 0,0
 1 11 resources/eventlog.bin
-
-1	ICON MOVEABLE PURE LOADONCALL DISCARDABLE "resources/image_console.ico"

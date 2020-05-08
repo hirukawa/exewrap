@@ -1,54 +1,71 @@
+/* このファイルの文字コードは Shift_JIS (MS932) です。*/
+
 #include <windows.h>
 #include <stdio.h>
-#include "include/eventlog.h"
 
-int  InstallEventLog();
-int  RemoveEventLog();
-void WriteEventLog(WORD type, const char* message);
-static void ShowErrorMessage();
+#define DEFAULT_EVENT_ID 0x40000000L
+#define MAX_LONG_PATH    32768
 
-int InstallEventLog()
+DWORD install_event_log(void);
+DWORD remove_event_log(void);
+DWORD write_event_log(WORD type, const wchar_t* message);
+
+DWORD install_event_log()
 {
-	int   err = 0;
-	HKEY  hKey = NULL;
-	DWORD keys;
-	DWORD LastError = 0;
-	char buffer[MAX_PATH];
-	char module[MAX_PATH];
-	char* source;
-	char* key;
-	DWORD types;
+	DWORD    error  = 0;
+	wchar_t* buffer = NULL;
+	wchar_t* module = NULL;
+	wchar_t* key    = NULL;
+	wchar_t* source;
+	HKEY     hKey   = NULL;
+	DWORD    keys;
+	DWORD    types;
 
-	GetModuleFileName(NULL, buffer, MAX_PATH);
-	lstrcpy(module, buffer);
-	*(strrchr(buffer, '.')) = 0;
-	source = strrchr(buffer, '\\') + 1;
-	key = (char*)HeapAlloc(GetProcessHeap(), 0, 1024);
-	lstrcpy(key, "SYSTEM\\CurrentControlSet\\Services\\EventLog\\Application\\");
-	lstrcat(key, source);
-	
-	if((LastError = RegCreateKeyEx(HKEY_LOCAL_MACHINE, key, 0, NULL, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, &hKey, &keys)) != ERROR_SUCCESS)
+	buffer = (wchar_t*)malloc(MAX_LONG_PATH * sizeof(wchar_t));
+	if(buffer == NULL)
 	{
-		SetLastError(LastError);
-		ShowErrorMessage();
-		err = (int)LastError;
+		SetLastError(error = ERROR_NOT_ENOUGH_MEMORY);
+		goto EXIT;
+	}
+	module = (wchar_t*)malloc(MAX_LONG_PATH * sizeof(wchar_t));
+	if(module == NULL)
+	{
+		SetLastError(error = ERROR_NOT_ENOUGH_MEMORY);
+		goto EXIT;
+	}
+	key = (wchar_t*)malloc(MAX_LONG_PATH * sizeof(wchar_t));
+	if(key == NULL)
+	{
+		SetLastError(error = ERROR_NOT_ENOUGH_MEMORY);
+		goto EXIT;
+	}
+
+	GetModuleFileName(NULL, buffer, MAX_LONG_PATH);
+	wcscpy_s(module, MAX_LONG_PATH, buffer);
+	*(wcsrchr(buffer, L'.')) = L'\0';
+	source = wcsrchr(buffer, L'\\') + 1;
+	wcscpy_s(key, MAX_LONG_PATH, L"SYSTEM\\CurrentControlSet\\Services\\EventLog\\Application\\");
+	wcscat_s(key, MAX_LONG_PATH, source);
+
+	error = RegCreateKeyEx(HKEY_LOCAL_MACHINE, key, 0, NULL, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, &hKey, &keys);
+	if(error != ERROR_SUCCESS)
+	{
+		SetLastError(error);
+		goto EXIT;
+	}
+
+	error = RegSetValueEx(hKey, L"EventMessageFile", 0, REG_EXPAND_SZ, (BYTE*)module, (DWORD)((wcslen(module) + 1) * sizeof(wchar_t)));
+	if(error != ERROR_SUCCESS)
+	{
+		SetLastError(error);
 		goto EXIT;
 	}
 	
-	if((LastError = RegSetValueEx(hKey, "EventMessageFile", 0, REG_EXPAND_SZ, (LPBYTE)module, lstrlen(module) + 1)) != ERROR_SUCCESS)
+	types = EVENTLOG_ERROR_TYPE | EVENTLOG_WARNING_TYPE | EVENTLOG_INFORMATION_TYPE;
+	error = RegSetValueEx(hKey, L"TypesSupported", 0, REG_DWORD, (BYTE*)&types, sizeof(DWORD));
+	if(error != ERROR_SUCCESS)
 	{
-		SetLastError(LastError);
-		ShowErrorMessage();
-		err = (int)LastError;
-		goto EXIT;
-	}
-	
-	types = EVENTLOG_ERROR_TYPE | EVENTLOG_WARNING_TYPE | EVENTLOG_INFORMATION_TYPE; 
-	if((LastError = RegSetValueEx(hKey, "TypesSupported", 0, REG_DWORD, (LPBYTE)&types, sizeof(DWORD))) != ERROR_SUCCESS)
-	{
-		SetLastError(LastError);
-		ShowErrorMessage();
-		err = (int)LastError;
+		SetLastError(error);
 		goto EXIT;
 	}
 
@@ -59,42 +76,56 @@ EXIT:
 	}
 	if(key != NULL)
 	{
-		HeapFree(GetProcessHeap(), 0, key);
+		free(key);
 	}
-	return err;
+	if(module != NULL)
+	{
+		free(module);
+	}
+	if(buffer != NULL)
+	{
+		free(buffer);
+	}
+	return error;
 }
 
-int RemoveEventLog()
+DWORD remove_event_log()
 {
-	int   err = 0;
-	HKEY  hKey = NULL;
-	DWORD LastError = 0;
-	char buffer[MAX_PATH];
-	char module[MAX_PATH];
-	char* source;
-	char* key;
-	
-	key = (char*)HeapAlloc(GetProcessHeap(), 0, 256);
-	lstrcpy(key, "SYSTEM\\CurrentControlSet\\Services\\EventLog\\Application\\");
+	DWORD    error  = 0;
+	wchar_t* buffer = NULL;
+	wchar_t* key    = NULL;
+	wchar_t* source;
+	HKEY     hKey   = NULL;
 
-	GetModuleFileName(NULL, buffer, MAX_PATH);
-	lstrcpy(module, buffer);
-	*(strrchr(buffer, '.')) = 0;
-	source = strrchr(buffer, '\\') + 1;
-	
-	if((LastError = RegOpenKeyEx(HKEY_LOCAL_MACHINE, key, 0, KEY_ALL_ACCESS, &hKey)) != ERROR_SUCCESS)
+	buffer = (wchar_t*)malloc(MAX_LONG_PATH * sizeof(wchar_t));
+	if(buffer == NULL)
 	{
-		SetLastError(LastError);
-		ShowErrorMessage();
-		err = (int)LastError;
+		SetLastError(error = ERROR_NOT_ENOUGH_MEMORY);
 		goto EXIT;
 	}
-	
-	if((LastError = RegDeleteKey(hKey, source)) != ERROR_SUCCESS)
+	key = (wchar_t*)malloc(MAX_LONG_PATH * sizeof(wchar_t));
+	if(key == NULL)
 	{
-		SetLastError(LastError);
-		ShowErrorMessage();
-		err = (int)LastError;
+		SetLastError(error = ERROR_NOT_ENOUGH_MEMORY);
+		goto EXIT;
+	}
+
+	GetModuleFileName(NULL, buffer, MAX_LONG_PATH);
+	*(wcsrchr(buffer, L'.')) = L'\0';
+	source = wcsrchr(buffer, L'\\') + 1;
+	wcscpy_s(key, MAX_LONG_PATH, L"SYSTEM\\CurrentControlSet\\Services\\EventLog\\Application\\");
+
+	error = RegOpenKeyEx(HKEY_LOCAL_MACHINE, key, 0, KEY_ALL_ACCESS, &hKey);
+	if(error != ERROR_SUCCESS)
+	{
+		SetLastError(error);
+		goto EXIT;
+	}
+
+	error = RegDeleteKey(hKey, source);
+	if(error != ERROR_SUCCESS)
+	{
+		SetLastError(error);
 		goto EXIT;
 	}
 
@@ -105,48 +136,56 @@ EXIT:
 	}
 	if(key != NULL)
 	{
-		HeapFree(GetProcessHeap(), 0, key);
+		free(key);
 	}
-	return err;
+	if(buffer != NULL)
+	{
+		free(buffer);
+	}
+	return error;
 }
 
-void WriteEventLog(WORD type, const char* message)
+DWORD write_event_log(WORD type, const wchar_t* message)
 {
-    HANDLE hEventLog;
-	const char* messages[] = {message};
-	char buffer[MAX_PATH];
-	char* source;
+	DWORD    error = 0;
+	wchar_t* buffer = NULL;
+	wchar_t* source;
+	HANDLE   hEventLog = NULL;
+	BOOL     b;
 
-	GetModuleFileName(NULL, buffer, MAX_PATH);
-	*(strrchr(buffer, '.')) = 0;
-	source = strrchr(buffer, '\\') + 1;
-
-	if((hEventLog = RegisterEventSource(NULL, source)) == NULL)
+	buffer = (wchar_t*)malloc(MAX_LONG_PATH * sizeof(wchar_t));
+	if(buffer == NULL)
 	{
-		char m[] = "error: RegisterEvnetSource\n";
-		int size = lstrlen(m);
-		DWORD written;
+		SetLastError(error = ERROR_NOT_ENOUGH_MEMORY);
+		goto EXIT;
+	}
 
-		WriteConsole(GetStdHandle(STD_ERROR_HANDLE), m, size, &written, NULL);
-		ExitProcess(0);
+	GetModuleFileName(NULL, buffer, MAX_LONG_PATH);
+	*(wcsrchr(buffer, L'.')) = L'\0';
+	source = wcsrchr(buffer, L'\\') + 1;
+
+	hEventLog = RegisterEventSource(NULL, source);
+	if(hEventLog == NULL)
+	{
+		error = GetLastError();
+		goto EXIT;
 	}
 	
-	ReportEvent(hEventLog, type, 0, DEFAULT_EVENT_ID, NULL, 1, 0, (LPCTSTR*)messages, NULL);
-	
-	DeregisterEventSource(hEventLog);
-}
-
-void ShowErrorMessage()
-{
-	LPSTR Message = NULL;
-	DWORD LastError = GetLastError();
-
-	if(LastError != 0)
+	b = ReportEvent(hEventLog, type, 0, DEFAULT_EVENT_ID, NULL, 1, 0, &message, NULL);
+	if(b == 0)
 	{
-		FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-			NULL, GetLastError(), MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPSTR)&Message, 0, NULL);
-
-		printf("%s", Message);
-		LocalFree(Message);
+		error = GetLastError();
+		goto EXIT;
 	}
+	
+EXIT:
+	if(hEventLog != NULL)
+	{
+		DeregisterEventSource(hEventLog);
+	}
+	if(buffer != NULL)
+	{
+		free(buffer);
+	}
+	return error;
 }

@@ -25,7 +25,7 @@ public class JarProcessor {
 	public static void main(String[] args) {
 	}
 	
-	public JarProcessor(byte[] buf) throws IOException {
+	public JarProcessor(byte[] buf, boolean isGui) throws IOException {
 		TimeZone tz = TimeZone.getDefault();
 		try {
 			TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
@@ -42,7 +42,9 @@ public class JarProcessor {
 			if(manifest == null) {
 				throw new IOException("manifest not found");
 			}
-			splashScreenName = manifest.getMainAttributes().getValue("SplashScreen-Image");
+			if(isGui) {
+				splashScreenName = manifest.getMainAttributes().getValue("SplashScreen-Image");
+			}
 			
 			this.out = new ByteArrayOutputStream();
 			JarOutputStream jarOut;

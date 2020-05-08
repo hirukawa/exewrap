@@ -1,0 +1,185 @@
+■ サービスのイベントログ出力（サービスのみ有効。コンソール、GUIではイベントログ出力は有効化しない。）
+
+イベントログの出力方法は、標準出力・標準エラー出力を使用する方法とロガーを使う方法の2種類があります。
+
+System.out に出力するとイベントログの情報に記録される。
+System.err に出力するとイベントログの警告に記録される。
+
+System.out.flush()、System.err.flush() を呼び出すごとに、
+それまでにSystem.out、System.errのバッファに溜まっている内容がイベントログに記録される。
+
+System.out.print("")、System.err.print("") を呼び出すとバッファをクリアできる。
+
+
+ロガーを使ったイベントログ出力
+
+Logger eventlog = Logger.getLogger("eventlog");
+eventlog.info("情報メッセージ");
+eventlog.warning("警告メッセージ");
+eventlog.severe("エラーメッセージ");
+
+サービスとして実行している場合はイベントログに出力される。
+サービスではなく通常のプロセスとして実行している場合はコンソールに出力される。
+
+■AdoptOpenJDK 8u252
+
+[x] Add to PATH
+[x] Associate .jar
+[ ] Set JAVA_HOME variable
+[ ] JavaSoft (Oracle) registry keys
+
+デフォルトではJAVA_HOME環境変数とレジストリ登録はされない。
+
+JRE - x86
+インストールパス     = C:\Program Files (x86)\AdoptOpenJDK\jre-8.0.252.09-hotspot
+インストールパスには bin\java.exe , bin\client\jvm.dll あり。
+java.runtime.version = 1.8.0_252-b09
+互換レジストリ HKLM\SOFTWARE\WOW6432Node\JavaSoft\Java Runtime Environment\1.8
+    JavaHome   = C:\Program Files (x86)\AdoptOpenJDK\jre-8.0.252.09-hotspot\
+    RuntimeLib = C:\Program Files (x86)\AdoptOpenJDK\jre-8.0.252.09-hotspot\bin\client\jvm.dll
+互換レジストリ HKLM\SOFTWARE\WOW6432Node\JavaSoft\Java Runtime Environment\8.0.252.09
+    JavaHome   = C:\Program Files (x86)\AdoptOpenJDK\jre-8.0.252.09-hotspot\
+    RuntimeLib = C:\Program Files (x86)\AdoptOpenJDK\jre-8.0.252.09-hotspot\bin\client\jvm.dll
+Oracle互換レジストリを有効にしなかった場合、AdoptOpenJDK固有のレジストリが登録されます。
+	HKLM\SOFTWARE\WOW6432Node\AdoptOpenJDK\JRE\8.0.252.09\hotspot\MSI\
+	Path = C:\Program Files (x86)\AdoptOpenJDK\jre-8.0.252.09-hotspot\
+
+JRE - x64
+インストールパス     = C:\Program Files\AdoptOpenJDK\jre-8.0.252.09-hotspot
+インストールパスには bin\java.exe , bin\client\jvm.dll あり。
+java.runtime.version = 1.8.0_252-b09
+互換レジストリ HKLM\SOFTWARE\JavaSoft\Java Runtime Environment\1.8
+    JavaHome   = C:\Program Files\AdoptOpenJDK\jre-8.0.252.09-hotspot\
+    RuntimeLib = C:\Program Files\AdoptOpenJDK\jre-8.0.252.09-hotspot\bin\server\jvm.dll
+互換レジストリ HKLM\SOFTWARE\JavaSoft\Java Runtime Environment\8.0.252.09
+    JavaHome   = C:\Program Files\AdoptOpenJDK\jre-8.0.252.09-hotspot\
+    RuntimeLib = C:\Program Files\AdoptOpenJDK\jre-8.0.252.09-hotspot\bin\server\jvm.dll
+
+JDK - x86
+インストールパス     = C:\Program Files (x86)\AdoptOpenJDK\jdk-8.0.252.09-hotspot
+インストールパスには bin , jre あり。bin\client\jvm.dll なし。jre\bin\client\jvm.dll あり。
+java.runtime.version = 1.8.0_252-b09
+互換レジストリ HKLM\SOFTWARE\WOW6432Node\JavaSoft\Java Development Kit\1.8
+    JavaHome   = C:\Program Files (x86)\AdoptOpenJDK\jdk-8.0.252.09-hotspot\
+    RuntimeLib は未定義
+互換レジストリ HKLM\SOFTWARE\WOW6432Node\JavaSoft\Java Development Kit\8.0.252.09
+    JavaHome   = C:\Program Files (x86)\AdoptOpenJDK\jdk-8.0.252.09-hotspot\
+    RuntimeLib は未定義
+
+JDK - x64
+インストールパス     = C:\Program Files\AdoptOpenJDK\jdk-8.0.252.09-hotspot
+インストールパスには bin , jre あり。bin\client\jvm.dll なし。jre\bin\client\jvm.dll あり。
+java.runtime.version = 1.8.0_252-b09
+互換レジストリ HKLM\SOFTWARE\JavaSoft\Java Development Kit\1.8
+    JavaHome   = C:\Program Files\AdoptOpenJDK\jdk-8.0.252.09-hotspot\
+    RuntimeLib は未定義
+互換レジストリ HKLM\SOFTWARE\JavaSoft\Java Development Kit\8.0.252.09
+    JavaHome   = C:\Program Files\AdoptOpenJDK\jdk-8.0.252.09-hotspot\
+    RuntimeLib は未定義
+
+
+■AdoptOpenJDK 11.0.7
+
+[x] Add to PATH
+[x] Associate .jar
+[ ] Set JAVA_HOME variable
+[ ] JavaSoft (Oracle) registry keys
+
+デフォルトではJAVA_HOME環境変数とレジストリ登録はされない。
+
+JRE - x86
+インストールパス     = C:\Program Files (x86)\AdoptOpenJDK\jre-11.0.7.10-hotspot
+インストールパスには bin\java.exe , bin\client\jvm.dll , bin\server\jvm.dll あり。
+java.runtime.version = 11.0.7+10
+互換レジストリ HKLM\SOFTWARE\WOW6432Node\JavaSoft\JRE\11
+    JavaHome   = C:\Program Files (x86)\AdoptOpenJDK\jre-11.0.7.10-hotspot\
+    RuntimeLib = C:\Program Files (x86)\AdoptOpenJDK\jre-11.0.7.10-hotspot\bin\server\jvm.dll
+互換レジストリ HKLM\SOFTWARE\WOW6432Node\JavaSoft\JRE\11.0.7.10
+    JavaHome   = C:\Program Files (x86)\AdoptOpenJDK\jre-11.0.7.10-hotspot\
+    RuntimeLib = C:\Program Files (x86)\AdoptOpenJDK\jre-11.0.7.10-hotspot\bin\server\jvm.dll
+
+JRE - x64
+インストールパス     = C:\Program Files\AdoptOpenJDK\jre-11.0.7.10-hotspot
+インストールパスには bin\java.exe , bin\client\jvm.dll , bin\server\jvm.dll あり。
+java.runtime.version = 11.0.7+10
+互換レジストリ HKLM\SOFTWARE\JavaSoft\JRE\11
+    JavaHome   = C:\Program Files\AdoptOpenJDK\jre-11.0.7.10-hotspot\
+    RuntimeLib = C:\Program Files\AdoptOpenJDK\jre-11.0.7.10-hotspot\bin\server\jvm.dll
+互換レジストリ HKLM\SOFTWARE\JavaSoft\JRE\11.0.7.10
+    JavaHome   = C:\Program Files\AdoptOpenJDK\jre-11.0.7.10-hotspot\
+    RuntimeLib = C:\Program Files\AdoptOpenJDK\jre-11.0.7.10-hotspot\bin\server\jvm.dll
+
+
+■Lirerica JDK 8u252
+
+[x] Add to PATH
+[x] Setup JAVA_HOME
+[x] Associate .jar file
+
+AdoptOpenJDKと異なりデフォルトでJAVA_HOME環境変数が設定される。Oracle互換レジストリの設定はなし。
+インストールパスに 8 などのメジャーバージョンしか付かないので異なるマイナーバージョンを複数インストールできない？
+
+JRE - x64
+JAVA_HOME            = C:\Program Files\BellSoft\LibericaJRE-8\
+インストールパス     = C:\Program Files\BellSoft\LibericaJRE-8
+インストールパスには bin\java.exe , bin\server\jvm.dll あり。
+java.runtime.version = 1.8.0_252-b09 (AdoptOpenJDKとまったく同じ書式)
+
+JDK - x64
+JAVA_HOME            = C:\Program Files\BellSoft\LibericaJDK-8\
+インストールパス     = C:\Program Files\BellSoft\LibericaJDK-8
+インストールパスには bin , jre あり。bin\server\jvm.dll なし。jre\bin\server\jvm.dll あり。
+java.runtime.version = 1.8.0_252-b09 (AdoptOpenJDKとまったく同じ書式)
+
+
+■Liberica JDK 11.0.7
+
+[x] Add to PATH
+[x] Setup JAVA_HOME
+[x] Associate .jar file
+
+AdoptOpenJDKと異なりデフォルトでJAVA_HOME環境変数が設定される。Oracle互換レジストリの設定はなし。
+インストールパスに 8 などのメジャーバージョンしか付かないので異なるマイナーバージョンを複数インストールできない？
+
+JRE - x86
+JAVA_HOME            = C:\Program Files (x86)\BellSoft\LibericaJRE-11\
+インストールパス     = C:\Program Files (x86)\BellSoft\LibericaJRE-11
+インストールパスには bin\java.exe , bin\client\jvm.dll , bin\server\jvm.dll あり。
+java.runtime.version = 11.0.7+10-LTS
+
+JDK - x86
+JAVA_HOME            = C:\Program Files (x86)\BellSoft\LibericaJDK-11\
+インストールパス     = C:\Program Files (x86)\BellSoft\LibericaJDK-11
+インストールパスには bin\java.exe , bin\client\jvm.dll , bin\server\jvm.dll あり。
+java.runtime.version = 11.0.7+10-LTS
+
+
+■jar関連付け
+
+AdoptOpenJDKの場合
+
+	HKEY_CLASSES_ROOT\.jar
+	    (既定)        REG_SZ  AdoptOpenJDK.jarfile
+	    Content Type  REG_SZ  application/java-archive
+
+	HKEY_CLASSES_ROOT\AdoptOpenJDK.jarfile\shell\open\command
+	    (既定)        REG_SZ  "C:\Program Files (x86)\AdoptOpenJDK\jre-8.0.252.09-hotspot\bin\javaw.exe" -jar "%1" %*
+
+LibericaJDKの場合
+
+	HKEY_CLASSES_ROOT\.jar
+	    (既定)        REG_SZ  Liberica.jarfileJDK8
+	    Content Type  REG_SZ  application/java-archive
+
+	HKEY_CLASSES_ROOT\Liberica.jarfileJDK8\shell\open\command
+	    (既定)        REG_SZ   "C:\Program Files\BellSoft\LibericaJDK-8\bin\javaw.exe" -jar "%1" %*
+
+OracleJDKの場合
+
+	HKEY_CLASSES_ROOT\.jar
+	    (既定)        REG_SZ  jarfile
+	    Content Type  REG_SZ  application/java-archive
+
+	HKEY_CLASSES_ROOT\jarfile\shell\open\command
+	    (既定)        REG_SZ  "C:\Program Files (x86)\Java\jre1.8.0_202\bin\javaw.exe" -jar "%1" %*
+

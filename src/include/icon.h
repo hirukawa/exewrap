@@ -1,3 +1,5 @@
+/* このファイルの文字コードは Shift_JIS (MS932) です。*/
+
 #ifndef _ICON_H_
 #define _ICON_H_
 
@@ -41,4 +43,5 @@ typedef struct {
 
 #pragma pack(pop)
 
-#endif
+
+#endif /* _ICON_H_ */

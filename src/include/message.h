@@ -1,11 +1,13 @@
+/* このファイルの文字コードは Shift_JIS (MS932) です。*/
+
 #ifndef _MESSAGE_H_
 #define _MESSAGE_H_
 
 #define _(MSG_ID) get_message(MSG_ID)
 
-#define MSG_LANG_ID_COUNT 2
-#define MSG_LANG_ID_EN 0
-#define MSG_LANG_ID_JA 1
+#define MSG_LANG_INDEX_COUNT 2
+#define MSG_LANG_INDEX_EN 0
+#define MSG_LANG_INDEX_JA 1
 
 #define MSG_ID_COUNT 35
 #define MSG_ID_ERR_CREATE_JVM_UNKNOWN            1
@@ -44,6 +46,18 @@
 #define MSG_ID_CTRL_SERVICE_TERMINATE            34
 #define MSG_ID_CTRL_BREAK                        35
 
-extern const char* get_message(int msg_id);
 
+#ifdef __cplusplus
+extern "C" {
 #endif
+
+
+extern const wchar_t* get_message(int msg_id);
+
+
+#ifdef __cplusplus
+}
+#endif
+
+
+#endif /* _MESSAGE_H_ */
