@@ -9,6 +9,6 @@ public class UncaughtExceptionHandler implements java.lang.Thread.UncaughtExcept
 	}
 	
 	public void uncaughtException(Thread thread, Throwable throwable) {
-		NativeMethods.UncaughtException(thread.getName(), throwable);
+		NativeMethods.UncaughtException(thread, throwable);
 	}
 }

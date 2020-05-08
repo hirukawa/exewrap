@@ -1,268 +1,294 @@
-#define _CRT_SECURE_NO_WARNINGS
+/* このファイルの文字コードは Shift_JIS (MS932) です。*/
 
-#include <windows.h>
-#include <Shlwapi.h>
+#include <Windows.h>
 #include <Shlobj.h>
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <tchar.h>
-#include <locale.h>
 #include <jni.h>
 
 #include "include/jvm.h"
 #include "include/loader.h"
 #include "include/icon.h"
 #include "include/message.h"
+#include "include/wcout.h"
 
-#define DEFAULT_VERSION         "0.0"
-#define DEFAULT_PRODUCT_VERSION "0.0"
+#define BUFFER_SIZE             32768
+#define MAX_LONG_PATH           32768
+#define ERROR_UNKNOWN           ((DWORD)STG_E_UNKNOWN)
+#define DEFAULT_VERSION         L"0.0"
+#define DEFAULT_PRODUCT_VERSION L"0.0"
 
-void OutputMessage(const char* text);
-UINT UncaughtException(const char* thread, const jthrowable throwable);
+static void      cleanup(void);
+static void      exit_process(DWORD last_error, const wchar_t* append);
+static wchar_t** parse_opt(int argc, const wchar_t* argv[]);
+static DWORD     get_version_revision(const wchar_t* filename);
+static void      create_exe_file(const wchar_t* filename, BYTE* image_buf, DWORD image_len, BOOL is_reverse);
+static void      append_exe_file(const wchar_t* filename, BYTE* image_buf, DWORD image_len);
+static void      get_target_java_runtime_version(const wchar_t* version, DWORD* major, DWORD* minor, DWORD* build, DWORD* revision);
+static void      set_resource(const wchar_t* filename, const wchar_t* rsc_name, const wchar_t* rsc_type, BYTE* rsc_data, DWORD rsc_size);
+static BYTE*     get_jar_buf(const wchar_t* jar_file, DWORD* jar_len);
+static BOOL      set_application_icon_file(const wchar_t* filename, const wchar_t* icon_file);
+static BOOL      set_application_icon(const wchar_t* filename, const BYTE* icon_bytes);
+static wchar_t*  set_version_info(const wchar_t* filename, const wchar_t* version_number, DWORD previous_revision, const wchar_t* file_description, const wchar_t* copyright, const wchar_t* company_name, const wchar_t* product_name, const wchar_t* product_version, const wchar_t* original_filename, const wchar_t* jar_file);
 
-static char** parse_opt(int argc, char* argv[]);
-static DWORD  get_version_revision(char* filename);
-static BOOL   create_exe_file(const char* filename, BYTE* image_buf, DWORD image_len, BOOL is_reverse);
-static BOOL   append_exe_file(const char* filename, BYTE* image_buf, DWORD image_len);
-static DWORD  get_target_java_runtime_version(char* version);
-static char*  get_target_java_runtime_version_string(DWORD version, char* buf);
-static void   set_resource(const char* filename, const char* rsc_name, const char* rsc_type, BYTE* rsc_data, DWORD rsc_size);
-static BYTE*  get_jar_buf(const char* jar_file, DWORD* jar_len);
-static void   set_application_icon(const char* filename, const char* icon_file);
-static char*  set_version_info(const char* filename, const char* version_number, DWORD previous_revision, char* file_description, char* copyright, char* company_name, char* product_name, char* product_version, char* original_filename, char* jar_file);
+static BOOL      g_is_dirty_exe = FALSE;
+static wchar_t*  g_exe_file = NULL;
 
-static BOOL   g_is_dirty_exe = FALSE;
-
-int main(int argc, char* argv[])
+int wmain(int argc, wchar_t* argv[])
 {
 	SYSTEMTIME startup;
-	char**   opt = NULL;
-	char*    jar_file = NULL;
-	char*    exe_file = NULL;
-	int      architecture_bits = 0;
-	char     image_name[32];
-	char     manifest_name[32];
-	BYTE*    image_buf;
-	DWORD    image_len;
-	DWORD    previous_revision = 0;
-	DWORD    target_version;
-	char*    target_version_string;
-	BOOL     enable_java = FALSE;
-	BYTE*    jar_buf;
-	DWORD    jar_len;
-	char*    ext_flags = NULL;
-	char*    vmargs = NULL;
-	char*    vmargs_b = NULL;
-	char*    version_number;
-	char*    file_description;
-	char*    copyright;
-	char*    company_name;
-	char*    product_name;
-	char*    product_version;
-	char*    original_filename;
-	char*    new_version;
-	BOOL     contains_visualvm_display_name = FALSE;
-	BOOL     is_icon_set = FALSE;
-
-	char*    buf = NULL;
-	char*    ptr = NULL;
-	RESOURCE res;
-	BOOL     b;
+	wchar_t**  opt      = NULL;
+	wchar_t*   buf      = NULL;
+	wchar_t*   jar_file = NULL;
+	wchar_t*   exe_file = NULL;
+	int        architecture_bits = 0;
+	wchar_t    image_name[32];
+	wchar_t    manifest_name[32];
+	RESOURCE   res;
+	BYTE*      image_buf;
+	DWORD      image_len;
+	DWORD      previous_revision = 0;
+	DWORD      target_version_major;
+	DWORD      target_version_minor;
+	DWORD      target_version_build;
+	DWORD      target_version_revision;
+	wchar_t*   target_version_string;
+	char*      utf8;
+	BOOL       is_java_enabled = FALSE;
+	BYTE*      jar_buf;
+	DWORD      jar_len;
+	wchar_t*   ext_flags = NULL;
+	wchar_t*   vmargs = NULL;
+	wchar_t*   version_number;
+	wchar_t*   file_description;
+	wchar_t*   copyright;
+	wchar_t*   company_name;
+	wchar_t*   product_name;
+	wchar_t*   product_version;
+	wchar_t*   original_filename;
+	wchar_t*   new_version;
+	BOOL       contains_visualvm_display_name = FALSE;
+	BOOL       is_icon_set = FALSE;
 
 	GetSystemTime(&startup);
 	
 	opt = parse_opt(argc, argv);
+	if(opt == NULL)
+	{
+		exit_process(ERROR_NOT_ENOUGH_MEMORY, L"parse_opt");
+	}
 
 	if((argc < 2) || ((opt['j'] == NULL) && (opt[0] == NULL)))
 	{
-		int bits = GetProcessArchitecture();
+		int bits = get_process_architecture();
 
-		if (strrchr(argv[0], '\\') > 0)
+		if(wcsrchr(argv[0], L'\\') > 0)
 		{
-			exe_file = strrchr(argv[0], '\\') + 1;
+			exe_file = wcsrchr(argv[0], L'\\') + 1;
 		}
 		else
 		{
 			exe_file = argv[0];
 		}
-		
-		printf("exewrap 1.5.1 for %s (%d-bit) \r\n"
-			   "Native executable java application wrapper.\r\n"
-			   "Copyright (C) 2005-2019 HIRUKAWA Ryo. All rights reserved.\r\n"
-			   "\r\n"
-			   "Usage: %s <options> <jar-file>\r\n"
-			   "Options:\r\n"
-			   "  -g                  \t Create Window application.\r\n"
-			   "  -s                  \t Create Windows Service application.\r\n"
-			   "  -A <architecture>   \t Select exe-file architecture. (default %s)\r\n"
-			   "  -t <version>        \t Set target java runtime version. (default 1.5)\r\n"
-			   "  -M <main-class>     \t Set main-class.\r\n"
-			   "  -L <ext-dirs>       \t Set ext-dirs.\r\n"
-			   "  -e <ext-flags>      \t Set extended flags.\r\n"
-			   "  -a <vm-args>        \t Set Java VM arguments.\r\n"
-			   "  -b <vm-args>        \t This arguments will be applied when the service was started without the SCM.\r\n"
-			   "  -i <icon-file>      \t Set application icon.\r\n"
-			   "  -P <privilege>      \t Set privilege. (asInvoker | highestAvailable | requireAdministrator)\r\n"
-			   "  -v <version>        \t Set version number.\r\n"
-			   "  -d <description>    \t Set file description.\r\n"
-			   "  -c <copyright>      \t Set copyright.\r\n"
-			   "  -C <company-name>   \t Set company name.\r\n"
-			   "  -p <product-name>   \t Set product name.\r\n"
-			   "  -V <product-version>\t Set product version.\r\n"
-			   "  -j <jar-file>       \t Input jar-file.\r\n"
-			   "  -o <exe-file>       \t Output exe-file.\r\n"
-			, (bits == 64 ? "x64" : "x86"), bits, exe_file, (bits == 64 ? "x64" : "x86"));
+				
+		wcoutf( L"exewrap 1.6.0 for %ls (%d-bit) \r\n"
+				L"Native executable java application wrapper.\r\n"
+				L"Copyright (C) 2005-2020 HIRUKAWA Ryo. All rights reserved.\r\n"
+				L"\r\n"
+				L"Usage: %ls <options> <jar-file>\r\n"
+				L"Options:\r\n"
+				L"  -g                  \t Create Window application.\r\n"
+				L"  -s                  \t Create Windows Service application.\r\n"
+				L"  -A <architecture>   \t Select exe-file architecture. (default %ls)\r\n"
+				L"  -t <version>        \t Set target java runtime version. (default 1.5)\r\n"
+				L"  -M <main-class>     \t Set main-class.\r\n"
+				L"  -L <ext-dirs>       \t Set ext-dirs.\r\n"
+				L"  -e <ext-flags>      \t Set extended flags.\r\n"
+				L"  -a <vm-args>        \t Set Java VM arguments.\r\n"
+				L"  -b <vm-args>        \t This arguments will be applied when the service was started without the SCM.\r\n"
+				L"  -i <icon-file>      \t Set application icon.\r\n"
+				L"  -P <privilege>      \t Set privilege. (asInvoker | highestAvailable | requireAdministrator)\r\n"
+				L"  -v <version>        \t Set version number.\r\n"
+				L"  -d <description>    \t Set file description.\r\n"
+				L"  -c <copyright>      \t Set copyright.\r\n"
+				L"  -C <company-name>   \t Set company name.\r\n"
+				L"  -p <product-name>   \t Set product name.\r\n"
+				L"  -V <product-version>\t Set product version.\r\n"
+				L"  -j <jar-file>       \t Input jar-file.\r\n"
+				L"  -o <exe-file>       \t Output exe-file.\r\n"
+			, (bits == 64 ? L"x64" : L"x86"), bits, exe_file, (bits == 64 ? L"x64" : L"x86"));
 
 		return 0;
 	}
 
-	buf = malloc(2048);
-	
-	jar_file = malloc(1024);
-	if(opt['j'] && *opt['j'] != '-' && *opt['j'] != '\0')
+	buf = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
+	if(buf == NULL)
 	{
-		strcpy(jar_file, opt['j']);
+		exit_process(ERROR_NOT_ENOUGH_MEMORY, L"malloc");
+	}
+	
+	jar_file = (wchar_t*)calloc(MAX_LONG_PATH, sizeof(wchar_t));
+	if(jar_file == NULL)
+	{
+		exit_process(ERROR_NOT_ENOUGH_MEMORY, L"malloc");
+	}
+
+	exe_file = (wchar_t*)calloc(MAX_LONG_PATH, sizeof(wchar_t));
+	if(exe_file == NULL)
+	{
+		exit_process(ERROR_NOT_ENOUGH_MEMORY, L"malloc");
+	}
+
+	if(opt['j'] != NULL && *opt['j'] != L'-' && *opt['j'] != L'\0')
+	{
+		wcscpy_s(jar_file, MAX_LONG_PATH, opt['j']);
 	}
 	else
 	{
-		strcpy(jar_file, opt[0]);
-
-		if(strlen(jar_file) > 4)
+		wcscpy_s(jar_file, MAX_LONG_PATH, opt[0]);
+	}
+	if(wcslen(jar_file) > 4)
+	{
+		wcscpy_s(buf, MAX_LONG_PATH, jar_file + wcslen(jar_file) - 4);
+		if(_wcsicmp(buf, L".JAR"))
 		{
-			strcpy(buf, jar_file + strlen(jar_file) - 4);
-			if(strcmp(_strupr(buf), ".JAR"))
-			{
-				printf("You must specify the jar-file.\n");
-				return 1;
-			}
+			exit_process(ERROR_BAD_PATHNAME, jar_file);
 		}
 	}
 	
-	exe_file = malloc(1024);
-	if(opt['o'] && *opt['o'] != '-' && *opt['o'] != '\0')
+	if(opt['o'] && *opt['o'] != L'-' && *opt['o'] != L'\0')
 	{
-		strcpy(exe_file, opt['o']);
+		wcscpy_s(exe_file, MAX_LONG_PATH, opt['o']);
 	}
 	else
 	{
-		strcpy(exe_file, jar_file);
-		exe_file[strlen(exe_file) - 4] = 0;
-		strcat(exe_file, ".exe");
+		wcscpy_s(exe_file, MAX_LONG_PATH, jar_file);
+		exe_file[wcslen(exe_file) - 4] = L'\0';
+		wcscat_s(exe_file, MAX_LONG_PATH, L".exe");
 	}
 
-	if (GetFullPathName(exe_file, _MAX_PATH, buf, &ptr) == 0)
+	if(GetFullPathName(exe_file, MAX_LONG_PATH, buf, NULL) == 0)
 	{
-		printf("Invalid path: %s\n", exe_file);
-		return 2;
+		exit_process(ERROR_BAD_PATHNAME, exe_file);
 	}
-	strcpy(exe_file, buf);
+	wcscpy_s(exe_file, MAX_LONG_PATH, buf);
 
 	if(opt['A'])
 	{
-		if(strstr(opt['A'], "86") != NULL)
+		if(wcsstr(opt['A'], L"86") != NULL)
 		{
 			architecture_bits = 32;
 		}
-		else if (strstr(opt['A'], "64") != NULL)
+		else if(wcsstr(opt['A'], L"64") != NULL)
 		{
 			architecture_bits = 64;
 		}
 	}
 	if(architecture_bits == 0)
 	{
-		architecture_bits = GetProcessArchitecture();
+		architecture_bits = get_process_architecture();
 	}
-	printf("Architecture: %s\n", (architecture_bits == 64 ? "x64 (64-bit)" : "x86 (32-bit)"));
+	wcoutf(L"Architecture: %ls\r\n", (architecture_bits == 64 ? L"x64 (64-bit)" : L"x86 (32-bit)"));
 
 	if(opt['g'])
 	{
-		sprintf(image_name, "IMAGE_GUI_%d", architecture_bits);
+		swprintf_s(image_name, 32, L"IMAGE_GUI_%d", architecture_bits);
 	}
 	else if(opt['s'])
 	{
-		sprintf(image_name, "IMAGE_SERVICE_%d", architecture_bits);
+		swprintf_s(image_name, 32, L"IMAGE_SERVICE_%d", architecture_bits);
 	}
 	else
 	{
-		sprintf(image_name, "IMAGE_CONSOLE_%d", architecture_bits);
+		swprintf_s(image_name, 32, L"IMAGE_CONSOLE_%d", architecture_bits);
 	}
 
 	if(opt['P'])
 	{
-		if(stricmp(opt['P'], "asInvoker") == 0)
+		if(_wcsicmp(opt['P'], L"asInvoker") == 0)
 		{
-			sprintf(manifest_name, "%s%s", image_name, "_MF_INVOKER");
-			printf("Privilege: asInvoker\n");
+			swprintf_s(manifest_name, 32, L"%ls%ls", image_name, L"_MF_INVOKER");
+			wcout(L"Privilege: asInvoker\r\n");
 		}
-		else if(stricmp(opt['P'], "highestAvailable") == 0)
+		else if(_wcsicmp(opt['P'], L"highestAvailable") == 0)
 		{
-			sprintf(manifest_name, "%s%s", image_name, "_MF_HIGHEST");
-			printf("Privilege: highestAvailable\n");
+			swprintf_s(manifest_name, 32, L"%ls%ls", image_name, L"_MF_HIGHEST");
+			wcout(L"Privilege: highestAvailable\n\n");
 		}
-		else if(stricmp(opt['P'], "requireAdministrator") == 0)
+		else if(_wcsicmp(opt['P'], L"requireAdministrator") == 0)
 		{
-			sprintf(manifest_name, "%s%s", image_name, "_MF_ADMIN");
-			printf("Privilege: requireAdministrator\n");
+			swprintf_s(manifest_name, 32, L"%ls%ls", image_name, L"_MF_ADMIN");
+			wcout(L"Privilege: requireAdministrator\r\n");
 		}
 		else
 		{
-			printf("Invalid privilege value: %s\n", opt['P']);
-			return 3;
+			exit_process(ERROR_BAD_ARGUMENTS, opt['P']);
 		}
 	} else {
-		sprintf(manifest_name, "%s%s", image_name, "_MF_DEFAULT");
+		swprintf_s(manifest_name, 32, L"%ls%ls", image_name, L"_MF_DEFAULT");
 	}
 	
-	GetResource(image_name, &res);
+	if(get_resource(image_name, &res) == NULL)
+	{
+		exit_process(GetLastError(), image_name);
+	}
 	image_buf = res.buf;
 	image_len = res.len;
 	
 	previous_revision = get_version_revision(exe_file);
 	DeleteFile(exe_file);
 
-	b = create_exe_file(exe_file, image_buf, image_len, TRUE);
-	if (b == FALSE)
-	{
-		goto EXIT;
-	}
+	create_exe_file(exe_file, image_buf, image_len, TRUE);
 
-	GetResource(manifest_name, &res);
+
+	if(get_resource(manifest_name, &res) == NULL)
+	{
+		exit_process(GetLastError(), manifest_name);
+	}
 	set_resource(exe_file, CREATEPROCESS_MANIFEST_RESOURCE_ID, RT_MANIFEST, res.buf, res.len);
 
 	if(opt['t'])
 	{
-		target_version = get_target_java_runtime_version(opt['t']);
+		get_target_java_runtime_version(opt['t'], &target_version_major, &target_version_minor, &target_version_build, &target_version_revision);
 	}
 	else
 	{
-		target_version = get_target_java_runtime_version("1.5"); //default target version 1.5
+		// default target version 1.5
+		get_target_java_runtime_version(L"1.5", &target_version_major, &target_version_minor, &target_version_build, &target_version_revision);
 	}
-	target_version_string = get_target_java_runtime_version_string(target_version, buf);
-	printf("Target: %s (%d.%d.%d.%d)\n", target_version_string + 4, target_version >> 25 & 0x7F, target_version >> 18 & 0x7F, target_version >> 11 & 0x7F, target_version & 0x7FF);
-	set_resource(exe_file, "TARGET_VERSION", RT_RCDATA, target_version_string, (DWORD)(4 + strlen(target_version_string + 4) + 1));
+	target_version_string = get_java_version_string(target_version_major, target_version_minor, target_version_build, target_version_revision);
+	wcoutf(L"Target: %ls (%d.%d.%d.%d)\r\n", target_version_string, target_version_major, target_version_minor, target_version_build, target_version_revision);
+	swprintf_s(buf, BUFFER_SIZE, L"%d.%d.%d.%d", target_version_major, target_version_minor, target_version_build, target_version_revision);
+	utf8 = to_utf8(buf);
+	set_resource(exe_file, L"TARGET_VERSION", RT_RCDATA, (BYTE*)utf8, (DWORD)(strlen(utf8) + 1));
+	free(utf8);
+	free(target_version_string);
 	
-	if(opt['L'] && *opt['L'] != '-' && *opt['L'] != '\0')
+	if(opt['L'] != NULL && *opt['L'] != L'-' && *opt['L'] != L'\0')
 	{
-		if(strcmp(opt['L'], ";") == 0)
+		if(wcscmp(opt['L'], L";") == 0)
 		{
 			// セミコロンのみが指定されている場合はEXTDIRSリソース自体を設定しません。
 		}
 		else
 		{
-			set_resource(exe_file, "EXTDIRS", RT_RCDATA, opt['L'], (DWORD)strlen(opt['L']) + 1);
+			utf8 = to_utf8(opt['L']);
+			set_resource(exe_file, L"EXTDIRS", RT_RCDATA, (BYTE*)utf8, (DWORD)(strlen(utf8) + 1));
+			free(utf8);
 		}
 	}
 	else
 	{
-		set_resource(exe_file, "EXTDIRS", RT_RCDATA, "lib", 4);
+		// 引数 -L が指定されていない場合は既定のディレクトリ lib を EXTDIRS に設定します。
+		utf8 = to_utf8(L"lib");
+		set_resource(exe_file, L"EXTDIRS", RT_RCDATA, (BYTE*)utf8, (DWORD)(strlen(utf8) + 1));
+		free(utf8);
 	}
 
-	enable_java = CreateJavaVM(NULL, "Loader", FALSE, TRUE, &startup, NULL) != NULL;
-	if (enable_java)
+	is_java_enabled = create_java_vm(NULL, FALSE, TRUE, NULL, NULL) != NULL;
+	if(is_java_enabled)
 	{
 		LOAD_RESULT result;
 		jbyteArray  buf;
+		jstring     jstr;
 		jclass      JarProcessor;
 		jmethodID   JarProcessor_init;
 		jobject     jarProcessor;
@@ -271,235 +297,267 @@ int main(int argc, char* argv[])
 		jmethodID   jarProcessor_getSplashScreenName;
 		jmethodID   jarProcessor_getSplashScreenImage;
 		jmethodID   jarProcessor_getBytes;
-		char*       main_class;
-		char*       class_path;
-		char*       splash_screen_name;
+		wchar_t*    main_class;
+		wchar_t*    class_path;
+		wchar_t*    splash_screen_name;
 		BYTE*       splash_screen_image;
 		BYTE*       bytes;
 
-		result.msg = (char*)malloc(2048);
-
-		if (LoadMainClass(argc, argv, NULL, &result) == FALSE)
+		result.msg = (wchar_t*)malloc(LOAD_RESULT_MAX_MESSAGE_LENGTH * sizeof(wchar_t));
+		if(result.msg == NULL)
 		{
-			printf("ERROR: LoadMainClass: tool.jar exewrap.tool.JarProcessor: %s\n", result.msg);
-			goto EXIT;
+			exit_process(ERROR_NOT_ENOUGH_MEMORY, L"malloc");
+		}
+
+		if(load_main_class(argc, argv, NULL, &result) == FALSE)
+		{
+			wcerrf(L"ERROR: load_main_class: tool.jar exewrap.tool.JarProcessor: %ls\r\n", result.msg);
+			cleanup();
+			ExitProcess(ERROR_INVALID_DATA);
 		}
 		JarProcessor = result.MainClass;
 
 		jar_buf = get_jar_buf(jar_file, &jar_len);
-		if (jar_buf == NULL)
+		if(jar_buf == NULL)
 		{
-			goto EXIT;
+			exit_process(ERROR_INVALID_DATA, jar_file);
 		}
 		buf = (*env)->NewByteArray(env, jar_len);
-		if (buf == NULL)
+		if(buf == NULL)
 		{
-			goto EXIT;
+			exit_process(ERROR_NOT_ENOUGH_MEMORY, L"NewByteArray");
 		}
 		(*env)->SetByteArrayRegion(env, buf, 0, jar_len, (jbyte*)jar_buf);
 
-		JarProcessor_init = (*env)->GetMethodID(env, JarProcessor, "<init>", "([B)V");
-		if (JarProcessor_init == NULL)
+		JarProcessor_init = (*env)->GetMethodID(env, JarProcessor, "<init>", "([BZ)V");
+		if(JarProcessor_init == NULL)
 		{
-			result.msg_id = MSG_ID_ERR_GET_CONSTRUCTOR;
-			printf(_(MSG_ID_ERR_GET_CONSTRUCTOR), "exewrap.tool.JarProcessor(byte[])");
-			goto EXIT;
+			wcerrf(_(MSG_ID_ERR_GET_CONSTRUCTOR), L"exewrap.tool.JarProcessor(byte[], boolean)");
+			wcerr(L"\r\n");
+			cleanup();
+			ExitProcess(ERROR_INVALID_FUNCTION);
 		}
-		jarProcessor = (*env)->NewObject(env, JarProcessor, JarProcessor_init, buf);
-		if (jarProcessor == NULL)
+		jarProcessor = (*env)->NewObject(env, JarProcessor, JarProcessor_init, buf, (jboolean)(opt['g'] != NULL ? JNI_TRUE : JNI_FALSE));
+		if(jarProcessor == NULL)
 		{
-			result.msg_id = MSG_ID_ERR_NEW_OBJECT;
-			printf(_(MSG_ID_ERR_NEW_OBJECT), "exewrap.tool.JarProcessor(byte[])");
-			goto EXIT;
+			wcerrf(_(MSG_ID_ERR_NEW_OBJECT), L"exewrap.tool.JarProcessor(byte[], boolean)");
+			wcerr(L"\r\n");
+			cleanup();
+			ExitProcess(ERROR_INVALID_FUNCTION);
 		}
 		jarProcessor_getMainClass = (*env)->GetMethodID(env, JarProcessor, "getMainClass", "()Ljava/lang/String;");
-		if (jarProcessor_getMainClass == NULL)
+		if(jarProcessor_getMainClass == NULL)
 		{
-			result.msg_id = MSG_ID_ERR_GET_METHOD;
-			printf(_(MSG_ID_ERR_GET_METHOD), "exewrap.tool.JarProcessor.getMainClass()");
-			goto EXIT;
+			wcerrf(_(MSG_ID_ERR_GET_METHOD), L"exewrap.tool.JarProcessor.getMainClass()");
+			wcerr(L"\r\n");
+			cleanup();
+			ExitProcess(ERROR_INVALID_FUNCTION);
 		}
 		jarProcessor_getClassPath = (*env)->GetMethodID(env, JarProcessor, "getClassPath", "()Ljava/lang/String;");
-		if (jarProcessor_getClassPath == NULL)
+		if(jarProcessor_getClassPath == NULL)
 		{
-			result.msg_id = MSG_ID_ERR_GET_METHOD;
-			printf(_(MSG_ID_ERR_GET_METHOD), "exewrap.tool.JarProcessor.getClassPath()");
-			goto EXIT;
+			wcerrf(_(MSG_ID_ERR_GET_METHOD), L"exewrap.tool.JarProcessor.getClassPath()");
+			wcerr(L"\r\n");
+			cleanup();
+			ExitProcess(ERROR_INVALID_FUNCTION);
 		}
 		jarProcessor_getSplashScreenName = (*env)->GetMethodID(env, JarProcessor, "getSplashScreenName", "()Ljava/lang/String;");
-		if (jarProcessor_getSplashScreenName == NULL)
+		if(jarProcessor_getSplashScreenName == NULL)
 		{
-			result.msg_id = MSG_ID_ERR_GET_METHOD;
-			printf(_(MSG_ID_ERR_GET_METHOD), "exewrap.tool.JarProcessor.getSplashScreenName()");
-			goto EXIT;
+			wcerrf(_(MSG_ID_ERR_GET_METHOD), L"exewrap.tool.JarProcessor.getSplashScreenName()");
+			wcerr(L"\r\n");
+			cleanup();
+			ExitProcess(ERROR_INVALID_FUNCTION);
 		}
 		jarProcessor_getSplashScreenImage = (*env)->GetMethodID(env, JarProcessor, "getSplashScreenImage", "()[B");
-		if (jarProcessor_getSplashScreenImage == NULL)
+		if(jarProcessor_getSplashScreenImage == NULL)
 		{
-			result.msg_id = MSG_ID_ERR_GET_METHOD;
-			printf(_(MSG_ID_ERR_GET_METHOD), "exewrap.tool.JarProcessor.getSplashScreenImage()");
-			goto EXIT;
+			wcerrf(_(MSG_ID_ERR_GET_METHOD), L"exewrap.tool.JarProcessor.getSplashScreenImage()");
+			wcerr(L"\r\n");
+			cleanup();
+			ExitProcess(ERROR_INVALID_FUNCTION);
 		}
 		jarProcessor_getBytes = (*env)->GetMethodID(env, JarProcessor, "getBytes", "()[B");
-		if (jarProcessor_getBytes == NULL)
+		if(jarProcessor_getBytes == NULL)
 		{
-			result.msg_id = MSG_ID_ERR_GET_METHOD;
-			printf(_(MSG_ID_ERR_GET_METHOD), "exewrap.tool.JarProcessor.getBytes()");
-			goto EXIT;
+			wcerrf(_(MSG_ID_ERR_GET_METHOD), L"exewrap.tool.JarProcessor.getBytes()");
+			wcerr(L"\r\n");
+			cleanup();
+			ExitProcess(ERROR_INVALID_FUNCTION);
 		}
 
-		if (opt['M'])
+		if(opt['M'])
 		{
 			main_class = opt['M'];
 		}
 		else
 		{
-			main_class = GetShiftJIS(env, (*env)->CallObjectMethod(env, jarProcessor, jarProcessor_getMainClass));
+			jstr = (*env)->CallObjectMethod(env, jarProcessor, jarProcessor_getMainClass);
+			main_class = from_jstring(env, jstr);
 		}
-		if (main_class == NULL)
+		if(main_class == NULL)
 		{
-			result.msg_id = MSG_ID_ERR_LOAD_MAIN_CLASS;
-			printf(_(MSG_ID_ERR_LOAD_MAIN_CLASS));
-			goto EXIT;
+			wcerr(_(MSG_ID_ERR_FIND_MAIN_CLASS));
+			wcerr(L"\r\n");
+			cleanup();
+			ExitProcess(ERROR_INVALID_DATA);
 		}
-		set_resource(exe_file, "MAIN_CLASS", RT_RCDATA, main_class, (DWORD)strlen(main_class) + 1);
+		utf8 = to_utf8(main_class);
+		set_resource(exe_file, L"MAIN_CLASS", RT_RCDATA, (BYTE*)utf8, (DWORD)(strlen(utf8) + 1));
+		free(utf8);
 
-		class_path = GetShiftJIS(env, (*env)->CallObjectMethod(env, jarProcessor, jarProcessor_getClassPath));
-		if (class_path != NULL)
+		jstr = (*env)->CallObjectMethod(env, jarProcessor, jarProcessor_getClassPath);
+		class_path = from_jstring(env, jstr);
+		if(class_path != NULL)
 		{
-			set_resource(exe_file, "CLASS_PATH", RT_RCDATA, class_path, (DWORD)strlen(class_path) + 1);
+			utf8 = to_utf8(class_path);
+			set_resource(exe_file, L"CLASS_PATH", RT_RCDATA, (BYTE*)utf8, (DWORD)(strlen(utf8) + 1));
+			free(utf8);
 		}
 
-		splash_screen_name = GetShiftJIS(env, (*env)->CallObjectMethod(env, jarProcessor, jarProcessor_getSplashScreenName));
-		if (splash_screen_name != NULL)
+		jstr = (*env)->CallObjectMethod(env, jarProcessor, jarProcessor_getSplashScreenName);
+		splash_screen_name = from_jstring(env, jstr);
+		if(splash_screen_name != NULL)
 		{
-			set_resource(exe_file, "SPLASH_SCREEN_NAME", RT_RCDATA, splash_screen_name, (DWORD)strlen(splash_screen_name) + 1);
+			utf8 = to_utf8(splash_screen_name);
+			set_resource(exe_file, L"SPLASH_SCREEN_NAME", RT_RCDATA, (BYTE*)utf8, (DWORD)(strlen(utf8) + 1));
+			free(utf8);
 		}
 		buf = (*env)->CallObjectMethod(env, jarProcessor, jarProcessor_getSplashScreenImage);
-		if (buf != NULL)
+		if(buf != NULL)
 		{
 			jboolean isCopy = 0;
 			jint len;
-			splash_screen_image = (*env)->GetByteArrayElements(env, buf, &isCopy);
+			splash_screen_image = (BYTE*)((*env)->GetByteArrayElements(env, buf, &isCopy));
 			len = (*env)->GetArrayLength(env, buf);
-			set_resource(exe_file, "SPLASH_SCREEN_IMAGE", RT_RCDATA, splash_screen_image, (DWORD)len);
-			(*env)->ReleaseByteArrayElements(env, buf, splash_screen_image, 0);
+			set_resource(exe_file, L"SPLASH_SCREEN_IMAGE", RT_RCDATA, splash_screen_image, (DWORD)len);
+			(*env)->ReleaseByteArrayElements(env, buf, (jbyte*)splash_screen_image, 0);
 		}
 
 		buf = (*env)->CallObjectMethod(env, jarProcessor, jarProcessor_getBytes);
-		if (buf != NULL)
+		if(buf != NULL)
 		{
 			jboolean isCopy;
 			jint len;
-			bytes  = (*env)->GetByteArrayElements(env, buf, &isCopy);
+			bytes  = (BYTE*)((*env)->GetByteArrayElements(env, buf, &isCopy));
 			len = (*env)->GetArrayLength(env, buf);
-			set_resource(exe_file, "JAR", RT_RCDATA, bytes, (DWORD)len);
-			(*env)->ReleaseByteArrayElements(env, buf, bytes, 0);
+			set_resource(exe_file, L"JAR", RT_RCDATA, bytes, (DWORD)len);
+			(*env)->ReleaseByteArrayElements(env, buf, (jbyte*)bytes, 0);
 		}
 	}
 	else
 	{
 		jar_buf = get_jar_buf(jar_file, &jar_len);
-		if (jar_buf == NULL)
+		if(jar_buf == NULL)
 		{
-			goto EXIT;
+			// get_jar_buf 内でエラーが発生した場合、そのまま exit_process が呼ばれるため、通常ここに到達することはありません。
+			exit_process(ERROR_UNKNOWN, L"get_jar_buf");
 		}
-		set_resource(exe_file, "JAR", RT_RCDATA, jar_buf, jar_len);
-		printf("JavaVM (%d-bit) not found.\r\n", GetProcessArchitecture());
+		set_resource(exe_file, L"JAR", RT_RCDATA, jar_buf, jar_len);
+		wcerrf(L"JavaVM (%d-bit) not found.\r\n", get_process_architecture());
 	}
-	
-	ext_flags = (char*)malloc(1024);
-	ext_flags[0] = '\0';
-	if (opt['e'] && *opt['e'] != '-' && *opt['e'] != '\0')
+
+	ext_flags = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
+	if(ext_flags == NULL)
 	{
-		strcat(ext_flags, opt['e']);
+		exit_process(ERROR_NOT_ENOUGH_MEMORY, L"malloc");
 	}
-	set_resource(exe_file, "EXTFLAGS", RT_RCDATA, ext_flags, (DWORD)strlen(ext_flags) + 1);
+	ext_flags[0] = L'\0';
+	if (opt['e'] != NULL && *opt['e'] != L'-' && *opt['e'] != L'\0')
+	{
+		wcscat_s(ext_flags, BUFFER_SIZE, opt['e']);
+	}
+	utf8 = to_utf8(ext_flags);
+	set_resource(exe_file, L"EXTFLAGS", RT_RCDATA, (BYTE*)utf8, (DWORD)(strlen(utf8) + 1));
+	free(utf8);
 	free(ext_flags);
 
-	if(opt['a'] && *opt['a'] != '\0')
+	vmargs = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
+	if(vmargs == NULL)
 	{
-		if (vmargs == NULL)
-		{
-			vmargs = (char*)malloc(2048);
-			vmargs[0] = '\0';
-		}
-		else
-		{
-			strcat(vmargs, " ");
-		}
-		strcat(vmargs, opt['a']);
+		exit_process(ERROR_NOT_ENOUGH_MEMORY, L"malloc");
 	}
-	if(opt['a'] && *opt['a'] != '\0')
+	vmargs[0] = L'\0';
+
+	if(opt['a'] != NULL && *opt['a'] != L'\0')
 	{
-		if(strstr(opt['a'], "-Dvisualvm.display.name="))
+		wcscat_s(vmargs, BUFFER_SIZE, opt['a']);
+
+		if(wcsstr(opt['a'], L"-Dvisualvm.display.name="))
 		{
 			contains_visualvm_display_name = TRUE;
 		}
 	}
 	if(!contains_visualvm_display_name)
 	{
-		char* visualvm_display_name = malloc(25 + MAX_PATH);
-		strcpy(visualvm_display_name, "-Dvisualvm.display.name=");
-		strcat(visualvm_display_name, strrchr(exe_file, '\\') + 1);
-		
-		if (vmargs == NULL)
+		wchar_t* visualvm_display_name = (wchar_t*)malloc(MAX_LONG_PATH * sizeof(wchar_t));
+		if(visualvm_display_name == NULL)
 		{
-			vmargs = (char*)malloc(2048);
-			vmargs[0] = '\0';
+			exit_process(ERROR_NOT_ENOUGH_MEMORY, L"malloc");
 		}
-		else
+		wcscpy_s(visualvm_display_name, MAX_LONG_PATH, L"-Dvisualvm.display.name=");
+		wcscat_s(visualvm_display_name, MAX_LONG_PATH, wcsrchr(exe_file, L'\\') + 1);
+
+		if(wcslen(vmargs) > 0)
 		{
-			strcat(vmargs, " ");
+			wcscat_s(vmargs, BUFFER_SIZE, L" ");
 		}
-		strcat(vmargs, visualvm_display_name);
+		wcscat_s(vmargs, BUFFER_SIZE, visualvm_display_name);
 	}
-	if (vmargs != NULL)
+	if(wcslen(vmargs) > 0)
 	{
-		set_resource(exe_file, "VMARGS", RT_RCDATA, vmargs, (DWORD)strlen(vmargs) + 1);
-		free(vmargs);
+		utf8 = to_utf8(vmargs);
+		set_resource(exe_file, L"VMARGS", RT_RCDATA, (BYTE*)utf8, (DWORD)(strlen(utf8) + 1));
+		free(utf8);
 	}
-	
-	if(opt['b'] && *opt['b'] != '\0')
+	free(vmargs);
+
+	if(opt['b'] != NULL && *opt['b'] != L'\0')
 	{
-		if (vmargs_b == NULL)
+		wchar_t * vmargs_b = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
+		if(vmargs_b == NULL)
 		{
-			vmargs_b = (char*)malloc(2048);
-			vmargs_b[0] = '\0';
+			exit_process(ERROR_NOT_ENOUGH_MEMORY, L"malloc");
 		}
-		else
-		{
-			strcat(vmargs_b, " ");
-		}
-		strcat(vmargs_b, opt['b']);
-	}
-	if (vmargs_b != NULL)
-	{
-		set_resource(exe_file, "VMARGS_B", RT_RCDATA, vmargs_b, (DWORD)strlen(vmargs_b) + 1);
+		wcscpy_s(vmargs_b, BUFFER_SIZE, opt['b']);
+		utf8 = to_utf8(vmargs_b);
+		set_resource(exe_file, L"VMARGS_B", RT_RCDATA, (BYTE*)utf8, (DWORD)(strlen(utf8) + 1));
+		free(utf8);
 		free(vmargs_b);
 	}
 
-	if(opt['i'] && *opt['i'] != '-' && *opt['i'] != '\0')
+	if(opt['i'] != NULL)
 	{
-		size_t len = strlen(opt['i']);
-		if(len > 4 && stricmp(opt['i'] + len - 4, ".ico") == 0)
+		if(*opt['i'] != L'-' && *opt['i'] != L'\0')
 		{
-			set_application_icon(exe_file, opt['i']);
-			is_icon_set = TRUE;
-		}
-		else
-		{
-			printf("Invalid icon filename: %s\n", opt['i']);
+			size_t len = wcslen(opt['i']);
+			if(len > 4 && _wcsicmp(opt['i'] + len - 4, L".ico") == 0)
+			{
+				set_application_icon_file(exe_file, opt['i']);
+				is_icon_set = TRUE;
+			}
+			else
+			{
+				exit_process(ERROR_BAD_PATHNAME, opt['i']);
+			}
 		}
 	}
-	if(!opt['g'] && !opt['s'] && !is_icon_set)
+	else if(opt['g'] != NULL)
 	{
-		// コンソールアプリケーションでアイコンが指定されていない場合は、
-		// リソースに内包しているアイコンを削除してシステム既定のアイコンが表示されるようにします。		
-		set_application_icon(exe_file, NULL);
+		if(get_resource(L"IMAGE_GUI_DEFAULT_ICON", &res) != NULL)
+		{
+			set_application_icon(exe_file, res.buf);
+		}
+	}
+	else if(opt['s'] != NULL)
+	{
+		if(get_resource(L"IMAGE_SERVICE_DEFAULT_ICON", &res) != NULL)
+		{
+			set_application_icon(exe_file, res.buf);
+		}
 	}
 	
-	if(opt['v'] && *opt['v'] != '-' && *opt['v'] != '\0')
+	if(opt['v'] != NULL && *opt['v'] != L'-' && *opt['v'] != L'\0')
 	{
 		version_number = opt['v'];
 	}
@@ -508,47 +566,49 @@ int main(int argc, char* argv[])
 		version_number = DEFAULT_VERSION;
 	}
 
-	if(opt['d'] && *opt['d'] != '-' && *opt['d'] != '\0')
+	if(opt['d'] != NULL && *opt['d'] != L'-' && *opt['d'] != L'\0')
 	{
 		file_description = opt['d'];
-		if(opt['s'])
+		if(opt['s'] != NULL)
 		{
-			set_resource(exe_file, "SVCDESC", RT_RCDATA, opt['d'], (DWORD)strlen(opt['d']) + 1);
+			utf8 = to_utf8(file_description);
+			set_resource(exe_file, L"SVCDESC", RT_RCDATA, (BYTE*)utf8, (DWORD)(strlen(utf8) + 1));
+			free(utf8);
 		}
 	}
 	else
 	{
-		file_description = (char*)"";
+		file_description = L"";
 	}
 
-	if(opt['c'] && *opt['c'] != '-' && *opt['c'] != '\0')
+	if(opt['c'] != NULL && *opt['c'] != L'-' && *opt['c'] != L'\0')
 	{
 		copyright = opt['c'];
 	}
 	else
 	{
-		copyright = (char*)"";
+		copyright = L"";
 	}
 
-	if(opt['C'] && *opt['C'] != '-' && *opt['C'] != '\0')
+	if(opt['C'] != NULL && *opt['C'] != L'-' && *opt['C'] != L'\0')
 	{
 		company_name = opt['C'];
 	}
 	else
 	{
-		company_name = (char*)"";
+		company_name = L"";
 	}
 
-	if(opt['p'] && *opt['p'] != '-' && *opt['p'] != '\0')
+	if(opt['p'] != NULL && *opt['p'] != L'-' && *opt['p'] != L'\0')
 	{
 		product_name = opt['p'];
 	}
 	else
 	{
-		product_name = (char*)"";
+		product_name = L"";
 	}
 
-	if(opt['V'] && *opt['V'] != '-' && *opt['V'] != '\0')
+	if(opt['V'] != NULL && *opt['V'] != L'-' && *opt['V'] != L'\0')
 	{
 		product_version = opt['V'];
 	}
@@ -557,82 +617,119 @@ int main(int argc, char* argv[])
 		product_version = DEFAULT_PRODUCT_VERSION;
 	}
 
-	original_filename = strrchr(exe_file, '\\') + 1;
+	original_filename = wcsrchr(exe_file, L'\\') + 1;
 	new_version = set_version_info(exe_file, version_number, previous_revision, file_description, copyright, company_name, product_name, product_version, original_filename, jar_file);
 	
-	if(GetResource("LOADER_JAR", &res) == NULL)
+	if(get_resource(L"LOADER_JAR", &res) == NULL)
 	{
-		printf("ERROR: GetResource: LOADER_JAR\n");
-		goto EXIT;
+		exit_process(GetLastError(), L"LOADER_JAR");
 	}
 	else
 	{
-		if(append_exe_file(exe_file, res.buf, res.len) == FALSE)
-		{
-			goto EXIT;
-		}
+		append_exe_file(exe_file, res.buf, res.len);
 	}
 	
-	printf("%s (%d-bit) version %s\r\n", strrchr(exe_file, '\\') + 1, architecture_bits, new_version);
+	wcoutf(L"%ls (%d-bit) version %ls\r\n", original_filename, architecture_bits, new_version);
 	g_is_dirty_exe = FALSE;
 	
-EXIT:
+	cleanup();
+	ExitProcess(0);
+}
+
+static void cleanup()
+{
 	if(g_is_dirty_exe)
 	{
-		DeleteFile(exe_file);
+		DeleteFile(g_exe_file);
 	}
 
-	if (env != NULL)
+	if(env != NULL)
 	{
-		if ((*env)->ExceptionCheck(env) == JNI_TRUE)
+		if((*env)->ExceptionCheck(env) == JNI_TRUE)
 		{
 			(*env)->ExceptionDescribe(env);
 			(*env)->ExceptionClear(env);
 		}
-		DetachJavaVM();
+		detach_java_vm();
 	}
-	if (jvm != NULL)
+	if(jvm != NULL)
 	{
-		DestroyJavaVM();
+		destroy_java_vm();
 	}
-	ExitProcess(0);
 }
 
-static char** parse_opt(int argc, char* argv[])
+static void exit_process(DWORD last_error, const wchar_t* append)
 {
-	char** opt = (char**)HeapAlloc(GetProcessHeap(), 0, 256 * 8);
+	wchar_t* message;
 
-	SecureZeroMemory(opt, 256 * 8);
-
-	if ((argc > 1) && (*argv[1] != '-'))
+	message = get_error_message(last_error);
+	if(message != NULL)
 	{
-		opt[0] = argv[1];
-	}
-	while (*++argv)
-	{
-		if (*argv[0] == '-' && *(argv[0] + 1) != '\0' && *(argv[0] + 2) == '\0')
+		wcerr(message);
+		if(append != NULL)
 		{
-			if (argv[1] == NULL)
+			wcerr(L" (");
+			wcerr(append);
+			wcerr(L")");
+		}
+	}
+	else if(append != NULL)
+	{
+		wcerr(append);
+	}
+	if(message != NULL || append != NULL)
+	{
+		wcerr(L"\r\n");
+	}
+
+	cleanup();
+	ExitProcess(last_error);
+}
+
+static wchar_t** parse_opt(int argc, const wchar_t* argv[])
+{
+	wchar_t** opt = (wchar_t**)calloc(256, sizeof(wchar_t*));
+
+	if(opt == NULL)
+	{
+		return NULL;
+	}
+
+	if((argc > 1) && (*argv[1] != L'-'))
+	{
+		opt[0] = (wchar_t*)argv[1];
+	}
+	while(*++argv)
+	{
+		if(*argv[0] == L'-' && *(argv[0] + 1) != L'\0' && *(argv[0] + 2) == L'\0')
+		{
+			char* c = (char*)(argv[0] + 1);
+			char  c1 = *(c + 0);
+			char  c2 = *(c + 1);
+			if(c2 == 0x00)
 			{
-				opt[*(argv[0] + 1)] = (char*)"";
-			}
-			else
-			{
-				opt[*(argv[0] + 1)] = argv[1];
+				if(argv[1] == NULL)
+				{
+					opt[c1] = (wchar_t*)L"";
+				}
+				else
+				{
+					opt[c1] = (wchar_t*)argv[1];
+				}
 			}
 		}
 	}
 	argv--;
-	if ((opt[0] == NULL) && (*argv[0] != '-'))
+	if((opt[0] == NULL) && (*argv[0] != L'-'))
 	{
-		opt[0] = argv[0];
+		opt[0] = (wchar_t*)argv[0];
 	}
 
 	return opt;
 }
 
 
-static DWORD get_version_revision(char* filename)
+static DWORD get_version_revision(const wchar_t* filename)
 {
 	/* GetFileVersionInfoSize, GetFileVersionInfo を使うと内部で LoadLibrary が使用されるらしく
 	 * その後のリソース書き込みがうまくいかなくなるようです。なので、自力で EXEファイルから
@@ -649,10 +746,15 @@ static DWORD get_version_revision(char* filename)
 	size_t j;
 
 	buf = (BYTE*)malloc(SCAN_SIZE);
+	if(buf == NULL)
+	{
+		exit_process(ERROR_NOT_ENOUGH_MEMORY, L"malloc");
+	}
 
 	hFile = CreateFile(filename, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	if (hFile == INVALID_HANDLE_VALUE)
+	if(hFile == INVALID_HANDLE_VALUE)
 	{
+		// リビジョンナンバーが参照できなくてもプロセスを終了せずに処理を継続します。
 		goto EXIT;
 	}
 
@@ -663,11 +765,11 @@ static DWORD get_version_revision(char* filename)
 	len = strlen(HEADER);
 	if(size > len)
 	{
-		for (i = 0; i < size - len; i++)
+		for(i = 0; i < size - len; i++)
 		{
-			for (j = 0; j < len; j++)
+			for(j = 0; j < len; j++)
 			{
-				if (buf[i + j * 2] != HEADER[j]) break;
+				if(buf[i + j * 2] != HEADER[j] || buf[i + j * 2 + 1] != 0x00) break;
 			}
 			if (j == strlen(HEADER))
 			{
@@ -677,7 +779,7 @@ static DWORD get_version_revision(char* filename)
 	}
 
 EXIT:
-	if (buf != NULL)
+	if(buf != NULL)
 	{
 		free(buf);
 	}
@@ -685,504 +787,510 @@ EXIT:
 }
 
 
-static BOOL create_exe_file(const char* filename, BYTE* image_buf, DWORD image_len, BOOL is_reverse)
+static void create_exe_file(const wchar_t* filename, BYTE* image_buf, DWORD image_len, BOOL is_reverse)
 {
-	BOOL   ret = FALSE;
-	HANDLE hFile;
-	BYTE*  buf = NULL;
-	DWORD  write_size;
-	char*  dir;
-	char*  ptr;
-	
-	dir = malloc(strlen(filename) + 1);
-	strcpy(dir, filename);
-	if((ptr = strrchr(dir, '\\')) != NULL)
+	HANDLE    hFile;
+	BYTE*     buf = NULL;
+	DWORD     write_size;
+	wchar_t*  dir = NULL;
+	wchar_t*  ptr;
+	size_t    len;
+
+	len = wcslen(filename);
+	g_exe_file = (wchar_t*)malloc((len + 1) * sizeof(wchar_t));
+	if(g_exe_file == NULL)
 	{
-		*ptr = '\0';
+		exit_process(ERROR_NOT_ENOUGH_MEMORY, L"malloc");
+	}
+	wcscpy_s(g_exe_file, len + 1, filename);
+
+	dir = (wchar_t*)malloc((len + 1) * sizeof(wchar_t));
+	if(dir == NULL)
+	{
+		exit_process(ERROR_NOT_ENOUGH_MEMORY, L"malloc");
+	}
+	wcscpy_s(dir, len + 1, filename);
+
+	ptr = wcsrchr(dir, L'\\');
+	if(ptr != NULL)
+	{
+		*ptr = L'\0';
+		if(GetFileAttributes(dir) == INVALID_FILE_ATTRIBUTES)
+		{
+			SHCreateDirectoryEx(NULL, dir, NULL);
+		}
+		/*
 		if(!PathIsDirectory(dir))
 		{
 			SHCreateDirectoryEx(NULL, dir, NULL);
 		}
+		*/
 	}
 	
 	hFile = CreateFile(filename, GENERIC_WRITE, 0, NULL, TRUNCATE_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	if (hFile == INVALID_HANDLE_VALUE)
+	if(hFile == INVALID_HANDLE_VALUE)
 	{
 		hFile = CreateFile(filename, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
-		if (hFile == INVALID_HANDLE_VALUE)
+		if(hFile == INVALID_HANDLE_VALUE)
 		{
-			printf("Failed to create file: %s\n", filename);
-			goto EXIT;
+			exit_process(GetLastError(), filename);
 		}
 	}
 	g_is_dirty_exe = TRUE;
 
-	if (is_reverse)
+	if(is_reverse)
 	{
 		DWORD i;
 		buf = (BYTE*)malloc(image_len);
-		for (i = 0; i < image_len; i++)
+		if(buf == NULL)
+		{
+			exit_process(ERROR_NOT_ENOUGH_MEMORY, L"malloc");
+		}
+		for(i = 0; i < image_len; i++)
 		{
 			buf[i] = ~image_buf[image_len - 1 - i];
 		}
 		image_buf = buf;
 	}
 
-	while (image_len > 0)
+	while(image_len > 0)
 	{
-		if (WriteFile(hFile, image_buf, image_len, &write_size, NULL) == 0)
+		if(WriteFile(hFile, image_buf, image_len, &write_size, NULL) == 0)
 		{
-			printf("Failed to write: %s\n", filename);
-			goto EXIT;
+			exit_process(GetLastError(), filename);
 		}
 		image_buf += write_size;
 		image_len -= write_size;
 	}
 	CloseHandle(hFile);
 
-	ret = TRUE;
-
-EXIT:
-	if (is_reverse)
+	if(is_reverse)
 	{
-		if (buf != NULL)
+		if(buf != NULL)
 		{
 			free(buf);
 		}
 	}
-
-	return ret;
+	if(dir != NULL)
+	{
+		free(dir);
+	}
 }
 
 
-static BOOL append_exe_file(const char* filename, BYTE* image_buf, DWORD image_len)
+static void append_exe_file(const wchar_t* filename, BYTE* image_buf, DWORD image_len)
 {
-	BOOL   ret = FALSE;
 	HANDLE hFile;
-	BYTE*  buf = NULL;
 	DWORD  write_size;
 	
 	hFile = CreateFile(filename, FILE_APPEND_DATA, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	if (hFile == INVALID_HANDLE_VALUE)
+	if(hFile == INVALID_HANDLE_VALUE)
 	{
-		printf("Failed to open file: %s\n", filename);
-		goto EXIT;
+		exit_process(GetLastError(), filename);
 	}
 
-	while (image_len > 0)
+	while(image_len > 0)
 	{
-		if (WriteFile(hFile, image_buf, image_len, &write_size, NULL) == 0)
+		if(WriteFile(hFile, image_buf, image_len, &write_size, NULL) == 0)
 		{
-			printf("Failed to write: %s\n", filename);
-			goto EXIT;
+			exit_process(GetLastError(), filename);
 		}
 		image_buf += write_size;
 		image_len -= write_size;
 	}
 	CloseHandle(hFile);
-
-	ret = TRUE;
-
-EXIT:
-	return ret;
 }
 
-
-/*
- * major(7bit) 31-25
- * minor(7bit) 24-18
- * build(7bit) 17-11
- * revision(11bit) 10-0
- */
-static DWORD get_target_java_runtime_version(char* version)
+static void get_target_java_runtime_version(const wchar_t* version, DWORD* major, DWORD* minor, DWORD* build, DWORD* revision)
 {
-	char* p = version;
-	DWORD major = 0;
-	DWORD minor = 0;
-	DWORD build = 0;
-	DWORD revision = 0;
+	wchar_t* p = (wchar_t*)version;
 
-	if (p != NULL)
+	if(major != NULL)
 	{
-		major = atoi(p);
-		if ((p = strstr(p, ".")) != NULL)
+		*major = 0;
+	}
+	if(minor != NULL)
+	{
+		*minor = 0;
+	}
+	if(build != NULL)
+	{
+		*build = 0;
+	}
+	if(revision != NULL)
+	{
+		*revision = 0;
+	}
+
+	if(p != NULL && major != NULL)
+	{
+		if(major != NULL)
 		{
-			minor = atoi(++p);
-			if ((p = strstr(p, ".")) != NULL)
+			*major = _wtoi(p);
+		}
+		if((p = wcsstr(p, L".")) != NULL && minor != NULL)
+		{
+			if(minor != NULL)
 			{
-				build = atoi(++p);
-				if ((p = strstr(p, ".")) != NULL)
+				*minor = _wtoi(++p);
+			}
+			if((p = wcsstr(p, L".")) != NULL && build != NULL)
+			{
+				if(build != NULL)
 				{
-					revision = atoi(++p);
+					*build = _wtoi(++p);
+				}
+				if((p = wcsstr(p, L".")) != NULL && revision != NULL)
+				{
+					if(revision != NULL)
+					{
+						*revision = _wtoi(++p);
+					}
 				}
 			}
 		}
-		return major << 25 & 0xFE000000 | minor << 18 & 0x01FC0000 | build << 11 & 0x0003F800 | revision & 0x000007FF;
 	}
-	return 0x00000000;
-}
-
-/*
- * major(7bit) 31-25
- * minor(7bit) 24-18
- * build(7bit) 17-11
- * revision(11bit) 10-0
- */
-static char* get_target_java_runtime_version_string(DWORD version, char* buf)
-{
-	DWORD major = version >> 25 & 0x7F;
-	DWORD minor = version >> 18 & 0x7F;
-	DWORD build = version >> 11 & 0x7F;
-	DWORD revision = version & 0x7FF;
-
-	*(DWORD*)buf = version;
-	
-	//JDK9-
-	if(major >= 5)
-	{
-		if(minor == 0 && build == 0 && revision == 0)
-		{
-			sprintf(buf + 4, "Java %d", major);
-		}
-		else if(build == 0 && revision == 0)
-		{
-			sprintf(buf + 4, "Java %d.%d", major, minor);
-		}
-		else if(revision == 0)
-		{
-			sprintf(buf + 4, "Java %d.%d.%d", major, minor, build);
-		}
-		else
-		{
-			sprintf(buf + 4, "Java %d.%d.%d", major, minor, build, revision);
-		}
-		return buf;
-	}
-	
-	//1.7, 1.8
-	if (major == 1 && (minor == 7 || minor == 8))
-	{
-		if(revision == 0)
-		{
-			sprintf(buf + 4, "Java %d", minor);
-		}
-		else
-		{
-			sprintf(buf + 4, "Java %du%d", minor, revision);
-		}
-		return buf;
-	}
-	
-	//1.5, 1.6
-	if (major == 1 && (minor == 5 || minor == 6))
-	{
-		if (revision == 0)
-		{
-			sprintf(buf + 4, "Java %d.%d", minor, build);
-		}
-		else
-		{
-			sprintf(buf + 4, "Java %d.%d.%d", minor, build, revision);
-		}
-		return buf;
-	}
-
-	//1.2, 1.3, 1.4
-	if (major == 1 && (minor == 2 || minor == 3 || minor == 4))
-	{
-		if (revision == 0)
-		{
-			if (build == 0)
-			{
-				sprintf(buf + 4, "Java2 %d.%d", major, minor);
-			}
-			else
-			{
-				sprintf(buf + 4, "Java2 %d.%d.%d", major, minor, build);
-			}
-		}
-		else
-		{
-			sprintf(buf + 4, "Java2 %d.%d.%d.%d", major, minor, build, revision);
-		}
-		return buf;
-	}
-
-	//1.0, 1.1
-	if (major == 1 && (minor == 0 || minor == 1))
-	{
-		if (revision == 0)
-		{
-			if (build == 0)
-			{
-				sprintf(buf + 4, "Java %d.%d", major, minor);
-			}
-			else
-			{
-				sprintf(buf + 4, "Java %d.%d.%d", major, minor, build);
-			}
-		}
-		else
-		{
-			sprintf(buf + 4, "Java %d.%d.%d.%d", major, minor, build, revision);
-		}
-		return buf;
-	}
-
-	//other
-	if (revision == 0)
-	{
-		sprintf(buf + 4, "Java %d.%d.%d", major, minor, build);
-	}
-	else
-	{
-		sprintf(buf + 4, "Java %d.%d.%d.%d", major, minor, build, revision);
-	}
-	return buf;
 }
 
 
-static void set_resource(const char* filename, const char* rsc_name, const char* rsc_type, BYTE* rsc_data, DWORD rsc_size)
+static void set_resource(const wchar_t* filename, const wchar_t* rsc_name, const wchar_t* rsc_type, BYTE* rsc_data, DWORD rsc_size)
 {
-	HANDLE hRes;
-	BOOL   ret1;
-	BOOL   ret2;
+	HANDLE hRes = NULL;
+	BOOL   ret1 = FALSE;
+	BOOL   ret2 = FALSE;
+	DWORD  last_error = 0;
 	int i;
 
-	for (i = 0; i < 100; i++)
+	for(i = 0; i < 100; i++)
 	{
 		ret1 = FALSE;
 		ret2 = FALSE;
+
 		hRes = BeginUpdateResource(filename, FALSE);
-		if (hRes != NULL)
+		if(hRes != NULL)
 		{
 			ret1 = UpdateResource(hRes, rsc_type, rsc_name, MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL), rsc_data, rsc_size);
+			if(ret1 == FALSE)
+			{
+				last_error = GetLastError();
+			}
 			ret2 = EndUpdateResource(hRes, FALSE);
+			if(ret1 == TRUE && ret2 == FALSE)
+			{
+				last_error = GetLastError();
+			}
 		}
-		if (ret1 && ret2)
+		else
+		{
+			last_error = GetLastError();
+		}
+		if(ret1 && ret2)
 		{
 			break;
 		}
 		Sleep(100);
 	}
-	if (ret1 == FALSE || ret2 == FALSE)
+	if(ret1 == FALSE || ret2 == FALSE)
 	{
-		printf("Failed to update resource: %s: %s\n", filename, rsc_name);
-		ExitProcess(0);
+		exit_process(last_error, rsc_name);
 	}
 	CloseHandle(hRes);
 }
 
 
-static BYTE* get_jar_buf(const char* jar_file, DWORD* jar_len)
+static BYTE* get_jar_buf(const wchar_t* jar_file, DWORD* jar_len)
 {
 	HANDLE hFile;
-	char*  buf;
-	char*  p;
+	BYTE*  buf = NULL;
+	BYTE*  p;
 	DWORD  r;
 	DWORD  read_size;
 
 	hFile = CreateFile(jar_file, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	if (hFile == INVALID_HANDLE_VALUE)
+	if(hFile == INVALID_HANDLE_VALUE)
 	{
-		printf("Failed to read file: %s\n", jar_file);
-		buf = NULL;
-		goto EXIT;
+		exit_process(GetLastError(), jar_file);
 	}
 	*jar_len = GetFileSize(hFile, NULL);
 	p = buf = (BYTE*)malloc(*jar_len);
+	if(buf == NULL)
+	{
+		exit_process(ERROR_NOT_ENOUGH_MEMORY, L"malloc");
+	}
 
 	r = *jar_len;
-	while (r > 0)
+	while(r > 0)
 	{
-		if (ReadFile(hFile, p, r, &read_size, NULL) == 0)
+		if(ReadFile(hFile, p, r, &read_size, NULL) == 0)
 		{
-			printf("Failed to read: %s\n", jar_file);
-			free(buf);
-			buf = NULL;
-			goto EXIT;
+			exit_process(GetLastError(), jar_file);
 		}
 		p += read_size;
 		r -= read_size;
 	}
 	CloseHandle(hFile);
 
-EXIT:
 	return buf;
 }
 
-
-static void set_application_icon(const char* filename, const char* icon_file)
+static BOOL set_application_icon_file(const wchar_t* filename, const wchar_t* icon_file)
 {
-	void* pvFile;
-	DWORD nSize;
-	int f, z;
-	ICONDIR id, *pid;
-	GRPICONDIR *pgid;
-	HANDLE hResource;
-	BOOL ret1;
-	BOOL ret2;
-	BOOL ret3;
-	int i;
+	BOOL   succeeded        = FALSE;
+	HANDLE icon_file_handle = NULL;
+	DWORD  icon_file_size;
+	BYTE*  icon_file_data   = NULL;
+	BYTE*  p;
+	DWORD  r;
+	DWORD  read_size;
 
-	//Delete default icon.
-	for (z = 0; z < 99; z++)
+	if(icon_file == NULL || wcslen(icon_file) == 0)
 	{
-		hResource = BeginUpdateResource(filename, FALSE);
-		ret1 = UpdateResource(hResource, RT_ICON, MAKEINTRESOURCE(z + 1), MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL), NULL, 0);
-		EndUpdateResource(hResource, FALSE);
-		if (ret1 == FALSE)
+		goto EXIT;
+	}
+	icon_file_handle = CreateFile(icon_file, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if(icon_file_handle == INVALID_HANDLE_VALUE)
+	{
+		goto EXIT;
+	}
+	icon_file_size = GetFileSize(icon_file_handle, NULL);
+	if(icon_file_size == INVALID_FILE_SIZE)
+	{
+		goto EXIT;
+	}
+	icon_file_data = (BYTE*)malloc(icon_file_size);
+	if(icon_file_data == NULL)
+	{
+		goto EXIT;
+	}
+
+	p = icon_file_data;
+	r = icon_file_size;
+
+	while(r > 0)
+	{
+		if(ReadFile(icon_file_handle, p, r, &read_size, NULL) == 0)
 		{
-			break;
+			goto EXIT;
+		}
+		p += read_size;
+		r -= read_size;
+	}
+
+	succeeded = set_application_icon(filename, icon_file_data);
+
+EXIT:
+	if(icon_file_data != NULL)
+	{
+		free(icon_file_data);
+	}
+	if(icon_file_handle != NULL && icon_file_handle != INVALID_HANDLE_VALUE)
+	{
+		CloseHandle(icon_file_handle);
+	}
+	return succeeded;
+}
+
+static BOOL set_application_icon(const wchar_t* filename, const BYTE* icon_bytes)
+{
+	BOOL         succeeded   = FALSE;
+	HANDLE       hResource   = NULL;
+	ICONDIR      id;
+	size_t       pid_size;
+	ICONDIR*     pid        = NULL;
+	size_t       pgid_size;
+	GRPICONDIR*  pgid       = NULL;
+	int          i;
+	DWORD        data_size;
+	BYTE*        data       = NULL;
+	BOOL         b;
+
+	hResource = BeginUpdateResource(filename, FALSE);
+	if(hResource == NULL)
+	{
+		goto EXIT;
+	}
+
+	memcpy_s(&id, sizeof(id), icon_bytes, sizeof(id));
+
+	pid_size = sizeof(ICONDIR) + sizeof(ICONDIRENTRY) * (id.idCount - 1);
+	pid = (ICONDIR*)malloc(pid_size);
+	if(pid == NULL)
+	{
+		goto EXIT;
+	}
+	memcpy_s(pid, pid_size, icon_bytes, pid_size);
+
+	pgid_size = sizeof(GRPICONDIR) + sizeof(GRPICONDIRENTRY) * (id.idCount - 1);
+	pgid = (GRPICONDIR*)malloc(pgid_size);
+	if(pgid == NULL)
+	{
+		goto EXIT;
+	}
+	memcpy_s(pgid, pgid_size, icon_bytes, sizeof(GRPICONDIR));
+
+	for(i = 0; i < id.idCount; i++)
+	{
+		pgid->idEntries[i].common = pid->idEntries[i].common;
+		pgid->idEntries[i].nID = (WORD)(i + 1);
+		data_size = pid->idEntries[i].common.dwBytesInRes;
+
+		if(data != NULL)
+		{
+			free(data);
+		}
+		data = (BYTE*)malloc(data_size);
+		if(data == NULL)
+		{
+			goto EXIT;
+		}
+		memcpy_s(data, data_size, icon_bytes + pid->idEntries[i].dwImageOffset, data_size);
+
+		b = UpdateResource(hResource, RT_ICON, MAKEINTRESOURCE(i + 1), MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL), data, data_size);
+		if(b == FALSE)
+		{
+			goto EXIT;
 		}
 	}
-
-	//Delete default icon group.
+	data_size = sizeof(GRPICONDIR) + sizeof(GRPICONDIRENTRY) * (id.idCount - 1);
+	b = UpdateResource(hResource, RT_GROUP_ICON, MAKEINTRESOURCE(1), MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL), pgid, data_size);
+	if(b == FALSE)
 	{
-		hResource = BeginUpdateResource(filename, FALSE);
-		UpdateResource(hResource, RT_GROUP_ICON, MAKEINTRESOURCE(1), MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL), NULL, 0);
-		EndUpdateResource(hResource, FALSE);
+		goto EXIT;
 	}
 
-	if (icon_file == NULL || !strlen(icon_file))
+	b = EndUpdateResource(hResource, FALSE);
+	if(b  == FALSE)
 	{
-		return;
-	}
-	if ((f = _lopen(icon_file, OF_READ)) == -1)
-	{
-		return;
+		goto EXIT;
 	}
 
-	for (i = 0; i < 100; i++)
+	succeeded = TRUE;
+
+EXIT:
+	if(hResource != NULL)
 	{
-		ret1 = FALSE;
-		ret2 = FALSE;
-		ret3 = FALSE;
-		hResource = BeginUpdateResource(filename, FALSE);
-
-		_lread(f, &id, sizeof(id));
-		_llseek(f, 0, SEEK_SET);
-		pid = (ICONDIR *)HeapAlloc(GetProcessHeap(), 0, sizeof(ICONDIR) + sizeof(ICONDIRENTRY) * (id.idCount - 1));
-		pgid = (GRPICONDIR *)HeapAlloc(GetProcessHeap(), 0, sizeof(GRPICONDIR) + sizeof(GRPICONDIRENTRY) * (id.idCount - 1));
-		_lread(f, pid, sizeof(ICONDIR) + sizeof(ICONDIRENTRY) * (id.idCount - 1));
-		memcpy(pgid, pid, sizeof(GRPICONDIR));
-
-		for (z = 0; z < id.idCount; z++)
-		{
-			pgid->idEntries[z].common = pid->idEntries[z].common;
-			pgid->idEntries[z].nID = z + 1;
-			nSize = pid->idEntries[z].common.dwBytesInRes;
-			pvFile = HeapAlloc(GetProcessHeap(), 0, nSize);
-			if (!pvFile)
-			{
-				_lclose(f);
-				return;
-			}
-			_llseek(f, pid->idEntries[z].dwImageOffset, SEEK_SET);
-			_lread(f, pvFile, nSize);
-			ret1 = UpdateResource(hResource, RT_ICON, MAKEINTRESOURCE(z + 1), MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL), pvFile, nSize);
-			HeapFree(GetProcessHeap(), 0, pvFile);
-		}
-		nSize = sizeof(GRPICONDIR) + sizeof(GRPICONDIRENTRY) * (id.idCount - 1);
-		ret2 = UpdateResource(hResource, RT_GROUP_ICON, MAKEINTRESOURCE(1), MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL), pgid, nSize);
-		_lclose(f);
-
-		ret3 = EndUpdateResource(hResource, FALSE);
-		if (ret1 && ret2 && ret3)
-		{
-			break;
-		}
-		Sleep(100);
+		//  BeginUpdateResourceで取得したハンドルをCloseHandleで閉じる必要はないらしい。
 	}
-	if (ret1 == FALSE || ret2 == FALSE || ret3 == FALSE)
+	if(data != NULL)
 	{
-		printf("Failed to set icon\n");
-		return;
+		free(data);
 	}
-	CloseHandle(hResource);
+	if(pgid != NULL)
+	{
+		free(pgid);
+	}
+	if(pid != NULL)
+	{
+		free(pid);
+	}
+
+	return succeeded;
 }
 
 
-static char* set_version_info(const char* filename, const char* version_number, DWORD previous_revision, char* file_description, char* copyright, char* company_name, char* product_name, char* product_version, char* original_filename, char* jar_file)
+static wchar_t* set_version_info(const wchar_t* filename, const wchar_t* version_number, DWORD previous_revision, const wchar_t* file_description, const wchar_t* copyright, const wchar_t* company_name, const wchar_t* product_name, const wchar_t* product_version, const wchar_t* original_filename, const wchar_t* jar_file)
 {
-	int   i;
-	int   SIZE_VERSION = 48;
-	int   SIZE_TEXT = 256;
-	int   ADDR_COMPANY_NAME = 0x00B8;
-	int   ADDR_FILE_DESCRIPTION = 0x01E4;
-	int   ADDR_FILE_VERSION = 0x0308;
-	int   ADDR_INTERNAL_NAME = 0x0358;
-	int   ADDR_COPYRIGHT = 0x0480;
-	int   ADDR_ORIGINAL_FILENAME = 0x05AC;
-	int   ADDR_PRODUCT_NAME = 0x06D0;
-	int   ADDR_PRODUCT_VERSION = 0x07F8;
-	char* internal_name;
-	char  file_version[48];
-	char  buffer[260];
-	BYTE* version_info_buf = NULL;
-	DWORD version_info_len;
-	short file_version_major;
-	short file_version_minor;
-	short file_version_build;
-	short file_version_revision;
-	short product_version_major;
-	short product_version_minor;
-	short product_version_build;
-	short product_version_revision;
-	char* new_version;
+	const size_t VERSION_TEXT_LENGTH    = 24;
+	const size_t TEXT_LENGTH            = 128;
+	const int    ADDR_COMPANY_NAME      = 0x00B8;
+	const int    ADDR_FILE_DESCRIPTION  = 0x01E4;
+	const int    ADDR_FILE_VERSION      = 0x0308;
+	const int    ADDR_INTERNAL_NAME     = 0x0358;
+	const int    ADDR_COPYRIGHT         = 0x0480;
+	const int    ADDR_ORIGINAL_FILENAME = 0x05AC;
+	const int    ADDR_PRODUCT_NAME      = 0x06D0;
+	const int    ADDR_PRODUCT_VERSION   = 0x07F8;
+
+	const wchar_t* internal_name;
+
+	wchar_t* buffer;
+	wchar_t* file_version;
+	wchar_t* context;
+	BYTE*    version_info_buf = NULL;
+	DWORD    version_info_len;
+	short    file_version_major;
+	short    file_version_minor;
+	short    file_version_build;
+	short    file_version_revision;
+	short    product_version_major;
+	short    product_version_minor;
+	short    product_version_build;
+	short    product_version_revision;
+	wchar_t* new_version;
 	RESOURCE res;
 
-	if (strrchr(jar_file, '\\') != NULL)
+	buffer = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
+	if(buffer == NULL)
 	{
-		internal_name = strrchr(jar_file, '\\') + 1;
+		return NULL;
+	}
+
+	wcscpy_s(buffer, BUFFER_SIZE, version_number);
+	wcscat_s(buffer, BUFFER_SIZE, L".0.0.0.0");
+
+	file_version_major = (short)_wtoi(wcstok_s(buffer, L".", &context));
+	file_version_minor = (short)_wtoi(wcstok_s(NULL, L".", &context));
+	file_version_build = (short)_wtoi(wcstok_s(NULL, L".", &context));
+	file_version_revision = (short)_wtoi(wcstok_s(NULL, L".", &context));
+
+	wcscpy_s(buffer, BUFFER_SIZE, product_version);
+	wcscat_s(buffer, BUFFER_SIZE, L".0.0.0.0");
+	product_version_major = (short)_wtoi(wcstok_s(buffer, L".", &context));
+	product_version_minor = (short)_wtoi(wcstok_s(NULL, L".", &context));
+	product_version_build = (short)_wtoi(wcstok_s(NULL, L".", &context));
+	product_version_revision = (short)_wtoi(wcstok_s(NULL, L".", &context));
+
+	// revision が明示的に指定されていなかった場合、既存ファイルから取得した値に 1　を加算して revision とする。
+	wcscpy_s(buffer, BUFFER_SIZE, version_number);
+	if(wcstok_s(buffer, L".", &context) != NULL)
+	{
+		if(wcstok_s(NULL, L".", &context) != NULL)
+		{
+			if(wcstok_s(NULL, L".", &context) != NULL)
+			{
+				if(wcstok_s(NULL, L".", &context) != NULL)
+				{
+					// revision が明示的に指定されているので previous_revision を無効値にする。
+					previous_revision = MAXDWORD;
+				}
+			}
+		}
+	}
+
+	// revision が無効値でないなら revision を 1 加算します。
+	if(previous_revision != MAXDWORD) {
+		file_version_revision = (short)previous_revision + 1;
+	}
+	// build 加算判定ここまで。
+
+	file_version = (wchar_t*)malloc(VERSION_TEXT_LENGTH * sizeof(wchar_t));
+	if(file_version == NULL)
+	{
+		return NULL;
+	}
+	swprintf_s(file_version, VERSION_TEXT_LENGTH, L"%d.%d.%d.%d", file_version_major, file_version_minor, file_version_build, file_version_revision);
+
+	if(wcsrchr(jar_file, L'\\') != NULL)
+	{
+		internal_name = wcsrchr(jar_file, L'\\') + 1;
 	}
 	else
 	{
 		internal_name = jar_file;
 	}
 
-	strcpy(buffer, version_number);
-	strcat(buffer, ".0.0.0.0");
-	file_version_major = atoi(strtok(buffer, "."));
-	file_version_minor = atoi(strtok(NULL, "."));
-	file_version_build = atoi(strtok(NULL, "."));
-	file_version_revision = atoi(strtok(NULL, "."));
-
-	strcpy(buffer, product_version);
-	strcat(buffer, ".0.0.0.0");
-	product_version_major = atoi(strtok(buffer, "."));
-	product_version_minor = atoi(strtok(NULL, "."));
-	product_version_build = atoi(strtok(NULL, "."));
-	product_version_revision = atoi(strtok(NULL, "."));
-
-	// revision が明示的に指定されていなかった場合、既存ファイルから取得した値に 1　を加算して revision とする。
-	strcpy(buffer, version_number);
-	if (strtok(buffer, ".") != NULL)
+	if(get_resource(L"VERSION_INFO", &res) == NULL)
 	{
-		if (strtok(NULL, ".") != NULL)
-		{
-			if (strtok(NULL, ".") != NULL)
-			{
-				if (strtok(NULL, ".") != NULL)
-				{
-				    // revision が明示的に指定されているので previous_revision を無効値にする。
-				    previous_revision = MAXDWORD;
-				}
-			}
-		}
+		exit_process(GetLastError(), L"get_resource:VERSION_INFO");
 	}
-
-    // revision が無効値でないなら revision を 1 加算します。
-    if(previous_revision != MAXDWORD) {
-    	file_version_revision = (short)previous_revision + 1;
-    }
-	// build 加算判定ここまで。
-	sprintf(file_version, "%d.%d.%d.%d", file_version_major, file_version_minor, file_version_build, file_version_revision);
-
-	GetResource("VERSION_INFO", &res);
 	version_info_len = res.len;
 	version_info_buf = (BYTE*)malloc(res.len);
-	memcpy(version_info_buf, res.buf, res.len);
+	if(version_info_buf == NULL)
+	{
+		return NULL;
+	}
+
+	memcpy_s(version_info_buf, version_info_len, res.buf, res.len);
 
 	//FILEVERSION
 	version_info_buf[48] = file_version_minor & 0xFF;
@@ -1203,79 +1311,122 @@ static char* set_version_info(const char* filename, const char* version_number, 
 	version_info_buf[62] = product_version_build & 0xFF;
 	version_info_buf[63] = (product_version_build >> 8) & 0xFF;
 
-	SecureZeroMemory(buffer, sizeof(char) * 260);
-	MultiByteToWideChar(CP_ACP, 0, company_name, (int)strlen(company_name), (WCHAR*)buffer, 128);
-	for (i = 0; i < SIZE_TEXT; i++)
+	//
+	// company_name
+	//
+	wcscpy_s(buffer, BUFFER_SIZE, company_name);
+	if(wcslen(buffer) >= TEXT_LENGTH)
 	{
-		version_info_buf[ADDR_COMPANY_NAME + i] = buffer[i];
+		wcerrf(L"Too long company name: %ls\r\n", buffer);
+		buffer[TEXT_LENGTH - 1] = L'\0';
 	}
+	memset(version_info_buf + ADDR_COMPANY_NAME, 0x00, TEXT_LENGTH * sizeof(wchar_t));
+	wcscpy_s((wchar_t*)(version_info_buf + ADDR_COMPANY_NAME), TEXT_LENGTH, buffer);
 
-	SecureZeroMemory(buffer, sizeof(char) * 260);
-	MultiByteToWideChar(CP_ACP, 0, file_description, (int)strlen(file_description), (WCHAR*)buffer, 128);
-	for (i = 0; i < SIZE_TEXT; i++)
+	//
+	// file_description
+	//
+	wcscpy_s(buffer, BUFFER_SIZE, file_description);
+	if(wcslen(buffer) >= TEXT_LENGTH)
 	{
-		version_info_buf[ADDR_FILE_DESCRIPTION + i] = buffer[i];
+		wcerrf(L"Too long file description: %ls\r\n", buffer);
+		buffer[TEXT_LENGTH - 1] = L'\0';
 	}
+	memset(version_info_buf + ADDR_FILE_DESCRIPTION, 0x00, TEXT_LENGTH * sizeof(wchar_t));
+	wcscpy_s((wchar_t*)(version_info_buf + ADDR_FILE_DESCRIPTION), TEXT_LENGTH, buffer);
 
-	SecureZeroMemory(buffer, sizeof(char) * 260);
-	MultiByteToWideChar(CP_ACP, 0, file_version, (int)strlen(file_version), (WCHAR*)buffer, 128);
-	for (i = 0; i < SIZE_VERSION; i++)
+	//
+	// file_version
+	//
+	wcscpy_s(buffer, BUFFER_SIZE, file_version);
+	if(wcslen(buffer) >= VERSION_TEXT_LENGTH)
 	{
-		version_info_buf[ADDR_FILE_VERSION + i] = buffer[i];
+		wcerrf(L"Too long product version: %ls\r\n", buffer);
+		buffer[VERSION_TEXT_LENGTH - 1] = L'\0';
 	}
+	memset(version_info_buf + ADDR_FILE_VERSION, 0x00, VERSION_TEXT_LENGTH * sizeof(wchar_t));
+	wcscpy_s((wchar_t*)(version_info_buf + ADDR_FILE_VERSION), VERSION_TEXT_LENGTH, buffer);
 
-	SecureZeroMemory(buffer, sizeof(char) * 260);
-	MultiByteToWideChar(CP_ACP, 0, internal_name, (int)strlen(internal_name), (WCHAR*)buffer, 128);
-	for (i = 0; i < SIZE_TEXT; i++)
+	//
+	// internal_name
+	//
+	wcscpy_s(buffer, BUFFER_SIZE, internal_name);
+	if(wcslen(buffer) >= TEXT_LENGTH)
 	{
-		version_info_buf[ADDR_INTERNAL_NAME + i] = buffer[i];
+		wcerrf(L"Too long file version: %ls\r\n", buffer);
+		buffer[TEXT_LENGTH - 1] = L'\0';
 	}
+	memset(version_info_buf + ADDR_INTERNAL_NAME, 0x00, TEXT_LENGTH * sizeof(wchar_t));
+	wcscpy_s((wchar_t*)(version_info_buf + ADDR_INTERNAL_NAME), TEXT_LENGTH, buffer);
 
-	SecureZeroMemory(buffer, sizeof(char) * 260);
-	MultiByteToWideChar(CP_ACP, 0, copyright, (int)strlen(copyright), (WCHAR*)buffer, 128);
-	for (i = 0; i < SIZE_TEXT; i++)
+	//
+	// copyright
+	//
+	wcscpy_s(buffer, BUFFER_SIZE, copyright);
+	if(wcslen(buffer) >= TEXT_LENGTH)
 	{
-		version_info_buf[ADDR_COPYRIGHT + i] = buffer[i];
+		wcerrf(L"Too long copyright: %ls\r\n", buffer);
+		buffer[TEXT_LENGTH - 1] = L'\0';
 	}
+	memset(version_info_buf + ADDR_COPYRIGHT, 0x00, TEXT_LENGTH * sizeof(wchar_t));
+	wcscpy_s((wchar_t*)(version_info_buf + ADDR_COPYRIGHT), TEXT_LENGTH, buffer);
 
-	SecureZeroMemory(buffer, sizeof(char) * 260);
-	MultiByteToWideChar(CP_ACP, 0, original_filename, (int)strlen(original_filename), (WCHAR*)buffer, 128);
-	for (i = 0; i < SIZE_TEXT; i++)
+	//
+	// original_filename
+	//
+	wcscpy_s(buffer, BUFFER_SIZE, original_filename);
+	if(wcslen(buffer) >= TEXT_LENGTH)
 	{
-		version_info_buf[ADDR_ORIGINAL_FILENAME + i] = buffer[i];
+		wcerrf(L"Too long original filename: %ls\r\n", buffer);
+		buffer[TEXT_LENGTH - 1] = L'\0';
 	}
+	memset(version_info_buf + ADDR_ORIGINAL_FILENAME, 0x00, TEXT_LENGTH * sizeof(wchar_t));
+	wcscpy_s((wchar_t*)(version_info_buf + ADDR_ORIGINAL_FILENAME), TEXT_LENGTH, buffer);
 
-	SecureZeroMemory(buffer, sizeof(char) * 260);
-	MultiByteToWideChar(CP_ACP, 0, product_name, (int)strlen(product_name), (WCHAR*)buffer, 128);
-	for (i = 0; i < SIZE_TEXT; i++)
+	//
+	// product_name
+	//
+	wcscpy_s(buffer, BUFFER_SIZE, product_name);
+	if(wcslen(buffer) >= TEXT_LENGTH)
 	{
-		version_info_buf[ADDR_PRODUCT_NAME + i] = buffer[i];
+		wcerrf(L"Too long product name: %ls\r\n", buffer);
+		buffer[TEXT_LENGTH - 1] = L'\0';
 	}
+	memset(version_info_buf + ADDR_PRODUCT_NAME, 0x00, TEXT_LENGTH * sizeof(wchar_t));
+	wcscpy_s((wchar_t*)(version_info_buf + ADDR_PRODUCT_NAME), TEXT_LENGTH, buffer);
 
-	SecureZeroMemory(buffer, sizeof(char) * 260);
-	MultiByteToWideChar(CP_ACP, 0, product_version, (int)strlen(product_version), (WCHAR*)buffer, 128);
-	for (i = 0; i < SIZE_VERSION; i++)
+	//
+	// product_version
+	//
+	wcscpy_s(buffer, BUFFER_SIZE, product_version);
+	if(wcslen(buffer) >= VERSION_TEXT_LENGTH)
 	{
-		version_info_buf[ADDR_PRODUCT_VERSION + i] = buffer[i];
+		wcerrf(L"Too long product version: %ls\r\n", buffer);
+		buffer[VERSION_TEXT_LENGTH - 1] = L'\0';
 	}
+	memset(version_info_buf + ADDR_PRODUCT_VERSION, 0x00, VERSION_TEXT_LENGTH * sizeof(wchar_t));
+	wcscpy_s((wchar_t*)(version_info_buf + ADDR_PRODUCT_VERSION), VERSION_TEXT_LENGTH, buffer);
 
-	set_resource(filename, (LPCTSTR)VS_VERSION_INFO, RT_VERSION, version_info_buf, version_info_len);
-
-	new_version = (char*)malloc(128);
-	sprintf(new_version, "%d.%d.%d.%d", file_version_major, file_version_minor, file_version_build, file_version_revision);
-
+	//
+	//
+	//
+	set_resource(filename, MAKEINTRESOURCE(VS_VERSION_INFO), RT_VERSION, version_info_buf, version_info_len);
 	free(version_info_buf);
+
+	new_version = (wchar_t*)malloc(VERSION_TEXT_LENGTH * sizeof(wchar_t));
+	if(new_version != NULL)
+	{
+		swprintf_s(new_version, VERSION_TEXT_LENGTH, L"%d.%d.%d.%d", file_version_major, file_version_minor, file_version_build, file_version_revision);
+	}
 
 	return new_version;
 }
 
 
-void OutputMessage(const char* text)
+DWORD uncaught_exception(JNIEnv* env, jstring thread, jthrowable throwable)
 {
-}
-
-
-UINT UncaughtException(const char* thread, const jthrowable throwable)
-{
-	return 0;
+	UNREFERENCED_PARAMETER(env);
+	UNREFERENCED_PARAMETER(thread);
+	UNREFERENCED_PARAMETER(throwable);
+	return ERROR_UNKNOWN;
 }

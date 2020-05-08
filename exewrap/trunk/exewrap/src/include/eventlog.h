@@ -1,17 +1,27 @@
+/* このファイルの文字コードは Shift_JIS (MS932) です。*/
+
 #ifndef _EVNETLOG_H_
 #define _EVENTLOG_H_
+
+#define DEFAULT_EVENT_ID 0x40000000L
+
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-extern int  InstallEventLog();
-extern int  RemoveEventLog();
-extern void WriteEventLog(WORD type, const char* message); 
+
+extern DWORD install_event_log(void);
+extern DWORD remove_event_log(void);
+extern DWORD write_event_log(WORD type, const wchar_t* message);
+
 
 #ifdef __cplusplus
 }
 #endif
+
+
+#endif /* _EVENTLOG_H_ */
 
 /*
 	type
@@ -64,6 +74,3 @@ extern void WriteEventLog(WORD type, const char* message);
 //
 //  %1!s!
 //
-#define DEFAULT_EVENT_ID                 0x40000000L
-
-#endif

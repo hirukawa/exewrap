@@ -1,5 +1,8 @@
 import java.io.ByteArrayOutputStream;
+import java.io.FileDescriptor;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.io.UnsupportedEncodingException;
 import java.net.MalformedURLException;
 import java.net.URL;
@@ -38,7 +41,7 @@ public class Loader extends ClassLoader {
 	private static URL context;
 	private static URLStreamHandler handler;
 
-	public static Class<?> initialize(JarInputStream[] jars, URLStreamHandlerFactory factory, String utilities, String mainClassName) throws MalformedURLException, ClassNotFoundException {
+	public static Class<?> initialize(JarInputStream[] jars, URLStreamHandlerFactory factory, String utilities, String mainClassName, int consoleCodePage) throws MalformedURLException, ClassNotFoundException {
 		URL.setURLStreamHandlerFactory(factory);
 		handler = factory.createURLStreamHandler("exewrap");
 		context = new URL("exewrap:" + CONTEXT_PATH + "!/");
@@ -68,6 +71,27 @@ public class Loader extends ClassLoader {
 		ClassLoader systemClassLoader = ClassLoader.getSystemClassLoader();
 		
 		if(utilities != null) {
+			if(System.getProperty("exewrap.console.encoding") == null)
+			{
+				if(consoleCodePage == 65001) {
+					System.setProperty("exewrap.console.encoding", "UTF-8");
+				}
+			}
+			if(System.getProperty("exewrap.log.encoding") == null)
+			{
+				if(consoleCodePage == 65001) {
+					System.setProperty("exewrap.log.encoding", "UTF-8");
+				}
+			}
+			if(utilities.contains("ENCODING-FIX;")) {
+				String encoding = System.getProperty("exewrap.console.encoding");
+				if(encoding != null) {
+					try {
+					    System.setOut(new PrintStream(new FileOutputStream(FileDescriptor.out), true, encoding));
+					    System.setErr(new PrintStream(new FileOutputStream(FileDescriptor.err), true, encoding));
+					} catch(UnsupportedEncodingException ignore) {}
+				}
+			}
 			if(utilities.contains("UncaughtExceptionHandler;")) {
 				Class.forName("exewrap.util.UncaughtExceptionHandler", true, systemClassLoader);
 			}

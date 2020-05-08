@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.io.UnsupportedEncodingException;
 
 import exewrap.core.NativeMethods;
 
@@ -14,15 +15,17 @@ public class EventLogStream extends PrintStream {
 	public static final int ERROR       = 2;
 	
 	static {
-		System.setOut(new EventLogStream(INFORMATION, new ByteArrayOutputStream()));
-		System.setErr(new EventLogStream(WARNING, new ByteArrayOutputStream()));
+		try {
+			System.setOut(new EventLogStream(INFORMATION, new ByteArrayOutputStream()));
+			System.setErr(new EventLogStream(WARNING, new ByteArrayOutputStream()));
+		} catch(UnsupportedEncodingException ignore) {}
 	}
 	
 	private int type;
 	private ByteArrayOutputStream buffer;
 	
-	public EventLogStream(int type, ByteArrayOutputStream buffer) {
-		super(buffer);
+	public EventLogStream(int type, ByteArrayOutputStream buffer) throws UnsupportedEncodingException {
+		super(buffer, false, "UTF-8");
 		this.type = type;
 		this.buffer = buffer;
 	}
@@ -32,7 +35,13 @@ public class EventLogStream extends PrintStream {
 	}
 	
 	public void flush() {
-		NativeMethods.WriteEventLog(type, new String(buffer.toByteArray()));
+		if(buffer.size() == 0) {
+			return;
+		}
+		try {
+			String str = new String(buffer.toByteArray(), 0, buffer.size(), "UTF-8");
+			NativeMethods.WriteEventLog(type, str);
+		} catch(UnsupportedEncodingException ignore) {}
 		buffer.reset();
 	}
 	

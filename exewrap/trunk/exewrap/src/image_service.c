@@ -1,4 +1,4 @@
-#define _CRT_SECURE_NO_WARNINGS
+/* このファイルの文字コードは Shift_JIS (MS932) です。*/
 
 #include <windows.h>
 #include <process.h>
@@ -10,8 +10,13 @@
 #include "include/loader.h"
 #include "include/message.h"
 #include "include/eventlog.h"
+#include "include/wcout.h"
 
-#define RUN_AS_ADMINISTRATOR_ARG "__ruN_aA_administratoR__"
+#define BUFFER_SIZE   32768
+#define MAX_LONG_PATH 32768
+#define ERROR_UNKNOWN ((DWORD)STG_E_UNKNOWN)
+
+#define RUN_AS_ADMINISTRATOR_ARG   L"__ruN_aA_administratoR__"
 #define RUN_AS_ADMINISTRATOR       1
 #define SERVICE_INSTALL            2
 #define SERVICE_START_IMMEDIATELY  4
@@ -20,419 +25,69 @@
 #define SERVICE_START_BY_SCM       32
 #define SHOW_HELP_MESSAGE          64
 
-void OutputMessage(const char* text);
-UINT UncaughtException(JNIEnv* env, const char* thread, const jthrowable throwable);
+#define PIPE_BUFFER_SIZE           2048
+#define PIPE_TIMEOUT_MILLIS        1000
 
-static int         install_service(char* service_name, int argc, char* argv[], int opt_end);
-static int         set_service_description(char* service_name, char* description);
-static int         remove_service(char* service_name);
-static int         start_service(char* service_name);
-static int         stop_service(char* service_name);
-static void        start_service_main();
-static void        stop_service_main();
+#define EVENTLOG_STDOUT            0x7E80
+#define EVENTLOG_STDERR            0x7F80
+
+DWORD uncaught_exception(JNIEnv* env, jobject thread, jthrowable throwable);
+
+static DWORD       install_service(const wchar_t* service_name, int argc, const wchar_t* argv[], int opt_end);
+static DWORD       set_service_description(const wchar_t* service_name, const wchar_t* description);
+static DWORD       remove_service(const wchar_t* service_name);
+static DWORD       start_service(const wchar_t* service_name);
+static DWORD       stop_service(const wchar_t* service_name);
+static void        start_service_main(void);
+static void        stop_service_main(void);
 static BOOL WINAPI console_control_handler(DWORD dwCtrlType);
 static void        service_control_handler(DWORD request);
-static int         service_main(int argc, char* argv[]);
-static int         parse_args(int* argc_ptr, char* argv[], int* opt_end);
-static char**      parse_opt(int argc, char* argv[]);
-static void        show_help_message();
-static void        set_current_dir();
-static char*       get_service_name(char* buf);
-static char*       get_pipe_name(char* buf);
-static int         run_as_administrator(HANDLE pipe, int argc, char* argv[], char* append);
+static int         service_main(int argc, const wchar_t* argv[]);
+static int         parse_args(int* argc_ptr, const wchar_t* argv[], int* opt_end);
+static wchar_t**   parse_opt(int argc, const wchar_t* argv[]);
+static void        write_message(WORD event_type, const wchar_t* message);
+static void        write_message_by_error_code(WORD evnet_type, DWORD last_error, const wchar_t* append);
+static void        show_help_message(void);
+static void        set_current_directory(void);
+static wchar_t*    get_service_name(void);
+static wchar_t*    get_pipe_name(void);
+static DWORD       run_as_administrator(HANDLE pipe, int argc, const wchar_t* argv[], const wchar_t* append);
 
 static SERVICE_STATUS service_status = { 0 };
 static SERVICE_STATUS_HANDLE hStatus;
 static int       flags;
 static int       ARG_COUNT;
-static char**    ARG_VALUE;
+static wchar_t** ARG_VALUE;
 static jclass    MainClass;
 static jmethodID MainClass_stop;
 static HANDLE    hConOut = NULL;
 
-
-static int service_main(int argc, char* argv[])
+int wmain(int argc, wchar_t* argv[])
 {
-	SYSTEMTIME   startup;
-	int          err;
-	char*        service_name = NULL;
-	BOOL         is_service;
-	char*        relative_classpath;
-	char*        relative_extdirs;
-	BOOL         use_server_vm;
-	BOOL         use_side_by_side_jre;
-	char*        ext_flags;
-	char*        vm_args_opt = NULL;
-	char         utilities[128];
-	RESOURCE     res;
-	LOAD_RESULT  result;
-	jmethodID    MainClass_start;
-	jobjectArray MainClass_start_args;
-	int          i;
+	wchar_t*  service_name = NULL;
+	int       opt_end      = 0;
+	wchar_t*  pipe_name    = NULL;
+	HANDLE    pipe         = NULL;
+	DWORD     error        = NO_ERROR;
 
-	GetSystemTime(&startup);
-
-	utilities[0] = '\0';
-
-	service_name = get_service_name(NULL);
-	is_service = (flags & SERVICE_START_BY_SCM);
-
-	result.msg = malloc(2048);
-
-	relative_classpath = (char*)GetResource("CLASS_PATH", NULL);
-	relative_extdirs = (char*)GetResource("EXTDIRS", NULL);
-	ext_flags = (char*)GetResource("EXTFLAGS", NULL);
-	use_server_vm = (ext_flags != NULL && strstr(ext_flags, "SERVER") != NULL);
-	use_side_by_side_jre = (ext_flags == NULL) || (strstr(ext_flags, "NOSIDEBYSIDE") == NULL);
-	InitializePath(relative_classpath, relative_extdirs, use_server_vm, use_side_by_side_jre, &startup);
-
-	if(!is_service) {
-		vm_args_opt = (char*)GetResource("VMARGS_B", NULL);
-	}
-	if(vm_args_opt == NULL) {
-		vm_args_opt = (char*)GetResource("VMARGS", NULL);
-	}
-	CreateJavaVM(vm_args_opt, "Loader", use_server_vm, use_side_by_side_jre, &startup, &err);
-	if (err != JNI_OK)
-	{
-		GetJniErrorMessage(err, &result.msg_id, result.msg);
-		is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, result.msg) : OutputMessage(result.msg);
-		goto EXIT;
-	}
-
-	if (GetResource("TARGET_VERSION", &res) != NULL)
-	{
-		DWORD  version = GetJavaRuntimeVersion();
-		DWORD  targetVersion = *(DWORD*)res.buf;
-		if (targetVersion > version)
-		{
-			char* targetVersionString = (char*)res.buf + 4;
-			result.msg_id = MSG_ID_ERR_TARGET_VERSION;
-			sprintf(result.msg, _(MSG_ID_ERR_TARGET_VERSION), targetVersionString);
-			is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, result.msg) : OutputMessage(result.msg);
-			goto EXIT;
-		}
-	}
-
-	utilities[0] = '\0';
-	if (ext_flags == NULL || strstr(ext_flags, "IGNORE_UNCAUGHT_EXCEPTION") == NULL)
-	{
-		strcat(utilities, UTIL_UNCAUGHT_EXCEPTION_HANDLER);
-	}
-	if (is_service)
-	{
-		if (ext_flags == NULL || strstr(ext_flags, "NOLOG") == NULL)
-		{
-			strcat(utilities, UTIL_EVENT_LOG_STREAM);
-		}
-		strcat(utilities, UTIL_EVENT_LOG_HANDLER);
-	}
-
-	if (LoadMainClass(argc, argv, utilities, &result) == FALSE)
-	{
-		is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, result.msg) : OutputMessage(result.msg);
-		goto EXIT;
-	}
-	MainClass = result.MainClass;
-
-	MainClass_start = (*env)->GetStaticMethodID(env, result.MainClass, "start", "([Ljava/lang/String;)V");
-	if (MainClass_start == NULL)
-	{
-		result.msg_id = MSG_ID_ERR_FIND_METHOD_SERVICE_START;
-		strcpy(result.msg, _(MSG_ID_ERR_FIND_METHOD_SERVICE_START));
-		is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, result.msg) : OutputMessage(result.msg);
-		goto EXIT;
-	}
-	if (is_service && argc > 2)
-	{
-		MainClass_start_args = (*env)->NewObjectArray(env, argc - 2, (*env)->FindClass(env, "java/lang/String"), NULL);
-		for (i = 2; i < argc; i++)
-		{
-			(*env)->SetObjectArrayElement(env, MainClass_start_args, (i - 2), GetJString(env, argv[i]));
-		}
-	}
-	else if (!is_service && argc > 1)
-	{
-		MainClass_start_args = (*env)->NewObjectArray(env, argc - 1, (*env)->FindClass(env, "java/lang/String"), NULL);
-		for (i = 1; i < argc; i++)
-		{
-			(*env)->SetObjectArrayElement(env, MainClass_start_args, (i - 1), GetJString(env, argv[i]));
-		}
-	}
-	else
-	{
-		MainClass_start_args = (*env)->NewObjectArray(env, 0, (*env)->FindClass(env, "java/lang/String"), NULL);
-	}
-	MainClass_stop = (*env)->GetStaticMethodID(env, result.MainClass, "stop", "()V");
-	if (MainClass_stop == NULL)
-	{
-		result.msg_id = MSG_ID_ERR_FIND_METHOD_SERVICE_STOP;
-		strcpy(result.msg, _(MSG_ID_ERR_FIND_METHOD_SERVICE_STOP));
-		is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, result.msg) : OutputMessage(result.msg);
-		goto EXIT;
-	}
-
-	sprintf(result.msg, _(MSG_ID_SUCCESS_SERVICE_START), service_name);
-	if (is_service)
-	{
-		WriteEventLog(EVENTLOG_INFORMATION_TYPE, result.msg);
-	}
-
-	// JavaVM が CTRL_SHUTDOWN_EVENT を受け取って終了してしまわないように、ハンドラを登録して先取りします。
-	SetConsoleCtrlHandler((PHANDLER_ROUTINE)console_control_handler, TRUE);
-	// シャットダウン時にダイアログが表示されないようにします。
-	SetProcessShutdownParameters(0x4FF, SHUTDOWN_NORETRY);
-
-	(*env)->CallStaticVoidMethod(env, result.MainClass, MainClass_start, MainClass_start_args);
-
-	if ((*env)->ExceptionCheck(env) == JNI_TRUE)
-	{
-		jthrowable throwable = (*env)->ExceptionOccurred(env);
-		if (throwable != NULL)
-		{
-			UncaughtException(env, "main", throwable);
-			(*env)->DeleteLocalRef(env, throwable);
-		}
-		(*env)->ExceptionClear(env);
-	}
-	else
-	{
-		sprintf(result.msg, _(MSG_ID_SUCCESS_SERVICE_STOP), service_name);
-		if (is_service)
-		{
-			WriteEventLog(EVENTLOG_INFORMATION_TYPE, result.msg);
-		}
-	}
-
-EXIT:
-	if (result.msg != NULL)
-	{
-		free(result.msg);
-	}
-	if (env != NULL)
-	{
-		DetachJavaVM();
-	}
-	if (jvm != NULL)
-	{
-		//デーモンではないスレッド(たとえばSwing)が残っていると待機状態になってしまうため、
-		//サービスでは、DestroyJavaVM() を実行しないようにしています。
-		if (!is_service)
-		{
-			DestroyJavaVM();
-		}
-	}
-
-	return result.msg_id;
-}
-
-void OutputMessage(const char* text)
-{
-	DWORD written;
-
-	if (text == NULL)
-	{
-		return;
-	}
-
-	WriteConsole(GetStdHandle(STD_ERROR_HANDLE), text, (DWORD)strlen(text), &written, NULL);
-	WriteConsole(GetStdHandle(STD_ERROR_HANDLE), "\r\n", 2, &written, NULL);
-}
-
-UINT UncaughtException(JNIEnv* env, const char* thread, const jthrowable throwable)
-{
-	BOOL is_service = (flags & SERVICE_START_BY_SCM);
-	
-	jclass     StringWriter              = NULL;
-	jmethodID  StringWriter_init         = NULL;
-	jmethodID  stringWriter_flush        = NULL;
-	jmethodID  stringWriter_toString     = NULL;
-	jobject    stringWriter              = NULL;
-	jclass     PrintWriter               = NULL;
-	jmethodID  PrintWriter_init          = NULL;
-	jmethodID  printWriter_flush         = NULL;
-	jobject    printWriter               = NULL;
-	jclass     Throwable                 = NULL;
-	jmethodID  throwable_printStackTrace = NULL;
-	jstring    stacktrace                = NULL;
-	char*      buf                       = NULL;
-	char*      sjis                      = NULL;
-
-	if(thread == NULL || throwable == NULL)
-	{
-		goto EXIT;
-	}
-	
-	buf = malloc(65536);
-	if(buf == NULL)
-	{
-		goto EXIT;
-	}
-	
-	StringWriter = (*env)->FindClass(env, "java/io/StringWriter");
-	if(StringWriter == NULL)
-	{
-		sprintf(buf, _(MSG_ID_ERR_FIND_CLASS), "java.io.StringWriter");
-		is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, buf) : OutputMessage(buf);
-		goto EXIT;
-	}
-	StringWriter_init = (*env)->GetMethodID(env, StringWriter, "<init>","()V");
-	if(StringWriter_init == NULL)
-	{
-		sprintf(buf, _(MSG_ID_ERR_GET_CONSTRUCTOR), "java.io.StringWriter()");
-		is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, buf) : OutputMessage(buf);
-		goto EXIT;
-	}
-	stringWriter_flush = (*env)->GetMethodID(env, StringWriter, "flush", "()V");
-	if(stringWriter_flush == NULL)
-	{
-		sprintf(buf, _(MSG_ID_ERR_GET_METHOD), "java.io.StringWriter.flush()");
-		is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, buf) : OutputMessage(buf);
-		goto EXIT;
-	}
-	stringWriter_toString = (*env)->GetMethodID(env, StringWriter, "toString", "()Ljava/lang/String;");
-	if(stringWriter_toString == NULL)
-	{
-		sprintf(buf, _(MSG_ID_ERR_GET_METHOD), "java.io.StringWriter.toString()");
-		is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, buf) : OutputMessage(buf);
-		goto EXIT;
-	}
-	stringWriter = (*env)->NewObject(env, StringWriter, StringWriter_init);
-	if(stringWriter == NULL)
-	{
-		sprintf(buf, _(MSG_ID_ERR_NEW_OBJECT), "java.io.StringWriter()");
-		is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, buf) : OutputMessage(buf);
-		goto EXIT;
-	}
-
-	PrintWriter = (*env)->FindClass(env, "java/io/PrintWriter");
-	if(PrintWriter == NULL)
-	{
-		sprintf(buf, _(MSG_ID_ERR_FIND_CLASS), "java.io.PrintWriter");
-		is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, buf) : OutputMessage(buf);
-		goto EXIT;
-	}
-	PrintWriter_init = (*env)->GetMethodID(env, PrintWriter, "<init>", "(Ljava/io/Writer;)V");
-	if(PrintWriter_init == NULL)
-	{
-		sprintf(buf, _(MSG_ID_ERR_GET_CONSTRUCTOR), "java.io.PrintWriter(java.io.Writer)");
-		is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, buf) : OutputMessage(buf);
-		goto EXIT;
-	}
-	printWriter_flush = (*env)->GetMethodID(env, PrintWriter, "flush", "()V");
-	if(printWriter_flush == NULL)
-	{
-		sprintf(buf, _(MSG_ID_ERR_GET_METHOD), "java.io.PrintWriter.flush()");
-		is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, buf) : OutputMessage(buf);
-		goto EXIT;
-	}
-	printWriter = (*env)->NewObject(env, PrintWriter, PrintWriter_init, stringWriter);
-	if(printWriter == NULL)
-	{
-		sprintf(buf, _(MSG_ID_ERR_NEW_OBJECT), "java.io.PrintWriter(java.io.Writer)");
-		is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, buf) : OutputMessage(buf);
-		goto EXIT;
-	}
-
-	Throwable = (*env)->FindClass(env, "java/lang/Throwable");
-	if(Throwable == NULL)
-	{
-		sprintf(buf, _(MSG_ID_ERR_FIND_CLASS), "java.lang.Throwable");
-		is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, buf) : OutputMessage(buf);
-		goto EXIT;
-	}
-	throwable_printStackTrace = (*env)->GetMethodID(env, Throwable, "printStackTrace", "(Ljava/io/PrintWriter;)V");
-	if(throwable_printStackTrace == NULL)
-	{
-		sprintf(buf, _(MSG_ID_ERR_GET_METHOD), "java.lang.Throwable.printStackTrace(java.io.PrintWriter)");
-		is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, buf) : OutputMessage(buf);
-		goto EXIT;
-	}
-	
-	strcpy(buf, "Exception in thread \"");
-	strcat(buf, thread);
-	strcat(buf, "\" ");
-	
-	(*env)->CallObjectMethod(env, throwable, throwable_printStackTrace, printWriter);
-	(*env)->CallObjectMethod(env, printWriter, printWriter_flush);
-	(*env)->CallObjectMethod(env, stringWriter, stringWriter_flush);
-	stacktrace = (jstring)(*env)->CallObjectMethod(env, stringWriter, stringWriter_toString);
-	sjis = GetShiftJIS(env, stacktrace);
-	strcat(buf, sjis);
-	is_service ? WriteEventLog(EVENTLOG_ERROR_TYPE, buf) : OutputMessage(buf);
-
-EXIT:
-	if(sjis != NULL)
-	{
-		HeapFree(GetProcessHeap(), 0, sjis);
-		sjis = NULL;
-	}
-	if(stacktrace != NULL)
-	{
-		(*env)->DeleteLocalRef(env, stacktrace);
-		stacktrace = NULL;
-	}
-	if(buf != NULL)
-	{
-		free(buf);
-		buf = NULL;
-	}
-	if(Throwable != NULL)
-	{
-		(*env)->DeleteLocalRef(env, Throwable);
-		Throwable = NULL;
-	}
-	if(printWriter != NULL)
-	{
-		(*env)->DeleteLocalRef(env, printWriter);
-		printWriter = NULL;
-	}
-	if(PrintWriter != NULL)
-	{
-		(*env)->DeleteLocalRef(env, PrintWriter);
-		PrintWriter = NULL;
-	}
-	if(stringWriter != NULL)
-	{
-		(*env)->DeleteLocalRef(env, stringWriter);
-		stringWriter = NULL;
-	}
-	if(StringWriter != NULL)
-	{
-		(*env)->DeleteLocalRef(env, StringWriter);
-		StringWriter = NULL;
-	}
-
-	return MSG_ID_ERR_UNCAUGHT_EXCEPTION;
-}
-
-
-int main(int argc, char* argv[])
-{
-	char*  service_name = NULL;
-	int    opt_end;
-	char*  pipe_name = NULL;
-	HANDLE pipe = NULL;
-	int    exit_code = 0;
-
-	service_name = get_service_name(NULL);
+	service_name = get_service_name();
 	flags = parse_args(&argc, argv, &opt_end);
 
-	if (flags & SHOW_HELP_MESSAGE)
+	if(flags & SHOW_HELP_MESSAGE)
 	{
-		char* ext_flags = (char*)GetResource("EXTFLAGS", NULL);
-		if(ext_flags == NULL || strstr(ext_flags, "NOHELP") == NULL)
+		wchar_t* ext_flags = from_utf8((char*)get_resource(L"EXTFLAGS", NULL));
+		if(ext_flags == NULL || wcsstr(ext_flags, L"NOHELP") == NULL)
 		{
 			show_help_message();
 			goto EXIT;
 		}
 	}
 
-	if (flags & SERVICE_START_BY_SCM)
+	if(flags & SERVICE_START_BY_SCM)
 	{
 		SERVICE_TABLE_ENTRY ServiceTable[2];
 
-		set_current_dir();
+		set_current_directory();
 		
 		ARG_COUNT = argc;
 		ARG_VALUE = argv;
@@ -445,443 +100,769 @@ int main(int argc, char* argv[])
 		goto EXIT;
 	}
 
-	if (!(flags & RUN_AS_ADMINISTRATOR) && (flags & (SERVICE_INSTALL | SERVICE_REMOVE)))
+	if(!(flags & RUN_AS_ADMINISTRATOR) && (flags & (SERVICE_INSTALL | SERVICE_REMOVE)))
 	{
-		pipe_name = get_pipe_name(NULL);
-		pipe = CreateNamedPipe(pipe_name, PIPE_ACCESS_INBOUND, PIPE_TYPE_BYTE | PIPE_WAIT, 2, 1024, 1024, 1000, NULL);
-		if (pipe == INVALID_HANDLE_VALUE)
+		pipe_name = get_pipe_name();
+		pipe = CreateNamedPipe(pipe_name, PIPE_ACCESS_INBOUND, PIPE_TYPE_BYTE | PIPE_WAIT, 2, PIPE_BUFFER_SIZE, PIPE_BUFFER_SIZE, PIPE_TIMEOUT_MILLIS, NULL);
+		if(pipe == INVALID_HANDLE_VALUE)
 		{
-			OutputMessage(GetWinErrorMessage(GetLastError(), &exit_code, NULL));
+			error = GetLastError();
+			write_message_by_error_code(EVENTLOG_STDERR, error, L"CreateNamedPipe");
 			goto EXIT;
 		}
-		exit_code = run_as_administrator(pipe, argc, argv, RUN_AS_ADMINISTRATOR_ARG);
+		error = run_as_administrator(pipe, argc, argv, RUN_AS_ADMINISTRATOR_ARG);
+		if(error != NO_ERROR)
+		{
+			// run_as_administrator呼び出し先によって詳細なエラーメッセージが直接出力されるため、
+			// run_as_administratorの戻り値に対するエラーメッセージを出力する必要はありません。
+		}
 		goto EXIT;
 	}
 
-	if (flags & RUN_AS_ADMINISTRATOR)
+	if(flags & RUN_AS_ADMINISTRATOR)
 	{
-		pipe_name = get_pipe_name(NULL);
+		pipe_name = get_pipe_name();
 		pipe = CreateFile(pipe_name, GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-		if (pipe == INVALID_HANDLE_VALUE)
+		if(pipe == INVALID_HANDLE_VALUE)
 		{
-			OutputMessage(GetWinErrorMessage(GetLastError(), &exit_code, NULL));
+			error = GetLastError();
+			write_message_by_error_code(EVENTLOG_STDERR, error, NULL);
 			goto EXIT;
 		}
 		SetStdHandle(STD_OUTPUT_HANDLE, pipe);
 	}
 
-	if (flags & SERVICE_INSTALL)
+	if(flags & SERVICE_INSTALL)
 	{
-		exit_code = install_service(service_name, argc, argv, opt_end);
-		if (exit_code == 0)
+		error = install_service(service_name, argc, argv, opt_end);
+		if(error == NO_ERROR)
 		{
-			if (flags & SERVICE_START_IMMEDIATELY)
+			if(flags & SERVICE_START_IMMEDIATELY)
 			{
-				exit_code = start_service(service_name);
+				error = start_service(service_name);
 			}
 		}
-		return exit_code;
+		goto EXIT;
 	}
-	if (flags & SERVICE_REMOVE)
+	if(flags & SERVICE_REMOVE)
 	{
-		if (flags & SERVICE_STOP_BEFORE_REMOVE)
+		if(flags & SERVICE_STOP_BEFORE_REMOVE)
 		{
-			exit_code = stop_service(service_name);
-			if (exit_code != 0)
+			error = stop_service(service_name);
+			if(error != NO_ERROR)
 			{
-				return exit_code;
+				goto EXIT;
 			}
 			Sleep(500);
 		}
-		exit_code = remove_service(service_name);
-		return exit_code;
+		error = remove_service(service_name);
+		goto EXIT;
 	}
 
-	exit_code = service_main(argc, argv);
+	error = service_main(argc, argv);
 
 EXIT:
-	if (pipe != NULL && pipe != INVALID_HANDLE_VALUE)
+	if(pipe != NULL && pipe != INVALID_HANDLE_VALUE)
 	{
 		CloseHandle(pipe);
 	}
-	if (pipe_name != NULL)
+	if(pipe_name != NULL)
 	{
-		HeapFree(GetProcessHeap(), 0, pipe_name);
+		free(pipe_name);
 	}
-	if (service_name != NULL)
+	if(service_name != NULL)
 	{
-		HeapFree(GetProcessHeap(), 0, service_name);
+		free(service_name);
 	}
 
-	return exit_code;
+	ExitProcess(error);
 }
 
 
-static int install_service(char* service_name, int argc, char* argv[], int opt_end)
+static int service_main(int argc, const wchar_t* argv[])
 {
-	int       PATH_SIZE = 1024;
-	char*     path = NULL;
-	int       i;
-	char**    opt = NULL;
-	char*     lpDisplayName = NULL;
-	DWORD     dwServiceType = SERVICE_WIN32_OWN_PROCESS;
-	DWORD     dwStartType = SERVICE_AUTO_START;
-	char*     lpDependencies = NULL;
-	char*     lpServiceStartName = NULL;
-	char*     lpPassword = NULL;
-	SC_HANDLE hSCManager = NULL;
-	SC_HANDLE hService = NULL;
-	char*     buf = NULL;
-	DWORD     size;
-	int       err = 0;
+	SYSTEMTIME   startup;
+	int          error;
+	wchar_t*     relative_classpath = NULL;
+	wchar_t*     relative_extdirs   = NULL;
+	wchar_t*     ext_flags          = NULL;
+	wchar_t*     vm_args_opt        = NULL;
+	wchar_t*     utilities          = NULL;
+	BOOL         use_server_vm;
+	BOOL         use_side_by_side_jre;
+	BOOL         is_security_manager_required = FALSE;
+	RESOURCE     res;
+	LOAD_RESULT  result = { 0 };
+	wchar_t*     service_name = NULL;
+	BOOL         is_service = (flags & SERVICE_START_BY_SCM);
+	WORD         event_type = (is_service ? EVENTLOG_ERROR_TYPE : EVENTLOG_STDERR);
+	jmethodID    MainClass_start;
+	jobjectArray MainClass_start_args;
+	int          i;
 
-	buf = (char*)malloc(2048);
-	path = (char*)malloc(PATH_SIZE);
-	path[0] = '"';
-	GetModuleFileName(NULL, &path[1], PATH_SIZE - 1);
-	strcat(path, "\" -service");
-	for (i = opt_end + 2; i < argc; i++)
+	GetSystemTime(&startup);
+
+	utilities = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
+	if(utilities == NULL)
 	{
-		strcat(path, " \"");
-		strcat(path, argv[i]);
-		strcat(path, "\"");
+		error = ERROR_NOT_ENOUGH_MEMORY;
+		write_message_by_error_code(event_type, error, L"malloc");
+		goto EXIT;
+	}
+	utilities[0] = L'\0';
+
+	result.msg_id = NO_ERROR;
+	result.msg = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
+	if(result.msg == NULL)
+	{
+		error = ERROR_NOT_ENOUGH_MEMORY;
+		write_message_by_error_code(event_type, error, L"malloc");
+		goto EXIT;
+	}
+
+	service_name = get_service_name();
+
+	relative_classpath = from_utf8((char*)get_resource(L"CLASS_PATH", NULL));
+	relative_extdirs = from_utf8((char*)get_resource(L"EXTDIRS", NULL));
+	ext_flags = from_utf8((char*)get_resource(L"EXTFLAGS", NULL));
+	use_server_vm = (ext_flags != NULL && wcsstr(ext_flags, L"SERVER") != NULL);
+	use_side_by_side_jre = (ext_flags == NULL) || (wcsstr(ext_flags, L"NOSIDEBYSIDE") == NULL);
+	initialize_path(relative_classpath, relative_extdirs, use_server_vm, use_side_by_side_jre);
+
+	if(relative_classpath != NULL)
+	{
+		free(relative_classpath);
+		relative_classpath = NULL;
+	}
+	if(relative_extdirs != NULL)
+	{
+		free(relative_extdirs);
+		relative_extdirs = NULL;
+	}
+
+	if(ext_flags == NULL || wcsstr(ext_flags, L"NOENCODINGFIX") == NULL)
+	{
+		wcscat_s(utilities, BUFFER_SIZE, UTIL_ENCODING_FIX);
+	}
+	if(ext_flags == NULL || wcsstr(ext_flags, L"IGNORE_UNCAUGHT_EXCEPTION") == NULL)
+	{
+		wcscat_s(utilities, BUFFER_SIZE, UTIL_UNCAUGHT_EXCEPTION_HANDLER);
+	}
+	if(is_service)
+	{
+		if(ext_flags == NULL || wcsstr(ext_flags, L"NOLOG") == NULL)
+		{
+			wcscat_s(utilities, BUFFER_SIZE, UTIL_EVENT_LOG_STREAM);
+		}
+		wcscat_s(utilities, BUFFER_SIZE, UTIL_EVENT_LOG_HANDLER);
+	}
+	if(ext_flags != NULL)
+	{
+		free(ext_flags);
+		ext_flags = NULL;
+	}
+
+	if(!is_service)
+	{
+		vm_args_opt = from_utf8((char*)get_resource(L"VMARGS_B", NULL));
+	}
+	if(vm_args_opt == NULL)
+	{
+		vm_args_opt = from_utf8((char*)get_resource(L"VMARGS", NULL));
+	}
+	create_java_vm(vm_args_opt, use_server_vm, use_side_by_side_jre, &is_security_manager_required, &error);
+	if(error != JNI_OK)
+	{
+		get_jni_error_message(error, &result.msg_id, result.msg, BUFFER_SIZE);
+		write_message(event_type, result.msg);
+		goto EXIT;
+	}
+	if(vm_args_opt != NULL)
+	{
+		free(vm_args_opt);
+		vm_args_opt = NULL;
+	}
+
+	set_application_properties(&startup);
+
+	if(get_resource(L"TARGET_VERSION", &res) != NULL)
+	{
+		wchar_t* target_version = from_utf8((char*)res.buf);
+		DWORD target_major     = 0;
+		DWORD target_minor     = 0;
+		DWORD target_build     = 0;
+		DWORD target_revision  = 0;
+		DWORD runtime_major    = 0;
+		DWORD runtime_minor    = 0;
+		DWORD runtime_build    = 0;
+		DWORD runtime_revision = 0;
+		BOOL  version_error    = FALSE;
+
+		get_java_runtime_version(target_version, &target_major, &target_minor, &target_build, &target_revision);
+		get_java_runtime_version(NULL, &runtime_major, &runtime_minor, &runtime_build, &runtime_revision);
+
+		if(runtime_major < target_major)
+		{
+			version_error = TRUE;
+		}
+		else if(runtime_major == target_major)
+		{
+			if(runtime_minor < target_minor)
+			{
+				version_error = TRUE;
+			}
+			else if(runtime_minor == target_minor)
+			{
+				if(runtime_build < target_build)
+				{
+					version_error = TRUE;
+				}
+				else if(runtime_build == target_build)
+				{
+					if(runtime_revision < target_revision)
+					{
+						version_error = TRUE;
+					}
+				}
+			}
+		}
+
+		if(version_error == TRUE)
+		{
+			wchar_t* target_version_string;
+
+			target_version_string = get_java_version_string(target_major, target_minor, target_build, target_revision);
+			result.msg_id = MSG_ID_ERR_TARGET_VERSION;
+			swprintf_s(result.msg, BUFFER_SIZE, _(MSG_ID_ERR_TARGET_VERSION), target_version_string);
+			write_message(event_type, result.msg);
+			error = ERROR_BAD_ENVIRONMENT;
+			goto EXIT;
+		}
+		free(target_version);
+	}
+
+	if(load_main_class(argc, argv, utilities, &result) == FALSE)
+	{
+		write_message(event_type, result.msg);
+		error = ERROR_INVALID_DATA;
+		goto EXIT;
+	}
+	MainClass = result.MainClass;
+
+	MainClass_start = (*env)->GetStaticMethodID(env, result.MainClass, "start", "([Ljava/lang/String;)V");
+	if(MainClass_start == NULL)
+	{
+		result.msg_id = MSG_ID_ERR_FIND_METHOD_SERVICE_START;
+		wcscpy_s(result.msg, BUFFER_SIZE, _(MSG_ID_ERR_FIND_METHOD_SERVICE_START));
+		write_message(event_type, result.msg);
+		error = ERROR_INVALID_FUNCTION;
+		goto EXIT;
+	}
+	if(is_service && argc > 2)
+	{
+		MainClass_start_args = (*env)->NewObjectArray(env, argc - 2, (*env)->FindClass(env, "java/lang/String"), NULL);
+		for(i = 2; i < argc; i++)
+		{
+			(*env)->SetObjectArrayElement(env, MainClass_start_args, (i - 2), to_jstring(env, argv[i]));
+		}
+	}
+	else if(!is_service && argc > 1)
+	{
+		MainClass_start_args = (*env)->NewObjectArray(env, argc - 1, (*env)->FindClass(env, "java/lang/String"), NULL);
+		for (i = 1; i < argc; i++)
+		{
+			(*env)->SetObjectArrayElement(env, MainClass_start_args, (i - 1), to_jstring(env, argv[i]));
+		}
+	}
+	else
+	{
+		MainClass_start_args = (*env)->NewObjectArray(env, 0, (*env)->FindClass(env, "java/lang/String"), NULL);
+	}
+	MainClass_stop = (*env)->GetStaticMethodID(env, result.MainClass, "stop", "()V");
+	if(MainClass_stop == NULL)
+	{
+		result.msg_id = MSG_ID_ERR_FIND_METHOD_SERVICE_STOP;
+		wcscpy_s(result.msg, BUFFER_SIZE, _(MSG_ID_ERR_FIND_METHOD_SERVICE_STOP));
+		write_message(event_type, result.msg);
+		error = ERROR_INVALID_FUNCTION;
+		goto EXIT;
+	}
+
+	if(is_service)
+	{
+		swprintf_s(result.msg, BUFFER_SIZE, _(MSG_ID_SUCCESS_SERVICE_START), service_name);
+		write_event_log(EVENTLOG_INFORMATION_TYPE, result.msg);
+	}
+
+	// JavaVM が CTRL_SHUTDOWN_EVENT を受け取って終了してしまわないように、ハンドラを登録して先取りします。
+	SetConsoleCtrlHandler((PHANDLER_ROUTINE)console_control_handler, TRUE);
+	// シャットダウン時にダイアログが表示されないようにします。
+	SetProcessShutdownParameters(0x4FF, SHUTDOWN_NORETRY);
+
+	if(is_security_manager_required)
+	{
+		wchar_t* msg = install_security_manager(env);
+		if(msg != NULL)
+		{
+			write_message(event_type, msg);
+			free(msg);
+		}
+		goto EXIT;
+	}
+
+	if((*env)->ExceptionCheck(env) == JNI_TRUE)
+	{
+		(*env)->ExceptionClear(env);
+	}
+	(*env)->CallStaticVoidMethod(env, result.MainClass, MainClass_start, MainClass_start_args);
+
+	if((*env)->ExceptionCheck(env) == JNI_TRUE)
+	{
+		jthrowable throwable = (*env)->ExceptionOccurred(env);
+		if(throwable != NULL)
+		{
+			uncaught_exception(env, NULL, throwable);
+			(*env)->DeleteLocalRef(env, throwable);
+		}
+		(*env)->ExceptionClear(env);
+	}
+	else
+	{
+		if(is_service)
+		{
+			swprintf_s(result.msg, BUFFER_SIZE, _(MSG_ID_SUCCESS_SERVICE_STOP), service_name);
+			write_event_log(EVENTLOG_INFORMATION_TYPE, result.msg);
+		}
+	}
+
+EXIT:
+	if(result.msg != NULL)
+	{
+		free(result.msg);
+	}
+	if(env != NULL)
+	{
+		detach_java_vm();
+	}
+	if(jvm != NULL)
+	{
+		//デーモンではないスレッド(たとえばSwing)が残っていると待機状態になってしまうため、
+		//サービスでは、DestroyJavaVM() を実行しないようにしています。
+		if(!is_service)
+		{
+			destroy_java_vm();
+		}
+	}
+
+	return result.msg_id;
+}
+
+
+static DWORD install_service(const wchar_t* service_name, int argc, const wchar_t* argv[], int opt_end)
+{
+	DWORD     error              = NO_ERROR;
+	wchar_t*  description        = NULL;
+	wchar_t*  buf                = NULL;
+	wchar_t*  path               = NULL;
+	int       i;
+	wchar_t** opt                = NULL;
+	wchar_t*  lpDisplayName      = NULL;
+	DWORD     dwServiceType      = SERVICE_WIN32_OWN_PROCESS;
+	DWORD     dwStartType        = SERVICE_AUTO_START;
+	wchar_t*  lpDependencies     = NULL;
+	wchar_t*  lpServiceStartName = NULL;
+	wchar_t*  lpPassword         = NULL;
+	SC_HANDLE hSCManager         = NULL;
+	SC_HANDLE hService           = NULL;
+
+	description = from_utf8((char*)get_resource(L"SVCDESC", NULL));
+
+	buf = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
+	if(buf == NULL)
+	{
+		error = ERROR_NOT_ENOUGH_MEMORY;
+		goto EXIT;
+	}
+
+	path = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
+	if(path == NULL)
+	{
+		error = ERROR_NOT_ENOUGH_MEMORY;
+		goto EXIT;
+	}
+
+	GetModuleFileName(NULL, buf, MAX_LONG_PATH);
+	
+	wcscpy_s(path, BUFFER_SIZE, L"\"");
+	wcscat_s(path, BUFFER_SIZE, buf);
+	wcscat_s(path, BUFFER_SIZE, L"\" -service");
+	for(i = opt_end + 2; i < argc; i++)
+	{
+		wcscat_s(path, BUFFER_SIZE, L" \"");
+		wcscat_s(path, BUFFER_SIZE, argv[i]);
+		wcscat_s(path, BUFFER_SIZE, L"\"");
 	}
 
 	opt = parse_opt(opt_end + 1, argv);
-	if (opt['n'])
+	if(opt['n'])
 	{
 		lpDisplayName = opt['n'];
 	}
-	if (opt['i'] && opt['u'] == 0 && opt['p'] == 0)
+	if(opt['i'] && opt['u'] == NULL && opt['p'] == NULL)
 	{
 		dwServiceType += SERVICE_INTERACTIVE_PROCESS;
 	}
-	if (opt['m'])
+	if(opt['m'])
 	{
 		dwStartType = SERVICE_DEMAND_START;
 	}
-	if (opt['d'])
+	if(opt['d'])
 	{
-		lpDependencies = (char*)malloc(strlen(opt['d']) + 2);
-		lstrcpy(lpDependencies, opt['d']);
-		lstrcat(lpDependencies, ";");
-		while (strrchr(lpDependencies, ';') != NULL)
+		wchar_t* p;
+		size_t len = wcslen(opt['d']) + 1;
+		lpDependencies = (wchar_t*)malloc((len + 1) * sizeof(wchar_t));
+		wcscpy_s(lpDependencies, len + 1, opt['d']);
+		wcscat_s(lpDependencies, len + 1, L";");
+		while((p = wcsrchr(lpDependencies, L';')) != NULL)
 		{
-			*(strrchr(lpDependencies, ';')) = '\0';
+			*p = L'\0';
 		}
 	}
-	if (opt['u'])
+	if(opt['u'])
 	{
 		lpServiceStartName = opt['u'];
 	}
-	if (opt['p'])
+	if(opt['p'])
 	{
 		lpPassword = opt['p'];
 	}
 
 	hSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
-	if (hSCManager == NULL)
+	if(hSCManager == NULL)
 	{
-		GetWinErrorMessage(GetLastError(), &err, buf);
-		WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), buf, (DWORD)strlen(buf), &size, NULL);
+		error = GetLastError();
+		write_message_by_error_code(EVENTLOG_STDOUT, error, NULL);
 		goto EXIT;
 	}
 
 	hService = CreateService(hSCManager, service_name, lpDisplayName, SERVICE_ALL_ACCESS, dwServiceType, dwStartType, SERVICE_ERROR_NORMAL, path, NULL, NULL, lpDependencies, lpServiceStartName, lpPassword);
-	if (hService == NULL)
+	if(hService == NULL)
 	{
-		GetWinErrorMessage(GetLastError(), &err, buf);
-		WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), buf, (DWORD)strlen(buf), &size, NULL);
+		error = GetLastError();
+		write_message_by_error_code(EVENTLOG_STDOUT, error, NULL);
 		goto EXIT;
 	}
 	else
 	{
-		sprintf(buf, _(MSG_ID_SUCCESS_SERVICE_INSTALL), service_name);
-		strcat(buf, "\n");
-		WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), buf, (DWORD)strlen(buf), &size, NULL);
+		swprintf_s(buf, BUFFER_SIZE, _(MSG_ID_SUCCESS_SERVICE_INSTALL), service_name);
+		write_message(EVENTLOG_STDOUT, buf);
 	}
-	err = set_service_description(service_name, GetResource("SVCDESC", NULL));
-	if (err != 0)
+	error = set_service_description(service_name, description);
+	if(error != NO_ERROR)
 	{
 		goto EXIT;
 	}
-	err = InstallEventLog();
-	if (err != 0)
+	error = install_event_log();
+	if(error != NO_ERROR)
 	{
 		goto EXIT;
 	}
 
 EXIT:
-	if (buf != NULL)
-	{
-		free(buf);
-	}
-	if (hService != NULL)
+	if(hService != NULL)
 	{
 		CloseServiceHandle(hService);
 	}
-	if (hSCManager != NULL)
+	if(hSCManager != NULL)
 	{
 		CloseServiceHandle(hSCManager);
 	}
-	if (lpDependencies != NULL)
+	if(lpDependencies != NULL)
 	{
 		free(lpDependencies);
 	}
-	if (path != NULL)
+	if(path != NULL)
 	{
 		free(path);
 	}
+	if(buf != NULL)
+	{
+		free(buf);
+	}
+	if(description != NULL)
+	{
+		free(description);
+	}
 
-	return err;
+	return error;
 }
 
 
-static int set_service_description(char* service_name, char* description)
+static DWORD set_service_description(const wchar_t* service_name, const wchar_t* description)
 {
-	char* buf = NULL;
-	DWORD size;
-	char* key = NULL;
-	HKEY  hKey = NULL;
-	int   err = 0;
+	DWORD     error = NO_ERROR;
+	wchar_t*  buf   = NULL;
+	size_t    size;
+	wchar_t*  key   = NULL;
+	HKEY      hKey  = NULL;
 
-	if (description == NULL)
+	if(description == NULL)
 	{
 		goto EXIT;
 	}
 
-	buf = (char*)malloc(2048);
-	key = (char*)malloc(1024);
-	strcpy(key, "SYSTEM\\CurrentControlSet\\Services\\");
-	strcat(key, service_name);
-
-	if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, key, 0, KEY_ALL_ACCESS, &hKey) != ERROR_SUCCESS)
+	buf = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
+	if(buf == NULL)
 	{
-		GetWinErrorMessage(GetLastError(), &err, buf);
-		WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), buf, (DWORD)strlen(buf), &size, NULL);
+		error = ERROR_NOT_ENOUGH_MEMORY;
+		write_message_by_error_code(EVENTLOG_STDOUT, error, L"malloc");
 		goto EXIT;
 	}
-	if (RegSetValueEx(hKey, "Description", 0, REG_SZ, (LPBYTE)description, (DWORD)strlen(description) + 1) != ERROR_SUCCESS)
+
+	key = (wchar_t*)malloc(MAX_LONG_PATH * sizeof(wchar_t));
+	if(key == NULL)
 	{
-		GetWinErrorMessage(GetLastError(), &err, buf);
-		WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), buf, (DWORD)strlen(buf), &size, NULL);
+		error = ERROR_NOT_ENOUGH_MEMORY;
+		write_message_by_error_code(EVENTLOG_STDOUT, error, L"malloc");
+		goto EXIT;
+	}
+
+	wcscpy_s(key, MAX_LONG_PATH, L"SYSTEM\\CurrentControlSet\\Services\\");
+	wcscat_s(key, MAX_LONG_PATH, service_name);
+
+	if(RegOpenKeyEx(HKEY_LOCAL_MACHINE, key, 0, KEY_ALL_ACCESS, &hKey) != ERROR_SUCCESS)
+	{
+		error = GetLastError();
+		write_message_by_error_code(EVENTLOG_STDOUT, error, key);
+		goto EXIT;
+	}
+	size = (wcslen(description) + 1) * sizeof(wchar_t);
+	if(RegSetValueEx(hKey, L"Description", 0, REG_SZ, (LPBYTE)description, (DWORD)size) != ERROR_SUCCESS)
+	{
+		error = GetLastError();
+		write_message_by_error_code(EVENTLOG_STDOUT, error, L"RegSetValueEx:Description");
 		goto EXIT;
 	}
 
 EXIT:
-	if (hKey != NULL)
+	if(hKey != NULL)
 	{
 		RegCloseKey(hKey);
 	}
-	if (key != NULL)
+	if(key != NULL)
 	{
 		free(key);
 	}
-	if (buf != NULL)
+	if(buf != NULL)
 	{
 		free(buf);
 	}
 
-	return err;
+	return error;
 }
 
 
-static int remove_service(char* service_name)
+static DWORD remove_service(const wchar_t* service_name)
 {
-	char*          buf = NULL;
-	DWORD          size;
-	SC_HANDLE      hSCManager = NULL;
-	SC_HANDLE      hService = NULL;
-	SERVICE_STATUS status;
-	BOOL           ret;
-	int            err = 0;
+	DWORD           error      = NO_ERROR;
+	wchar_t*        buf        = NULL;
+	SC_HANDLE       hSCManager = NULL;
+	SC_HANDLE       hService   = NULL;
+	SERVICE_STATUS  status;
+	BOOL            ret;
 
-	buf = (char*)malloc(2048);
+	buf = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
+	if(buf == NULL)
+	{
+		error = ERROR_NOT_ENOUGH_MEMORY;
+		write_message_by_error_code(EVENTLOG_STDOUT, error, L"malloc");
+		goto EXIT;
+	}
 
 	hSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
-	if (hSCManager == NULL)
+	if(hSCManager == NULL)
 	{
-		GetWinErrorMessage(GetLastError(), &err, buf);
-		WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), buf, (DWORD)strlen(buf), &size, NULL);
+		error = GetLastError();
+		write_message_by_error_code(EVENTLOG_STDOUT, error, L"OpenSCManager");
 		goto EXIT;
 	}
 	hService = OpenService(hSCManager, service_name, SERVICE_ALL_ACCESS | DELETE);
 	if (hService == NULL)
 	{
-		GetWinErrorMessage(GetLastError(), &err, buf);
-		WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), buf, (DWORD)strlen(buf), &size, NULL);
+		error = GetLastError();
+		write_message_by_error_code(EVENTLOG_STDOUT, error, NULL);
 		goto EXIT;
 	}
 
 	ret = QueryServiceStatus(hService, &status);
-	if (ret == FALSE)
+	if(ret == FALSE)
 	{
-		GetWinErrorMessage(GetLastError(), &err, buf);
-		WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), buf, (DWORD)strlen(buf), &size, NULL);
+		error = GetLastError();
+		write_message_by_error_code(EVENTLOG_STDOUT, error, L"QueryServiceStatus");
 		goto EXIT;
 	}
 	if (status.dwCurrentState != SERVICE_STOPPED)
 	{
-		err = MSG_ID_ERR_SERVICE_NOT_STOPPED;
-		sprintf(buf, _(MSG_ID_ERR_SERVICE_NOT_STOPPED), service_name);
-		strcat(buf, "\n");
-		WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), buf, (DWORD)strlen(buf), &size, NULL);
+		swprintf_s(buf, BUFFER_SIZE, _(MSG_ID_ERR_SERVICE_NOT_STOPPED), service_name);
+		write_message(EVENTLOG_STDOUT, buf);
+		error = ERROR_UNKNOWN;
 		goto EXIT;
 	}
 
-	if (!DeleteService(hService))
+	if(!DeleteService(hService))
 	{
-		GetWinErrorMessage(GetLastError(), &err, buf);
-		WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), buf, (DWORD)strlen(buf), &size, NULL);
+		error = GetLastError();
+		write_message_by_error_code(EVENTLOG_STDOUT, error, NULL);
 		goto EXIT;
 	}
 
-	sprintf(buf, _(MSG_ID_SUCCESS_SERVICE_REMOVE), service_name);
-	strcat(buf, "\n");
-	WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), buf, (DWORD)strlen(buf), &size, NULL);
+	swprintf_s(buf, BUFFER_SIZE, _(MSG_ID_SUCCESS_SERVICE_REMOVE), service_name);
+	write_message(EVENTLOG_STDOUT, buf);
 
-	err = RemoveEventLog();
-	if (err != 0)
+	error = remove_event_log();
+	if(error != NO_ERROR)
 	{
 		goto EXIT;
 	}
 
 EXIT:
-	if (hService != NULL)
+	if(hService != NULL)
 	{
 		CloseServiceHandle(hService);
 	}
-	if (hSCManager != NULL)
+	if(hSCManager != NULL)
 	{
 		CloseServiceHandle(hSCManager);
 	}
-	if (service_name != NULL)
-	{
-		HeapFree(GetProcessHeap(), 0, service_name);
-	}
-	if (buf != NULL)
+	if(buf != NULL)
 	{
 		free(buf);
 	}
 
-	return err;
+	return error;
 }
 
 
-int start_service(char* service_name)
+DWORD start_service(const wchar_t* service_name)
 {
-	SC_HANDLE hSCManager = NULL;
-	SC_HANDLE hService = NULL;
-	BOOL  ret;
-	char* buf = NULL;
-	DWORD size;
-	int   err = 0;
+	DWORD      error      = NO_ERROR;
+	wchar_t*   buf        = NULL;
+	SC_HANDLE  hSCManager = NULL;
+	SC_HANDLE  hService   = NULL;
+	BOOL       ret;
 
-	buf = (char*)malloc(2048);
+	buf = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
+	if(buf == NULL)
+	{
+		error = ERROR_NOT_ENOUGH_MEMORY;
+		write_message_by_error_code(EVENTLOG_STDOUT, error, L"malloc");
+		goto EXIT;
+	}
 
 	hSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
-	if (hSCManager == NULL)
+	if(hSCManager == NULL)
 	{
-		GetWinErrorMessage(GetLastError(), &err, buf);
-		WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), buf, (DWORD)strlen(buf), &size, NULL);
+		error = GetLastError();
+		write_message_by_error_code(EVENTLOG_STDOUT, error, L"OpenSCManager");
 		goto EXIT;
 	}
 	hService = OpenService(hSCManager, service_name, SERVICE_START);
 	if(hService == NULL)
 	{
-		GetWinErrorMessage(GetLastError(), &err, buf);
-		WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), buf, (DWORD)strlen(buf), &size, NULL);
+		error = GetLastError();
+		write_message_by_error_code(EVENTLOG_STDOUT, error, L"OpenService");
 		goto EXIT;
 	}
 	ret = StartService(hService, 0, NULL);
-	if (ret == FALSE)
+	if(ret == FALSE)
 	{
-		GetWinErrorMessage(GetLastError(), &err, buf);
-		WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), buf, (DWORD)strlen(buf), &size, NULL);
+		error = GetLastError();
+		write_message_by_error_code(EVENTLOG_STDOUT, error, L"StartService");
 		goto EXIT;
 	}
 
-	sprintf(buf, _(MSG_ID_SUCCESS_SERVICE_START), service_name);
-	strcat(buf, "\n");
-	WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), buf, (DWORD)strlen(buf), &size, NULL);
+	swprintf_s(buf, BUFFER_SIZE, _(MSG_ID_SUCCESS_SERVICE_START), service_name);
+	write_message(EVENTLOG_STDOUT, buf);
 
 EXIT:
-	if (buf != NULL)
-	{
-		free(buf);
-	}
-	if (hService != NULL)
+	if(hService != NULL)
 	{
 		CloseServiceHandle(hService);
 	}
-	if (hSCManager != NULL)
+	if(hSCManager != NULL)
 	{
 		CloseServiceHandle(hSCManager);
 	}
+	if(buf != NULL)
+	{
+		free(buf);
+	}
 
-	return err;
+	return error;
 }
 
 
-static int stop_service(char* service_name)
+static DWORD stop_service(const wchar_t* service_name)
 {
-	SC_HANDLE hSCManager = NULL;
-	SC_HANDLE hService = NULL;
-	SERVICE_STATUS status;
-	BOOL  ret;
-	char* buf = NULL;
-	DWORD size;
-	int   i;
-	int   err = 0;
+	DWORD           error      = NO_ERROR;
+	wchar_t*        buf        = NULL;
+	SC_HANDLE       hSCManager = NULL;
+	SC_HANDLE       hService   = NULL;
+	SERVICE_STATUS  status;
+	BOOL            ret;
+	int             i;
 
-	buf = (char*)malloc(2048);
+	buf = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
+	if(buf == NULL)
+	{
+		error = ERROR_NOT_ENOUGH_MEMORY;
+		write_message_by_error_code(EVENTLOG_STDOUT, error, L"malloc");
+		goto EXIT;
+	}
 
 	hSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
-	if (hSCManager == NULL)
+	if(hSCManager == NULL)
 	{
-		GetWinErrorMessage(GetLastError(), &err, buf);
-		WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), buf, (DWORD)strlen(buf), &size, NULL);
+		error = GetLastError();
+		write_message_by_error_code(EVENTLOG_STDOUT, error, L"OpenSCManager");
 		goto EXIT;
 	}
 	hService = OpenService(hSCManager, service_name, SERVICE_ALL_ACCESS);
-	if (hService == NULL)
+	if(hService == NULL)
 	{
-		GetWinErrorMessage(GetLastError(), &err, buf);
-		WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), buf, (DWORD)strlen(buf), &size, NULL);
+		error = GetLastError();
+		write_message_by_error_code(EVENTLOG_STDOUT, error, L"OpenService");
 		goto EXIT;
 	}
 	ret = QueryServiceStatus(hService, &status);
-	if (ret == FALSE)
+	if(ret == FALSE)
 	{
-		GetWinErrorMessage(GetLastError(), &err, buf);
-		WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), buf, (DWORD)strlen(buf), &size, NULL);
+		error = GetLastError();
+		write_message_by_error_code(EVENTLOG_STDOUT, error, L"QueryServiceStatus");
 		goto EXIT;
 	}
-	if (status.dwCurrentState != SERVICE_STOPPED && status.dwCurrentState != SERVICE_STOP_PENDING)
+	if(status.dwCurrentState != SERVICE_STOPPED && status.dwCurrentState != SERVICE_STOP_PENDING)
 	{
-		if (ControlService(hService, SERVICE_CONTROL_STOP, &status) == 0)
+		if(ControlService(hService, SERVICE_CONTROL_STOP, &status) == 0)
 		{
-			GetWinErrorMessage(GetLastError(), &err, buf);
-			WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), buf, (DWORD)strlen(buf), &size, NULL);
+			error = GetLastError();
+			write_message_by_error_code(EVENTLOG_STDOUT, error, L"ControlService");
 			goto EXIT;
 		}
-		buf = (char*)malloc(1024);
-		sprintf(buf, _(MSG_ID_SERVICE_STOPING), service_name);
-		strcat(buf, "\n");
-		WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), buf, (DWORD)strlen(buf), &size, NULL);
-		for (i = 0; i < 240; i++)
+		swprintf_s(buf, BUFFER_SIZE, _(MSG_ID_SERVICE_STOPING), service_name);
+		write_message(EVENTLOG_STDOUT, buf);
+		for(i = 0; i < 240; i++)
 		{
-			if (QueryServiceStatus(hService, &status) == 0)
+			if(QueryServiceStatus(hService, &status) == 0)
 			{
-				GetWinErrorMessage(GetLastError(), &err, buf);
-				WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), buf, (DWORD)strlen(buf), &size, NULL);
+				error = GetLastError();
+				write_message_by_error_code(EVENTLOG_STDOUT, error, L"QueryServiceStatus");
 				goto EXIT;
 			}
-			if (status.dwCurrentState == SERVICE_STOPPED)
+			if(status.dwCurrentState == SERVICE_STOPPED)
 			{
-				sprintf(buf, _(MSG_ID_SUCCESS_SERVICE_STOP), service_name);
-				strcat(buf, "\n");
-				WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), buf, (DWORD)strlen(buf), &size, NULL);
+				swprintf_s(buf, BUFFER_SIZE, _(MSG_ID_SUCCESS_SERVICE_STOP), service_name);
+				write_message(EVENTLOG_STDOUT, buf);
 				break;
 			}
 			Sleep(500);
@@ -889,26 +870,26 @@ static int stop_service(char* service_name)
 	}
 
 EXIT:
-	if (buf != NULL)
-	{
-		free(buf);
-	}
-	if (hService != NULL)
+	if(hService != NULL)
 	{
 		CloseServiceHandle(hService);
 	}
-	if (hSCManager != NULL)
+	if(hSCManager != NULL)
 	{
 		CloseServiceHandle(hSCManager);
 	}
+	if(buf != NULL)
+	{
+		free(buf);
+	}
 
-	return err;
+	return error;
 }
 
 
 static void start_service_main()
 {
-	char* service_name = get_service_name(NULL);
+	wchar_t* service_name = get_service_name();
 
 	service_status.dwServiceType = SERVICE_WIN32;
 	service_status.dwCurrentState = SERVICE_START_PENDING;
@@ -919,7 +900,7 @@ static void start_service_main()
 	service_status.dwWaitHint = 0;
 
 	hStatus = RegisterServiceCtrlHandler(service_name, (LPHANDLER_FUNCTION)service_control_handler);
-	if (hStatus == (SERVICE_STATUS_HANDLE)0)
+	if(hStatus == (SERVICE_STATUS_HANDLE)0)
 	{
 		// Registering Control Handler failed.
 		goto EXIT;
@@ -938,38 +919,76 @@ static void start_service_main()
 	SetServiceStatus(hStatus, &service_status);
 
 EXIT:
-	if (service_name != NULL)
+	if(service_name != NULL)
 	{
-		HeapFree(GetProcessHeap(), 0, service_name);
+		free(service_name);
 	}
 }
 
 
 static void stop_service_main()
 {
-	BOOL      is_service = (flags & SERVICE_START_BY_SCM);
-	JNIEnv*   env = AttachJavaVM();
-	char*     buf = NULL;
+	JNIEnv* env = attach_java_vm();
+	jstring thread_name = to_jstring(env, L"scm");
 
+	// スレッド名を変更します
+	if(thread_name != NULL)
+	{
+		jclass    Thread               = NULL;
+		jmethodID Thread_currentThread = NULL;
+		jobject   thread               = NULL;
+		jmethodID thread_setName       = NULL;
+		
+		Thread = (*env)->FindClass(env, "java/lang/Thread");
+		if(Thread == NULL)
+		{
+			goto NEXT;
+		}
+		Thread_currentThread = (*env)->GetStaticMethodID(env, Thread, "currentThread", "()Ljava/lang/Thread;");
+		if(Thread_currentThread == NULL)
+		{
+			goto NEXT;
+		}
+		thread_setName = (*env)->GetMethodID(env, Thread, "setName", "(Ljava/lang/String;)V");
+		if(thread_setName == NULL)
+		{
+			goto NEXT;
+		}
+
+		thread = (*env)->CallStaticObjectMethod(env, Thread, Thread_currentThread);
+		if(thread == NULL)
+		{
+			goto NEXT;
+		}
+		(*env)->CallObjectMethod(env, thread, thread_setName, thread_name);
+
+		NEXT:
+		if(thread != NULL)
+		{
+			(*env)->DeleteLocalRef(env, thread);
+		}
+		(*env)->DeleteLocalRef(env, thread_name);
+		thread_name = NULL;
+	}
+
+	if((*env)->ExceptionCheck(env) == JNI_TRUE)
+	{
+		(*env)->ExceptionClear(env);
+	}
 	(*env)->CallStaticVoidMethod(env, MainClass, MainClass_stop);
 
-	if ((*env)->ExceptionCheck(env) == JNI_TRUE)
+	if((*env)->ExceptionCheck(env) == JNI_TRUE)
 	{
 		jthrowable throwable = (*env)->ExceptionOccurred(env);
-		if (throwable != NULL)
+		if(throwable != NULL)
 		{
-			UncaughtException(env, "scm", throwable);
+			uncaught_exception(env, NULL, throwable);
 			(*env)->DeleteLocalRef(env, throwable);
 		}
 		(*env)->ExceptionClear(env);
 	}
 
-	DetachJavaVM();
-
-	if (buf != NULL)
-	{
-		free(buf);
-	}
+	detach_java_vm();
 }
 
 
@@ -983,43 +1002,43 @@ static BOOL WINAPI console_control_handler(DWORD dwCtrlType)
 		if (ctrl_c++ == 0)
 		{
 			//初回は終了処理を試みます。
-			printf(_(MSG_ID_CTRL_SERVICE_STOP), "CTRL_C");
-			printf("\r\n");
+			wcoutf(_(MSG_ID_CTRL_SERVICE_STOP), L"CTRL_C");
+			wcout(L"\r\n");
 			stop_service_main();
 			return TRUE;
 		}
 		else
 		{
-			printf(_(MSG_ID_CTRL_SERVICE_TERMINATE), "CTRL_C");
-			printf("\r\n");
+			wcoutf(_(MSG_ID_CTRL_SERVICE_TERMINATE), L"CTRL_C");
+			wcout(L"\r\n");
 			return FALSE;
 		}
 
 	case CTRL_BREAK_EVENT:
-		printf(_(MSG_ID_CTRL_BREAK), "CTRL_BREAK");
-		printf("\r\n");
+		wcoutf(_(MSG_ID_CTRL_BREAK), L"CTRL_BREAK");
+		wcout(L"\r\n");
 		return FALSE;
 
 	case CTRL_CLOSE_EVENT:
-		printf(_(MSG_ID_CTRL_SERVICE_STOP), "CTRL_CLOSE");
-		printf("\r\n");
+		wcoutf(_(MSG_ID_CTRL_SERVICE_STOP), L"CTRL_CLOSE");
+		wcout(L"\r\n");
 		stop_service_main();
 		return TRUE;
 
 	case CTRL_LOGOFF_EVENT:
-		if (!(flags & SERVICE_START_BY_SCM))
+		if(!(flags & SERVICE_START_BY_SCM))
 		{
-			printf(_(MSG_ID_CTRL_SERVICE_STOP), "CTRL_LOGOFF");
-			printf("\r\n");
+			wcoutf(_(MSG_ID_CTRL_SERVICE_STOP), L"CTRL_LOGOFF");
+			wcout(L"\r\n");
 			stop_service_main();
 		}
 		return TRUE;
 
 	case CTRL_SHUTDOWN_EVENT:
-		if (!(flags & SERVICE_START_BY_SCM))
+		if(!(flags & SERVICE_START_BY_SCM))
 		{
-			printf(_(MSG_ID_CTRL_SERVICE_STOP), "CTRL_SHUTDOWN");
-			printf("\r\n");
+			wcoutf(_(MSG_ID_CTRL_SERVICE_STOP), L"CTRL_SHUTDOWN");
+			wcout(L"\r\n");
 			stop_service_main();
 		}
 		return TRUE;
@@ -1056,7 +1075,7 @@ static void service_control_handler(DWORD request)
 }
 
 
-static int parse_args(int* argc_ptr, char* argv[], int* opt_end)
+static int parse_args(int* argc_ptr, const wchar_t* argv[], int* opt_end)
 {
 	int  argc = *argc_ptr;
 	int  flags = 0;
@@ -1065,35 +1084,35 @@ static int parse_args(int* argc_ptr, char* argv[], int* opt_end)
 
 	*opt_end = 0;
 
-	if (strcmp(argv[argc - 1], RUN_AS_ADMINISTRATOR_ARG) == 0)
+	if(wcscmp(argv[argc - 1], RUN_AS_ADMINISTRATOR_ARG) == 0)
 	{
 		flags |= RUN_AS_ADMINISTRATOR;
 		*argc_ptr = --argc;
 	}
-	if ((argc >= 2) && (strcmp(argv[1], "-service") == 0))
+	if((argc >= 2) && (wcscmp(argv[1], L"-service") == 0))
 	{
 		flags |= SERVICE_START_BY_SCM;
 	}
-	for (i = 1; i < argc; i++)
+	for(i = 1; i < argc; i++)
 	{
-		if (strcmp(argv[i], "-s") == 0)
+		if(wcscmp(argv[i], L"-s") == 0)
 		{
 			has_opt_s = TRUE;
 		}
-		if (strcmp(argv[i], "-install") == 0)
+		if(wcscmp(argv[i], L"-install") == 0)
 		{
 			flags |= SERVICE_INSTALL;
-			if (has_opt_s)
+			if(has_opt_s)
 			{
 				flags |= SERVICE_START_IMMEDIATELY;
 			}
 			*opt_end = i - 1;
 			break;
 		}
-		if (strcmp(argv[i], "-remove") == 0)
+		if(wcscmp(argv[i], L"-remove") == 0)
 		{
 			flags |= SERVICE_REMOVE;
-			if (has_opt_s)
+			if(has_opt_s)
 			{
 				flags |= SERVICE_STOP_BEFORE_REMOVE;
 			}
@@ -1101,7 +1120,7 @@ static int parse_args(int* argc_ptr, char* argv[], int* opt_end)
 			break;
 		}
 	}
-	if ((argc == 2) && (strcmp(argv[1], "-help") == 0))
+	if((argc == 2) && (wcscmp(argv[1], L"-help") == 0))
 	{
 		flags |= SHOW_HELP_MESSAGE;
 	}
@@ -1110,146 +1129,266 @@ static int parse_args(int* argc_ptr, char* argv[], int* opt_end)
 }
 
 
-static char** parse_opt(int argc, char* argv[])
+static wchar_t** parse_opt(int argc, const wchar_t* argv[])
 {
 	int i;
-	char** opt = (char**)HeapAlloc(GetProcessHeap(), 0, 256 * 8);
+	wchar_t** opt = (wchar_t**)calloc(256, sizeof(wchar_t*));
 
-	SecureZeroMemory(opt, 256 * 8);
-
-	if ((argc > 1) && (*argv[1] != '-'))
+	if(opt == NULL)
 	{
-		opt[0] = argv[1];
+		return NULL;
 	}
-	for (i = 0; i < argc; i++)
+
+	if((argc > 1) && (*argv[1] != L'-'))
 	{
-		if (*argv[i] == '-')
+		opt[0] = (wchar_t*)argv[1];
+	}
+	for(i = 0; i < argc; i++)
+	{
+		if(*argv[i] == L'-')
 		{
-			if (argv[i + 1] == NULL || *argv[i + 1] == '-')
+			if(argv[i + 1] == NULL || *argv[i + 1] == L'-')
 			{
-				opt[*(argv[i] + 1)] = "";
+				opt[*(argv[i] + 1)] = L"";
 			}
 			else
 			{
-				opt[*(argv[i] + 1)] = argv[i + 1];
+				opt[*(argv[i] + 1)] = (wchar_t*)argv[i + 1];
 			}
 		}
 	}
-	if ((opt[0] == NULL) && (*argv[argc - 1] != '-'))
+	if((opt[0] == NULL) && (*argv[argc - 1] != L'-'))
 	{
-		opt[0] = argv[argc - 1];
+		opt[0] = (wchar_t*)argv[argc - 1];
 	}
 	return opt;
 }
 
 
+static void write_message(WORD event_type, const wchar_t* message)
+{
+	if(message == NULL)
+	{
+		return;
+	}
+
+	if(event_type == EVENTLOG_STDOUT)
+	{
+		wcout(message);
+		wcout(L"\r\n");
+	}
+	else if(event_type == EVENTLOG_STDERR)
+	{
+		wcerr(message);
+		wcerr(L"\r\n");
+	}
+	else
+	{
+		write_event_log(event_type, message);
+	}
+}
+
+static void write_message_by_error_code(WORD event_type, DWORD last_error, const wchar_t* append)
+{
+	wchar_t* message = NULL;
+	wchar_t* s       = NULL;
+
+	message = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
+	if(message != NULL)
+	{
+		message[0] = L'\0';
+
+		s = get_error_message(last_error);
+		if(s != NULL)
+		{
+			wcscat_s(message, BUFFER_SIZE, s);
+			if(append != NULL)
+			{
+				wcscat_s(message, BUFFER_SIZE, L" (");
+				wcscat_s(message, BUFFER_SIZE, append);
+				wcscat_s(message, BUFFER_SIZE, L")");
+			}
+			free(s);
+		}
+		else if(append != NULL)
+		{
+			wcscat_s(message, BUFFER_SIZE, append);
+		}
+
+		if(wcslen(message) > 0)
+		{
+			write_message(event_type, message);
+
+		}
+		free(message);
+	}
+}
+
 static void show_help_message()
 {
-	char* buf; 
-	char* name;
+	wchar_t* buf; 
+	wchar_t* filename;
 
-	buf = malloc(1024);
-	GetModuleFileName(NULL, buf, 1024);
-	name = strrchr(buf, '\\') + 1;
-
-	printf("Usage:\r\n"
-		"  %s [install-options] -install [runtime-arguments]\r\n"
-		"  %s [remove-options] -remove\r\n"
-		"  %s [runtime-arguments]\r\n"
-		"\r\n"
-		"Install Options:\r\n"
-		"  -n <display-name>\t set service display name.\r\n"
-		"  -i               \t allow interactive.\r\n"
-		"  -m               \t \r\n"
-		"  -d <dependencies>\t \r\n"
-		"  -u <username>    \t \r\n"
-		"  -p <password>    \t \r\n"
-		"  -s               \t start service.\r\n"
-		"\r\n"
-		"Remove Options:\r\n"
-		"  -s               \t stop service.\r\n"
-		, name, name, name);
-}
-
-
-static void set_current_dir()
-{
-	char* b = (char*)HeapAlloc(GetProcessHeap(), 0, 1024);
-
-	GetModuleFileName(NULL, b, 1024);
-	*(strrchr(b, '\\')) = '\0';
-	SetCurrentDirectory(b);
-
-	HeapFree(GetProcessHeap(), 0, b);
-}
-
-
-static char* get_service_name(char* buf)
-{
-	char* b = (char*)HeapAlloc(GetProcessHeap(), 0, 1024);
-	char* name;
-
-	GetModuleFileName(NULL, b, 1024);
-	*(strrchr(b, '.')) = '\0';
-	name = strrchr(b, '\\') + 1;
-
-	if (buf == NULL)
+	buf = (wchar_t*)malloc(MAX_LONG_PATH * sizeof(wchar_t));
+	if(buf == NULL)
 	{
-		buf = (char*)HeapAlloc(GetProcessHeap(), 0, strlen(name) + 1);
+		return;
 	}
-	strcpy(buf, name);
-	HeapFree(GetProcessHeap(), 0, b);
-	return buf;
-}
 
+	GetModuleFileName(NULL, buf, MAX_LONG_PATH);
+	filename = wcsrchr(buf, L'\\') + 1;
 
-static char* get_pipe_name(char* buf)
-{
-	char* b = (char*)HeapAlloc(GetProcessHeap(), 0, 1024);
-	char* name;
+	wcoutf(L"Usage:\r\n"
+			L"  %ls [install-options] -install [runtime-arguments]\r\n"
+			L"  %ls [remove-options] -remove\r\n"
+			L"  %ls [runtime-arguments]\r\n"
+			L"\r\n"
+			L"Install Options:\r\n"
+			L"  -n <display-name>\t set service display name.\r\n"
+			L"  -i               \t allow interactive.\r\n"
+			L"  -m               \t \r\n"
+			L"  -d <dependencies>\t \r\n"
+			L"  -u <username>    \t \r\n"
+			L"  -p <password>    \t \r\n"
+			L"  -s               \t start service.\r\n"
+			L"\r\n"
+			L"Remove Options:\r\n"
+			L"  -s               \t stop service.\r\n"
+			, filename, filename, filename);
 
-	GetModuleFileName(NULL, b, 1024);
-	name = strrchr(b, '\\') + 1;
-
-	if (buf == NULL)
+	if(buf != NULL)
 	{
-		buf = (char*)HeapAlloc(GetProcessHeap(), 0, strlen(name) + 16);
+		free(buf);
 	}
-	sprintf(buf, "\\\\.\\pipe\\%s.pipe", name);
-	HeapFree(GetProcessHeap(), 0, b);
-
-	return buf;
 }
 
 
-static int run_as_administrator(HANDLE pipe, int argc, char* argv[], char* append)
+static void set_current_directory()
 {
-	char*  module = NULL;
-	char*  params = NULL;
-	int    i;
-	char*  buf = NULL;
-	BOOL   ret;
-	int    exit_code = 0;
+	wchar_t* filepath = NULL;
+
+	filepath = (wchar_t*)malloc(MAX_LONG_PATH * sizeof(wchar_t));
+	if(filepath == NULL)
+	{
+		return;
+	}
+
+	GetModuleFileName(NULL, filepath, MAX_LONG_PATH);
+	*(wcsrchr(filepath, L'\\')) = L'\0';
+	SetCurrentDirectory(filepath);
+
+	free(filepath);
+}
+
+
+static wchar_t* get_service_name()
+{
+	wchar_t* name = NULL;
+	wchar_t* buf  = NULL;
+	wchar_t* p    = NULL;
+	size_t   len;
+
+	buf = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
+	if(buf == NULL)
+	{
+		goto EXIT;
+	}
+
+	GetModuleFileName(NULL, buf, BUFFER_SIZE);
+	*(wcsrchr(buf, L'.')) = L'\0';
+	p = wcsrchr(buf, L'\\') + 1;
+
+	len = wcslen(p);
+	name = (wchar_t*)malloc((len + 1) * sizeof(wchar_t));
+	if(name != NULL)
+	{
+		wcscpy_s(name, len + 1, p);
+	}
+
+EXIT:
+	if(buf != NULL)
+	{
+		free(buf);
+	}
+
+	return name;
+}
+
+
+static wchar_t* get_pipe_name()
+{
+	wchar_t* name = NULL;
+	wchar_t* buf = NULL;
+	wchar_t* p    = NULL;
+	size_t   len;
+
+	buf = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
+	if(buf == NULL)
+	{
+		goto EXIT;
+	}
+
+	GetModuleFileName(NULL, buf, BUFFER_SIZE);
+	p = wcsrchr(buf, L'\\') + 1;
+
+	len = wcslen(p) + 14;
+	name = (wchar_t*)malloc((len + 1) * sizeof(wchar_t));
+	if(name != NULL)
+	{
+		wcscpy_s(name, len + 1, L"\\\\.\\pipe\\");
+		wcscat_s(name, len + 1, p);
+		wcscat_s(name, len + 1, L".pipe");
+	}
+
+EXIT:
+	if(buf != NULL)
+	{
+		free(buf);
+	}
+
+	return name;
+}
+
+
+static DWORD run_as_administrator(HANDLE pipe, int argc, const wchar_t* argv[], const wchar_t* append)
+{
+	DWORD            error = NO_ERROR;
+	wchar_t*         module = NULL;
+	wchar_t*         params = NULL;
+	int              i;
 	SHELLEXECUTEINFO si;
+	BOOL             ret;
+	char*            buf = NULL;
 
-	module = malloc(1024);
-	GetModuleFileName(NULL, module, 1024);
-
-	params = malloc(2048);
-	params[0] = '\0';
-	for (i = 1; i < argc; i++)
+	module = (wchar_t*)malloc(MAX_LONG_PATH * sizeof(wchar_t));
+	if(module == NULL)
 	{
-		strcat(params, "\"");
-		strcat(params, argv[i]);
-		strcat(params, "\" ");
+		error = ERROR_NOT_ENOUGH_MEMORY;
+		goto EXIT;
 	}
-	strcat(params, append);
+	params = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
+	if(params == NULL)
+	{
+		error = ERROR_NOT_ENOUGH_MEMORY;
+		goto EXIT;
+	}
+
+	GetModuleFileName(NULL, module, MAX_LONG_PATH);
+
+	params[0] = L'\0';
+	for(i = 1; i < argc; i++)
+	{
+		wcscat_s(params, BUFFER_SIZE, L"\"");
+		wcscat_s(params, BUFFER_SIZE, argv[i]);
+		wcscat_s(params, BUFFER_SIZE, L"\" ");
+	}
+	wcscat_s(params, BUFFER_SIZE, append);
 
 	ZeroMemory(&si, sizeof(SHELLEXECUTEINFO));
 	si.cbSize = sizeof(SHELLEXECUTEINFO);
 	si.fMask = SEE_MASK_NOCLOSEPROCESS;
 	si.hwnd = GetActiveWindow();
-	si.lpVerb = "runas";
+	si.lpVerb = L"runas";
 	si.lpFile = module;
 	si.lpParameters = params;
 	si.lpDirectory = NULL;
@@ -1258,26 +1397,31 @@ static int run_as_administrator(HANDLE pipe, int argc, char* argv[], char* appen
 	si.hProcess = 0;
 
 	ret = ShellExecuteEx(&si);
-	if (GetLastError() == ERROR_CANCELLED)
+	if(GetLastError() == ERROR_CANCELLED)
 	{
-		OutputMessage(GetWinErrorMessage(GetLastError(), &exit_code, NULL));
+		error = ERROR_CANCELLED;
 		goto EXIT;
 	}
-	else if (ret == TRUE)
+	else if(ret == TRUE)
 	{
 		DWORD read_size;
 		DWORD write_size;
 
-		buf = (char*)HeapAlloc(GetProcessHeap(), 0, 1024);
-
-		if (!ConnectNamedPipe(pipe, NULL))
+		buf = (char*)malloc(BUFFER_SIZE);
+		if(buf == NULL)
 		{
-			OutputMessage(GetWinErrorMessage(GetLastError(), &exit_code, NULL));
+			error = ERROR_NOT_ENOUGH_MEMORY;
 			goto EXIT;
 		}
-		for (;;)
+
+		if(!ConnectNamedPipe(pipe, NULL))
 		{
-			if (!ReadFile(pipe, buf, 1024, &read_size, NULL))
+			error = GetLastError();
+			goto EXIT;
+		}
+		for(;;)
+		{
+			if(!ReadFile(pipe, buf, BUFFER_SIZE, &read_size, NULL))
 			{
 				break;
 			}
@@ -1287,31 +1431,133 @@ static int run_as_administrator(HANDLE pipe, int argc, char* argv[], char* appen
 		DisconnectNamedPipe(pipe);
 
 		WaitForSingleObject(si.hProcess, INFINITE);
-		ret = GetExitCodeProcess(si.hProcess, &exit_code);
-		if (ret == FALSE)
+		ret = GetExitCodeProcess(si.hProcess, &error);
+		if(ret == FALSE)
 		{
-			exit_code = GetLastError();
+			error = GetLastError();
 		}
 		CloseHandle(si.hProcess);
 	}
 	else
 	{
-		exit_code = GetLastError();
+		error = GetLastError();
 	}
 
 EXIT:
-	if (buf != NULL)
+	if(buf != NULL)
 	{
-		HeapFree(GetProcessHeap(), 0, buf);
+		free(buf);
 	}
-	if (params != NULL)
+	if(params != NULL)
 	{
 		free(params);
 	}
-	if (module != NULL)
+	if(module != NULL)
 	{
 		free(module);
 	}
 
-	return exit_code;
+	return error;
+}
+
+
+DWORD uncaught_exception(JNIEnv* env, jobject thread, jthrowable throwable)
+{
+	BOOL      is_service        = (flags & SERVICE_START_BY_SCM);
+	wchar_t*  stack_trace       = NULL;
+	wchar_t*  error             = NULL;
+	jclass    System            = NULL;
+	jfieldID  System_err        = NULL;
+	jobject   printStream       = NULL;
+	jclass    PrintStream       = NULL;
+	jmethodID printStream_print = NULL;
+	jmethodID printStream_flush = NULL;
+	jstring   jstr              = NULL;
+
+	stack_trace = get_stack_trace(env, thread, throwable);
+	if(stack_trace == NULL)
+	{
+		goto EXIT;
+	}
+
+	if(is_service)
+	{
+		write_event_log(EVENTLOG_ERROR_TYPE, stack_trace);
+		goto EXIT;
+	}
+
+	error = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
+	if(error == NULL)
+	{
+		goto EXIT;
+	}
+	error[0] = L'\0';
+
+	System = (*env)->FindClass(env, "java/lang/System");
+	if(System == NULL)
+	{
+		swprintf_s(error, BUFFER_SIZE, _(MSG_ID_ERR_FIND_CLASS), L"java.lang.System");
+		goto EXIT;
+	}
+	System_err = (*env)->GetStaticFieldID(env, System, "err", "Ljava/io/PrintStream;");
+	if(System_err == NULL)
+	{
+		swprintf_s(error, BUFFER_SIZE, _(MSG_ID_ERR_GET_FIELD), "java.lang.System.err");
+		goto EXIT;
+	}
+	printStream = (*env)->GetStaticObjectField(env, System, System_err);
+	if(printStream == NULL)
+	{
+		swprintf_s(error, BUFFER_SIZE, _(MSG_ID_ERR_GET_FIELD), "java.lang.System.err");
+		goto EXIT;
+	}
+	PrintStream = (*env)->FindClass(env, "java/io/PrintStream");
+	if(PrintStream == NULL)
+	{
+		swprintf_s(error, BUFFER_SIZE, _(MSG_ID_ERR_FIND_CLASS), "java.io.PrintStream");
+		goto EXIT;
+	}
+	printStream_print = (*env)->GetMethodID(env, PrintStream, "print", "(Ljava/lang/String;)V");
+	if(printStream_print == NULL)
+	{
+		swprintf_s(error, BUFFER_SIZE, _(MSG_ID_ERR_GET_METHOD), "java.io.PrintStream.print(java.lang.String)");
+		goto EXIT;
+	}
+	printStream_flush = (*env)->GetMethodID(env, PrintStream, "flush", "()V");
+	if(printStream_flush == NULL)
+	{
+		swprintf_s(error, BUFFER_SIZE, _(MSG_ID_ERR_GET_METHOD), "java.io.PrintStream.flush()");
+		goto EXIT;
+	}
+
+	jstr = to_jstring(env, stack_trace);
+	(*env)->CallVoidMethod(env, printStream, printStream_print, jstr);
+	(*env)->CallVoidMethod(env, printStream, printStream_flush);
+
+	error[0] = L'\0';
+
+EXIT:
+	if(error != NULL && wcslen(error) > 0)
+	{
+		wcerr(error);
+		wcerr(L"\r\n");
+	}
+	if(jstr != NULL)
+	{
+		(*env)->DeleteLocalRef(env, jstr);
+	}
+	if(printStream != NULL)
+	{
+		(*env)->DeleteLocalRef(env, printStream);
+	}
+	if(error != NULL)
+	{
+		free(error);
+	}
+	if(stack_trace != NULL)
+	{
+		free(stack_trace);
+	}
+
+	return ERROR_UNKNOWN;
 }

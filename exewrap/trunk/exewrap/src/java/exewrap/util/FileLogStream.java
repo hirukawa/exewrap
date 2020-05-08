@@ -6,6 +6,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.io.UnsupportedEncodingException;
 
 public class FileLogStream extends OutputStream {
 	static {
@@ -13,8 +14,19 @@ public class FileLogStream extends OutputStream {
 		String name = System.getProperty("java.application.name");
 		name = name.substring(0, name.lastIndexOf('.')) + ".log";
 		FileLogStream stream = new FileLogStream(path, name);
-		System.setOut(new PrintStream(stream));
-		System.setErr(new PrintStream(stream));
+		String encoding = System.getProperty("exewrap.log.encoding");
+		if(encoding != null) {
+			try {
+				System.setOut(new PrintStream(stream, true, encoding));
+				System.setErr(new PrintStream(stream, true, encoding));
+			} catch(UnsupportedEncodingException e) {
+				encoding = null;
+			}
+		}
+		if(encoding == null) {
+			System.setOut(new PrintStream(stream, true));
+			System.setErr(new PrintStream(stream, true));
+		}
 	}
 
 	private String path;

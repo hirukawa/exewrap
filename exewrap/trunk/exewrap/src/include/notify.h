@@ -1,3 +1,5 @@
+/* このファイルの文字コードは Shift_JIS (MS932) です。*/
+
 #ifndef _NOTIFY_H_
 #define _NOTIFY_H_
 
@@ -5,11 +7,14 @@
 extern "C" {
 #endif
 
-extern HANDLE NotifyExec(DWORD (WINAPI *start_address)(void*), int argc, char* argv[]);
-extern void   NotifyClose();
+
+extern HANDLE notify_exec(UINT (WINAPI *start_address)(void*), int argc, const wchar_t* argv[]);
+extern void   notify_close(void);
+
 
 #ifdef __cplusplus
 }
 #endif
+
 
 #endif

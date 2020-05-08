@@ -1,4 +1,4 @@
-#define _CRT_SECURE_NO_WARNINGS
+/* このファイルの文字コードは Shift_JIS (MS932) です。*/
 
 #if defined _M_IX86
 #pragma comment(linker,"/manifestdependency:\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='x86' publicKeyToken='6595b64144ccf1df' language='*'\"")
@@ -21,11 +21,16 @@
 #include "include/notify.h"
 #include "include/message.h"
 
-void OutputMessage(const char* text);
-UINT UncaughtException(JNIEnv* env, const char* thread, const jthrowable throwable);
+#define BUFFER_SIZE   32768
+#define MAX_LONG_PATH 32768
+#define ERROR_UNKNOWN ((DWORD)STG_E_UNKNOWN)
 
-static char** get_args(int* argc);
-static char*  _w2a(LPCWSTR s);
+DWORD uncaught_exception(JNIEnv* env, jobject thread, jthrowable throwable);
+
+static void     cleanup(void);
+static void     exit_process(DWORD last_error, const wchar_t* append);
+static void     show_error_message_box(const wchar_t* message);
+static wchar_t* get_error_message(DWORD last_error);
 
 typedef void(*SplashInit_t)(void);
 typedef int(*SplashLoadMemory_t)(void* pdata, int size);
@@ -35,68 +40,124 @@ HMODULE            splashscreendll;
 static HANDLE      hConOut = NULL;
 
 
-INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine, INT nCmdShow)
+
+INT WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, wchar_t* lpCmdLine, int nCmdShow)
 {
-	int         argc;
-	char**      argv;
+	int         argc = __argc;
+	wchar_t**   argv = __wargv;
 	SYSTEMTIME  startup;
-	int         err;
-	char*       relative_classpath;
-	char*       relative_extdirs;
+	int         error;
+	wchar_t*    relative_classpath = NULL;
+	wchar_t*    relative_extdirs   = NULL;
+	wchar_t*    ext_flags          = NULL;
+	wchar_t*    vm_args_opt        = NULL;
+	wchar_t*    utilities           = NULL;
 	BOOL        use_server_vm;
 	BOOL        use_side_by_side_jre;
+	BOOL        is_security_manager_required = FALSE;
 	HANDLE      synchronize_mutex_handle = NULL;
-	char*       ext_flags;
-	BYTE*       splash_screen_image = NULL;
-	char*       splash_screen_name = NULL;
-	char*       vm_args_opt = NULL;
-	char        utilities[128];
 	RESOURCE    res;
 	LOAD_RESULT result;
 
+	UNREFERENCED_PARAMETER(hInstance);
+	UNREFERENCED_PARAMETER(hPrevInstance);
+	UNREFERENCED_PARAMETER(lpCmdLine);
+	UNREFERENCED_PARAMETER(nCmdShow);
+
 	GetSystemTime(&startup);
 
+	utilities = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
+	if(utilities == NULL)
+	{
+		exit_process(ERROR_NOT_ENOUGH_MEMORY, L"malloc");
+	}
 	utilities[0] = '\0';
 
-	argv = get_args(&argc);
-	result.msg = malloc(2048);
-
-	relative_classpath = (char*)GetResource("CLASS_PATH", NULL);
-	relative_extdirs = (char*)GetResource("EXTDIRS", NULL);
-	ext_flags = (char*)GetResource("EXTFLAGS", NULL);
-	use_server_vm = (ext_flags != NULL && strstr(ext_flags, "SERVER") != NULL);
-	use_side_by_side_jre = (ext_flags == NULL) || (strstr(ext_flags, "NOSIDEBYSIDE") == NULL);
-	InitializePath(relative_classpath, relative_extdirs, use_server_vm, use_side_by_side_jre, &startup);
-
-	if (ext_flags != NULL && strstr(ext_flags, "SHARE") != NULL)
+	result.msg = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
+	if(result.msg == NULL)
 	{
-		synchronize_mutex_handle = NotifyExec(RemoteCallMainMethod, argc, argv);
-		if (synchronize_mutex_handle == NULL)
+		exit_process(ERROR_NOT_ENOUGH_MEMORY, L"malloc");
+	}
+
+	relative_classpath = from_utf8((char*)get_resource(L"CLASS_PATH", NULL));
+	relative_extdirs = from_utf8((char*)get_resource(L"EXTDIRS", NULL));
+	ext_flags = from_utf8((char*)get_resource(L"EXTFLAGS", NULL));
+	use_server_vm = (ext_flags != NULL && wcsstr(ext_flags, L"SERVER") != NULL);
+	use_side_by_side_jre = (ext_flags == NULL) || (wcsstr(ext_flags, L"NOSIDEBYSIDE") == NULL);
+	initialize_path(relative_classpath, relative_extdirs, use_server_vm, use_side_by_side_jre);
+
+	if(relative_classpath != NULL)
+	{
+		free(relative_classpath);
+		relative_classpath = NULL;
+	}
+	if(relative_extdirs != NULL)
+	{
+		free(relative_extdirs);
+		relative_extdirs = NULL;
+	}
+
+	if(ext_flags != NULL)
+	{
+		if(wcsstr(ext_flags, L"SHARE") != NULL)
 		{
-			result.msg_id = 0;
-			goto EXIT;
+			synchronize_mutex_handle = notify_exec(remote_call_main_method, argc, argv);
+			if(synchronize_mutex_handle == NULL)
+			{
+				result.msg_id = NO_ERROR;
+				goto EXIT;
+			}
+		}
+		if(wcsstr(ext_flags, L"SINGLE") != NULL)
+		{
+			if(CreateMutex(NULL, TRUE, get_module_object_name(L"SINGLE")), GetLastError() == ERROR_ALREADY_EXISTS)
+			{
+				result.msg_id = ERROR_BUSY;
+				goto EXIT;
+			}
 		}
 	}
-	if (ext_flags != NULL && strstr(ext_flags, "SINGLE") != NULL)
+	if(ext_flags == NULL || wcsstr(ext_flags, L"NOENCODINGFIX") == NULL)
 	{
-		if (CreateMutex(NULL, TRUE, GetModuleObjectName("SINGLE")), GetLastError() == ERROR_ALREADY_EXISTS)
-		{
-			result.msg_id = 0;
-			goto EXIT;
-		}
+		wcscat_s(utilities, BUFFER_SIZE, UTIL_ENCODING_FIX);
 	}
+	if(ext_flags == NULL || wcsstr(ext_flags, L"IGNORE_UNCAUGHT_EXCEPTION") == NULL)
+	{
+		wcscat_s(utilities, BUFFER_SIZE, UTIL_UNCAUGHT_EXCEPTION_HANDLER);
+	}
+	if(ext_flags == NULL || wcsstr(ext_flags, L"NOLOG") == NULL)
+	{
+		wcscat_s(utilities, BUFFER_SIZE, UTIL_FILE_LOG_STREAM);
+	}
+	if(ext_flags != NULL)
+	{
+		free(ext_flags);
+		ext_flags = NULL;
+	}
+	//コンソールアプリケーションではイベントログ出力を有効化しません。
+	//イベントログの出力にはレジストリにメッセージファイルを登録する必要があるためです。
+	//wcscat_s(utilities, BUFFER_SIZE, UTIL_EVENT_LOG_HANDLER);
 
 	// Display Splash Screen
-	if (GetResource("SPLASH_SCREEN_IMAGE", &res) != NULL)
+	if(get_resource(L"SPLASH_SCREEN_IMAGE", &res) != NULL)
 	{
-		splashscreendll = LoadLibraryEx("splashscreen.dll", NULL, 0x00001000); // LOAD_LIBRARY_SEARCH_DEFAULT_DIRS (0x00001000)
-		if (splashscreendll != NULL)
+		if(is_add_dll_directory_supported)
+		{
+			splashscreendll = LoadLibraryEx(L"splashscreen.dll", NULL, 0x00001000); // LOAD_LIBRARY_SEARCH_DEFAULT_DIRS (0x00001000)
+		}
+		else
+		{
+			// Windows XP以前はAddDllDirectory関数がなくDLL参照ディレクトリを細かく制御することができません。
+			// Windows XP以前ではPATH環境変数からもDLLを参照できるように従来のライブラリ参照方法を使用します。
+			splashscreendll = LoadLibrary(L"splashscreen.dll");
+		}
+		if(splashscreendll != NULL)
 		{
 			SplashInit = (SplashInit_t)GetProcAddress(splashscreendll, "SplashInit");
-			if (SplashInit != NULL)
+			if(SplashInit != NULL)
 			{
 				SplashLoadMemory = (SplashLoadMemory_t)GetProcAddress(splashscreendll, "SplashLoadMemory");
-				if (SplashLoadMemory != NULL)
+				if(SplashLoadMemory != NULL)
 				{
 					SplashInit();
 					SplashLoadMemory(res.buf, res.len);
@@ -105,305 +166,344 @@ INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine,
 		}
 	}
 
-	if (vm_args_opt == NULL)
+	vm_args_opt = from_utf8((char*)get_resource(L"VMARGS", NULL));
+	create_java_vm(vm_args_opt, use_server_vm, use_side_by_side_jre, &is_security_manager_required, &error);
+	if(error != JNI_OK)
 	{
-		vm_args_opt = (char*)GetResource("VMARGS", NULL);
-	}
-	CreateJavaVM(vm_args_opt, "Loader", use_server_vm, use_side_by_side_jre, &startup, &err);
-	if (err != JNI_OK)
-	{
-		OutputMessage(GetJniErrorMessage(err, &result.msg_id, result.msg));
-		goto EXIT;
+		get_jni_error_message(error, &result.msg_id, result.msg, BUFFER_SIZE);
+		show_error_message_box(result.msg);
+		ExitProcess(ERROR_UNKNOWN);
 	}
 
-	if(GetResource("TARGET_VERSION", &res) != NULL)
+	if(vm_args_opt != NULL)
 	{
-		DWORD  version = GetJavaRuntimeVersion();
-		DWORD  targetVersion = *(DWORD*)res.buf;
-		if (targetVersion > version)
+		free(vm_args_opt);
+		vm_args_opt = NULL;
+	}
+
+	set_application_properties(&startup);
+
+	if(get_resource(L"TARGET_VERSION", &res) != NULL)
+	{
+		wchar_t* target_version = from_utf8((char*)res.buf);
+		DWORD target_major     = 0;
+		DWORD target_minor     = 0;
+		DWORD target_build     = 0;
+		DWORD target_revision  = 0;
+		DWORD runtime_major    = 0;
+		DWORD runtime_minor    = 0;
+		DWORD runtime_build    = 0;
+		DWORD runtime_revision = 0;
+		BOOL  version_error    = FALSE;
+
+		get_java_runtime_version(target_version, &target_major, &target_minor, &target_build, &target_revision);
+		get_java_runtime_version(NULL, &runtime_major, &runtime_minor, &runtime_build, &runtime_revision);
+
+		if(runtime_major < target_major)
 		{
-			char* targetVersionString = (char*)res.buf + 4;
+			version_error = TRUE;
+		}
+		else if(runtime_major == target_major)
+		{
+			if(runtime_minor < target_minor)
+			{
+				version_error = TRUE;
+			}
+			else if(runtime_minor == target_minor)
+			{
+				if(runtime_build < target_build)
+				{
+					version_error = TRUE;
+				}
+				else if(runtime_build == target_build)
+				{
+					if(runtime_revision < target_revision)
+					{
+						version_error = TRUE;
+					}
+				}
+			}
+		}
+
+		if(version_error == TRUE)
+		{
+			wchar_t* target_version_string;
+
+			target_version_string = get_java_version_string(target_major, target_minor, target_build, target_revision);
 			result.msg_id = MSG_ID_ERR_TARGET_VERSION;
-			sprintf(result.msg, _(MSG_ID_ERR_TARGET_VERSION), targetVersionString);
-			OutputMessage(result.msg);
-			goto EXIT;
+			swprintf_s(result.msg, BUFFER_SIZE, _(MSG_ID_ERR_TARGET_VERSION), target_version_string);
+			show_error_message_box(result.msg);
+			ExitProcess(ERROR_BAD_ENVIRONMENT);
+		}
+		free(target_version);
+	}
+
+	if(load_main_class(argc, argv, utilities, &result) == FALSE)
+	{
+		show_error_message_box(result.msg);
+		ExitProcess(ERROR_INVALID_DATA);
+	}
+
+	if(get_resource(L"SPLASH_SCREEN_IMAGE", &res) != NULL)
+	{
+		BYTE*    splash_screen_image_buf = res.buf;
+		DWORD    splash_screen_image_len = res.len;
+		wchar_t* splash_screen_name = from_utf8((char*)get_resource(L"SPLASH_SCREEN_NAME", NULL));
+
+		// exewrapで実行ファイルを作成時にマニフェストファイルのSplash-Image:に指定されたファイルは
+		// 実行ファイルのリソース SPLASH_SCREEN_NAME と SPLASH_SCREEN_IMAGE に配置され、
+		// 内包されるJARからは取り除かれています。(実行ファイルのサイズが大きくなってしまうのを避けるためです。)
+		// 実行ファイルの起動時にリソース SPLASH_SCREEN_NAME と SPLASH_SCREEN_IMAGE を Loader の resources に登録することでJavaコードからもリソースを参照できるようにます。
+		// (JARから取り除かれたスプラッシュスクリーンのリソースがちゃんと参照できます。)
+		set_splash_screen_resource(splash_screen_name, splash_screen_image_buf, splash_screen_image_len);
+
+		if(splash_screen_name != NULL)
+		{
+			free(splash_screen_name);
 		}
 	}
 
-	if (ext_flags == NULL || strstr(ext_flags, "IGNORE_UNCAUGHT_EXCEPTION") == NULL)
-	{
-		strcat(utilities, UTIL_UNCAUGHT_EXCEPTION_HANDLER);
-	}
-	if (ext_flags == NULL || strstr(ext_flags, "NOLOG") == NULL)
-	{
-		strcat(utilities, UTIL_FILE_LOG_STREAM);
-	}
-	if(LoadMainClass(argc, argv, utilities, &result) == FALSE)
-	{
-		OutputMessage(result.msg);
-		goto EXIT;
-	}
-
-	if (GetResource("SPLASH_SCREEN_IMAGE", &res) != NULL)
-	{
-		BYTE* splash_screen_image_buf = res.buf;
-		DWORD splash_screen_image_len = res.len;
-		char* splash_screen_name = GetResource("SPLASH_SCREEN_NAME", NULL);
-
-		SetSplashScreenResource(splash_screen_name, splash_screen_image_buf, splash_screen_image_len);
-	}
-
-	if (synchronize_mutex_handle != NULL)
+	if(synchronize_mutex_handle != NULL)
 	{
 		ReleaseMutex(synchronize_mutex_handle);
 		CloseHandle(synchronize_mutex_handle);
 		synchronize_mutex_handle = NULL;
 	}
+
+	if(is_security_manager_required)
+	{
+		wchar_t* msg = install_security_manager(env);
+		if(msg != NULL)
+		{
+			show_error_message_box(msg);
+			ExitProcess(ERROR_UNKNOWN);
+		}
+	}
+
+	if((*env)->ExceptionCheck(env) == JNI_TRUE)
+	{
+		(*env)->ExceptionClear(env);
+	}
 	(*env)->CallStaticVoidMethod(env, result.MainClass, result.MainClass_main, result.MainClass_main_args);
 
-	if ((*env)->ExceptionCheck(env) == JNI_TRUE)
+	if((*env)->ExceptionCheck(env) == JNI_TRUE)
 	{
 		jthrowable throwable = (*env)->ExceptionOccurred(env);
-		if (throwable != NULL)
+		if(throwable != NULL)
 		{
-			UncaughtException(env, "main", throwable);
+			uncaught_exception(env, NULL, throwable);
 			(*env)->DeleteLocalRef(env, throwable);
 		}
 		(*env)->ExceptionClear(env);
 	}
 
 EXIT:
-	if (synchronize_mutex_handle != NULL)
+	if(synchronize_mutex_handle != NULL)
 	{
 		ReleaseMutex(synchronize_mutex_handle);
 		CloseHandle(synchronize_mutex_handle);
 	}
-	if (result.msg != NULL)
+	if(result.msg != NULL)
 	{
 		free(result.msg);
 	}
-	if (env != NULL)
+	if(env != NULL)
 	{
-		DetachJavaVM();
+		detach_java_vm();
 	}
-	if (jvm != NULL)
+	if(jvm != NULL)
 	{
-		DestroyJavaVM();
+		destroy_java_vm();
 	}
 
-	NotifyClose();
+	notify_close();
 
 	return result.msg_id;
 }
 
-void OutputMessage(const char* text)
+static void cleanup()
 {
-	char  buffer[MAX_PATH];
-	char* filename;
-
-	if (text == NULL)
-	{
-		return;
-	}
-
-	GetModuleFileName(NULL, buffer, MAX_PATH);
-	filename = strrchr(buffer, '\\') + 1;
-
-	MessageBox(NULL, text, filename, MB_ICONEXCLAMATION | MB_APPLMODAL | MB_OK | MB_SETFOREGROUND);
 }
 
-UINT UncaughtException(JNIEnv* env, const char* thread, const jthrowable throwable)
+static void exit_process(DWORD last_error, const wchar_t* append)
 {
-	jclass    System                    = NULL;
-	jfieldID  System_err                = NULL;
-	jobject   printStream               = NULL;
-	jclass    PrintStream               = NULL;
-	jmethodID printStream_print         = NULL;
-	jmethodID printStream_flush         = NULL;
-	jclass    Throwable                 = NULL;
-	jmethodID throwable_printStackTrace = NULL;
-	jmethodID throwable_getMessage      = NULL;
-	jstring   leading                   = NULL;
-	jstring   message                   = NULL;
-	char*     buf                       = NULL;
-	char*     sjis                      = NULL;
+	wchar_t* message;
 
-	if(thread == NULL || throwable == NULL)
+	message = (wchar_t*)calloc(BUFFER_SIZE, sizeof(wchar_t));
+	if(message != NULL)
+	{
+		wchar_t* s = get_error_message(last_error);
+		if(s != NULL)
+		{
+			wcscpy_s(message, BUFFER_SIZE, s);
+			if(append != NULL)
+			{
+				wcscat_s(message, BUFFER_SIZE, L" (");
+				wcscat_s(message, BUFFER_SIZE, append);
+				wcscat_s(message, BUFFER_SIZE, L")");
+			}
+			free(s);
+		}
+		else if(append != NULL)
+		{
+			wcscpy_s(message, BUFFER_SIZE, append);
+		}
+		
+		if(wcslen(message) > 0)
+		{
+			show_error_message_box(message);
+		}
+		free(message);
+	}
+
+	cleanup();
+	ExitProcess(last_error);
+}
+
+static void show_error_message_box(const wchar_t* message)
+{
+	wchar_t* buffer;
+	wchar_t* filename = NULL;
+
+	buffer = (wchar_t*)malloc(MAX_LONG_PATH * sizeof(wchar_t));
+	if(buffer != NULL)
+	{
+		GetModuleFileName(NULL, buffer, MAX_LONG_PATH);
+		filename = wcsrchr(buffer, L'\\') + 1;
+	}
+
+	MessageBox(NULL, message, filename, MB_ICONEXCLAMATION | MB_APPLMODAL | MB_OK | MB_SETFOREGROUND);
+
+	if(buffer != NULL)
+	{
+		free(buffer);
+	}
+}
+
+/* image_gui は wcout をリンクしないので get_error_message をここで実装しています。
+ *
+ */
+static wchar_t* get_error_message(DWORD last_error)
+{
+	DWORD    len;
+	wchar_t* buf = NULL;
+	wchar_t* message = NULL;
+
+	if(last_error == 0)
+	{
+		return NULL;
+	}
+
+	len = FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+			NULL, last_error, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (wchar_t*)&buf, 0, NULL);
+
+	if(len > 0)
+	{
+		while(buf[len - 1] == L'\r' || buf[len - 1] == L'\n')
+		{
+			buf[--len] = L'\0';
+		}
+		message = (wchar_t*)malloc((len + 1) * sizeof(wchar_t));
+		wcscpy_s(message, len + 1, buf);
+	}
+	LocalFree(buf);
+
+	return message;
+}
+
+
+DWORD uncaught_exception(JNIEnv* env, jobject thread, jthrowable throwable)
+{
+	wchar_t*  stack_trace       = NULL;
+	wchar_t*  error             = NULL;
+	jclass    System            = NULL;
+	jfieldID  System_err        = NULL;
+	jobject   printStream       = NULL;
+	jclass    PrintStream       = NULL;
+	jmethodID printStream_print = NULL;
+	jmethodID printStream_flush = NULL;
+	jstring   jstr              = NULL;
+
+	stack_trace = get_stack_trace(env, thread, throwable);
+	if(stack_trace == NULL)
 	{
 		goto EXIT;
 	}
 
-	buf = malloc(65536);
-	if(buf == NULL)
+	error = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
+	if(error == NULL)
 	{
 		goto EXIT;
 	}
-	
+	error[0] = L'\0';
+
 	System = (*env)->FindClass(env, "java/lang/System");
 	if(System == NULL)
 	{
-		sprintf(buf, _(MSG_ID_ERR_FIND_CLASS), "java.lang.System");
-		OutputMessage(buf);
+		swprintf_s(error, BUFFER_SIZE, _(MSG_ID_ERR_FIND_CLASS), L"java.lang.System");
 		goto EXIT;
 	}
 	System_err = (*env)->GetStaticFieldID(env, System, "err", "Ljava/io/PrintStream;");
 	if(System_err == NULL)
 	{
-		sprintf(buf, _(MSG_ID_ERR_GET_FIELD), "java.lang.System.err");
-		OutputMessage(buf);
+		swprintf_s(error, BUFFER_SIZE, _(MSG_ID_ERR_GET_FIELD), "java.lang.System.err");
 		goto EXIT;
 	}
 	printStream = (*env)->GetStaticObjectField(env, System, System_err);
 	if(printStream == NULL)
 	{
-		sprintf(buf, _(MSG_ID_ERR_GET_FIELD), "java.lang.System.err");
-		OutputMessage(buf);
+		swprintf_s(error, BUFFER_SIZE, _(MSG_ID_ERR_GET_FIELD), "java.lang.System.err");
 		goto EXIT;
 	}
 	PrintStream = (*env)->FindClass(env, "java/io/PrintStream");
 	if(PrintStream == NULL)
 	{
-		sprintf(buf, _(MSG_ID_ERR_FIND_CLASS), "java.io.PrintStream");
-		OutputMessage(buf);
+		swprintf_s(error, BUFFER_SIZE, _(MSG_ID_ERR_FIND_CLASS), "java.io.PrintStream");
 		goto EXIT;
 	}
 	printStream_print = (*env)->GetMethodID(env, PrintStream, "print", "(Ljava/lang/String;)V");
 	if(printStream_print == NULL)
 	{
-		sprintf(buf, _(MSG_ID_ERR_GET_METHOD), "java.io.PrintStream.print(String)");
-		OutputMessage(buf);
+		swprintf_s(error, BUFFER_SIZE, _(MSG_ID_ERR_GET_METHOD), "java.io.PrintStream.print(java.lang.String)");
 		goto EXIT;
 	}
 	printStream_flush = (*env)->GetMethodID(env, PrintStream, "flush", "()V");
 	if(printStream_flush == NULL)
 	{
-		sprintf(buf, _(MSG_ID_ERR_GET_METHOD), "java.io.PrintStream.flush()");
-		OutputMessage(buf);
-		goto EXIT;
-	}
-	Throwable = (*env)->FindClass(env, "java/lang/Throwable");
-	if(Throwable == NULL)
-	{
-		sprintf(buf, _(MSG_ID_ERR_FIND_CLASS), "java.lang.Throwable");
-		OutputMessage(buf);
-		goto EXIT;
-	}
-	throwable_printStackTrace = (*env)->GetMethodID(env, Throwable, "printStackTrace", "()V");
-	if(throwable_printStackTrace == NULL)
-	{
-		sprintf(buf, _(MSG_ID_ERR_GET_METHOD), "java.lang.Throwable.printStackTrace()");
-		OutputMessage(buf);
-		goto EXIT;
-	}
-	throwable_getMessage = (*env)->GetMethodID(env, Throwable, "getMessage", "()Ljava/lang/String;");
-	if(throwable_getMessage == NULL)
-	{
-		sprintf(buf, _(MSG_ID_ERR_GET_METHOD), "java.lang.Throwable.getMessage()");
-		OutputMessage(buf);
+		swprintf_s(error, BUFFER_SIZE, _(MSG_ID_ERR_GET_METHOD), "java.io.PrintStream.flush()");
 		goto EXIT;
 	}
 
-	strcpy(buf, "Exception in thread \"");
-	strcat(buf, thread);
-	strcat(buf, "\" ");
-	leading = GetJString(env, buf);
+	jstr = to_jstring(env, stack_trace);
+	(*env)->CallVoidMethod(env, printStream, printStream_print, jstr);
+	(*env)->CallVoidMethod(env, printStream, printStream_flush);
 
-	(*env)->CallObjectMethod(env, printStream, printStream_print, leading);
-	(*env)->CallObjectMethod(env, throwable, throwable_printStackTrace);
-	(*env)->CallObjectMethod(env, printStream, printStream_flush);
-	
-	message = (*env)->CallObjectMethod(env, throwable, throwable_getMessage);
-	if(message != NULL)
-	{
-		sjis = GetShiftJIS(env, message);
-	}
-	sprintf(buf, "Exception in thread \"%s\"\r\n%s", thread, (sjis != NULL) ? sjis : "");
-	OutputMessage(buf);
-	
+	error[0] = L'\0';
+
 EXIT:
-	if(sjis != NULL)
+	if(error != NULL && wcslen(error) > 0)
 	{
-		HeapFree(GetProcessHeap(), 0, sjis);
-		sjis = NULL;
+		// 通常、GUIアプリケーションでは補足されない例外をSystem.errに出力します。
+		// System.errに出力された内容はログファイルに書き込まれます。
+		// ただし、この関数内のJNI処理でエラーが発生しSystem.errに出力できない場合はエラーメッセージをダイアログで表示します。
+		show_error_message_box(error);
 	}
-	if(message != NULL)
+	if(jstr != NULL)
 	{
-		(*env)->DeleteLocalRef(env, message);
-		message = NULL;
-	}
-	if(buf != NULL)
-	{
-		free(buf);
-		buf = NULL;
-	}
-	if(leading != NULL)
-	{
-		(*env)->DeleteLocalRef(env, leading);
-		leading = NULL;
-	}
-	if(Throwable != NULL)
-	{
-		(*env)->DeleteLocalRef(env, Throwable);
-		Throwable = NULL;
-	}
-	if(PrintStream != NULL)
-	{
-		(*env)->DeleteLocalRef(env, PrintStream);
-		PrintStream = NULL;
+		(*env)->DeleteLocalRef(env, jstr);
 	}
 	if(printStream != NULL)
 	{
 		(*env)->DeleteLocalRef(env, printStream);
-		printStream = NULL;
 	}
-	if(System != NULL)
+	if(error != NULL)
 	{
-		(*env)->DeleteLocalRef(env, System);
-		System = NULL;
+		free(error);
 	}
-
-	return MSG_ID_ERR_UNCAUGHT_EXCEPTION;
-}
-
-static char** get_args(int* argc)
-{
-	LPWSTR  lpCmdLineW;
-	LPWSTR* argvW;
-	LPSTR*  argvA;
-	int     i;
-	int     ret = 0;
-
-	lpCmdLineW = GetCommandLineW();
-	argvW = CommandLineToArgvW(lpCmdLineW, argc);
-	argvA = (LPSTR*)HeapAlloc(GetProcessHeap(), 0, (*argc + 1) * sizeof(LPSTR));
-	for (i = 0; i < *argc; i++)
+	if(stack_trace != NULL)
 	{
-		argvA[i] = _w2a(argvW[i]);
+		free(stack_trace);
 	}
-	argvA[*argc] = NULL;
 
-	return argvA;
-}
-
-
-static char* _w2a(LPCWSTR s)
-{
-	char* buf;
-	int ret;
-
-	ret = WideCharToMultiByte(CP_ACP, 0, s, -1, NULL, 0, NULL, NULL);
-	if (ret <= 0)
-	{
-		return NULL;
-	}
-	buf = (LPSTR)HeapAlloc(GetProcessHeap(), 0, ret + 1);
-	ret = WideCharToMultiByte(CP_ACP, 0, s, -1, buf, (ret + 1), NULL, NULL);
-	if (ret == 0)
-	{
-		HeapFree(GetProcessHeap(), 0, buf);
-		return NULL;
-	}
-	buf[ret] = '\0';
-
-	return buf;
+	return ERROR_UNKNOWN;
 }

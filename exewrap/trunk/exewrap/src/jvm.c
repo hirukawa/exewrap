@@ -1,40 +1,44 @@
-#define _CRT_SECURE_NO_WARNINGS
+/* このファイルの文字コードは Shift_JIS (MS932) です。*/
 
 #include <windows.h>
-#include <shlwapi.h>
 #include <stdio.h>
 #include <shlobj.h>
 #include <jni.h>
+#include <locale.h>
 
-#include "include/jvm.h"
+#define JVM_ELOADLIB  (+1)
+#define BUFFER_SIZE   32768
+#define MAX_LONG_PATH 32768
 
-void    InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useServerVM, BOOL useSideBySideJRE, SYSTEMTIME* startup);
-int     GetProcessArchitecture();
-int     GetPlatformArchitecture();
-JNIEnv* CreateJavaVM(LPTSTR vm_args_opt, LPTSTR systemClassLoader, BOOL useServerVM, BOOL useSideBySideJRE, SYSTEMTIME* startup, int* err);
-void    DestroyJavaVM();
-JNIEnv* AttachJavaVM();
-void    DetachJavaVM();
-DWORD   GetJavaRuntimeVersion();
-jstring GetJString(JNIEnv* _env, const char* src);
-LPSTR   GetShiftJIS(JNIEnv* _env, jstring src);
-BOOL    FindJavaVM(char* output, const char* jre, BOOL useServerVM);
-LPTSTR  FindJavaHomeFromRegistry(LPCTSTR _subkey, char* output);
-void    AddPath(LPCTSTR path);
-void    AddDllDir(LPCTSTR path);
-LPTSTR  GetModulePath(LPTSTR buffer, DWORD size);
-LPTSTR  GetModuleVersion(LPTSTR buffer);
-BOOL    IsDirectory(LPTSTR path);
-char*   GetSubDirs(char* dir);
-char*   AddSubDirs(char* buf, char* dir, int* size);
-char*   GetJars(char* dir);
-char*   AddJars(char* buf, char* dir, int* size);
-char**  GetArgsOpt(char* vm_args_opt, int* argc);
-int     GetArchitectureBits(const char* jvmpath);
-static  LPWSTR A2W(LPCSTR s);
-static  LPSTR W2A(LPCWSTR s);
-static  char* get_line(FILE* fp);
-static  char* urldecode(char *dst, const char *src);
+int      get_process_architecture(void);
+int      get_platform_architecture(void);
+BOOL     initialize_path(const wchar_t* relative_classpath, const wchar_t* relative_extdirs, BOOL use_server_vm, BOOL use_side_by_side_jre);
+JNIEnv*  create_java_vm(const wchar_t* vm_args_opt, BOOL use_server_vm, BOOL use_side_by_side_jre, BOOL* is_security_manager_required, int* error);
+jint     destroy_java_vm(void);
+JNIEnv*  attach_java_vm(void);
+jint     detach_java_vm(void);
+BOOL     set_application_properties(SYSTEMTIME* startup);
+void     get_java_runtime_version(const wchar_t* version_string, DWORD* major, DWORD* minor, DWORD* build, DWORD* revision);
+wchar_t* get_java_version_string(DWORD major, DWORD minor, DWORD build, DWORD revision);
+wchar_t* get_module_version(wchar_t* buf, size_t size);
+
+char*    to_platform_encoding(const wchar_t* str);
+char*    to_utf8(const wchar_t* str);
+wchar_t* from_utf8(const char* utf8);
+jstring  to_jstring(JNIEnv* env, const wchar_t* str);
+wchar_t* from_jstring(JNIEnv* env, jstring jstr);
+
+static BOOL     find_java_vm(wchar_t* output, const wchar_t* jre, BOOL useServerVM);
+static wchar_t* find_java_home_from_registry(const wchar_t* _subkey, wchar_t* output);
+static BOOL     add_path_env(const wchar_t* path);
+static void     add_dll_directory(const wchar_t* path);
+static BOOL     is_directory(const wchar_t* path);
+static wchar_t* get_sub_dirs(const wchar_t* dir);
+static BOOL     add_sub_dirs(wchar_t* buf, size_t buf_size, const wchar_t* dir, size_t* size);
+static wchar_t* get_jars(const wchar_t* dir);
+static BOOL     add_jars(wchar_t* buf, size_t buf_size, const wchar_t* dir, size_t* size);
+static int      get_java_vm_bits(const wchar_t* jvmpath);
+static wchar_t* urldecode(wchar_t *dst, size_t dst_size, const wchar_t *src);
 
 typedef PVOID (WINAPI* Kernel32_AddDllDirectory)(PCWSTR);
 typedef jint (WINAPI* JNIGetDefaultJavaVMInitArgs)(JavaVMInitArgs*);
@@ -42,48 +46,46 @@ typedef jint (WINAPI* JNICreateJavaVM)(JavaVM**, void**, JavaVMInitArgs*);
 
 JavaVM* jvm = NULL;
 JNIEnv* env = NULL;
-DWORD   javaRuntimeVersion = 0xFFFFFFFF;
+BOOL    is_add_dll_directory_supported = FALSE;
+BOOL    is_security_manager_required   = FALSE;
 
-char    opt_system_class_loader[512];
-char    opt_app_path[MAX_PATH + 32];
-char    opt_app_name[MAX_PATH + 32];
-char    opt_app_version[64];
-char    opt_app_startup[64];
-char    opt_policy_path[MAX_PATH + 32];
-BOOL    path_initialized = FALSE;
-char    binpath[MAX_PATH];
-char    jvmpath[MAX_PATH];
-char*   classpath = NULL;
-char*   libpath = NULL;
-HMODULE jvmdll = NULL;
-HMODULE kernel32 = NULL;
-Kernel32_AddDllDirectory addDllDirectory = NULL;
+static BOOL     path_initialized = FALSE;
+static wchar_t* binpath = NULL;
+static wchar_t* jvmpath = NULL;
+static wchar_t* classpath = NULL;
+static wchar_t* libpath = NULL;
+
+static HMODULE jvmdll = NULL;
+static HMODULE kernel32 = NULL;
+static Kernel32_AddDllDirectory _AddDllDirectory = NULL;
+
 
 /* このプロセスのアーキテクチャ(32ビット/64ビット)を返します。
-　* 64ビットOSで32ビットプロセスを実行している場合、この関数は32を返します。
+ * 64ビットOSで32ビットプロセスを実行している場合、この関数は32を返します。
  * 戻り値として32ビットなら 32 を返します。64ビットなら 64 を返します。
  */
-int GetProcessArchitecture()
+int get_process_architecture()
 {
 	return sizeof(int*) * 8;
 }
 
+
 /* OSのアーキテクチャ(32ビット/64ビット)を返します。
-　* 64ビットOSで32ビットプロセスを実行している場合、この関数は64を返します。
- *　戻り値として32ビットなら 32 を返します。64ビットなら 64 を返します。
+ * 64ビットOSで32ビットプロセスを実行している場合、この関数は64を返します。
+ * 戻り値として32ビットなら 32 を返します。64ビットなら 64 を返します。
  */
-int GetPlatformArchitecture()
+int get_platform_architecture()
 {
-	char buf[256];
-	if(GetEnvironmentVariable("PROCESSOR_ARCHITECTURE", buf, 256))
+	wchar_t buf[256];
+	if(GetEnvironmentVariable(L"PROCESSOR_ARCHITECTURE", buf, 256))
 	{
-		if(strstr(buf, "64") != NULL)
+		if(wcsstr(buf, L"64") != NULL)
 		{
 			return 64;
 		}
-		else if(GetEnvironmentVariable("PROCESSOR_ARCHITEW6432", buf, 256))
+		else if(GetEnvironmentVariable(L"PROCESSOR_ARCHITEW6432", buf, 256))
 		{
-			if(strstr(buf, "64") != NULL)
+			if(wcsstr(buf, L"64") != NULL)
 			{
 				return 64;
 			}
@@ -92,444 +94,906 @@ int GetPlatformArchitecture()
 	return 32;
 }
 
-JNIEnv* CreateJavaVM(LPTSTR vm_args_opt, LPTSTR systemClassLoader, BOOL useServerVM, BOOL useSideBySideJRE, SYSTEMTIME* startup, int* err)
+
+JNIEnv* create_java_vm(const wchar_t* vm_args_opt, BOOL use_server_vm, BOOL use_side_by_side_jre, BOOL* is_security_manager_required, int* error)
 {
-	JNIGetDefaultJavaVMInitArgs getDefaultJavaVMInitArgs;
-	JNICreateJavaVM createJavaVM;
-	JavaVMOption options[64];
-	JavaVMInitArgs vm_args;
-	char** argv = NULL;
-	int argc;
-	int i;
-	int result;
-	char* vmoptions[256] = {0};
+	JNIGetDefaultJavaVMInitArgs GetDefaultJavaVMInitArgs;
+	JNICreateJavaVM             CreateJavaVM;
+	JavaVMOption                options[256];
+	JavaVMInitArgs              vm_args;
+	char*                       char_buf  = NULL;
+	wchar_t*                    wchar_buf = NULL;
+	int                         err       = 0;
 
-	if (!path_initialized)
-	{
-		InitializePath(NULL, "lib", useServerVM, useSideBySideJRE, startup);
-	}
-
-	jvmdll = LoadLibraryEx("jvm.dll", NULL, 0x00001000); // LOAD_LIBRARY_SEARCH_DEFAULT_DIRS (0x00001000)
-	if (jvmdll == NULL)
-	{
-		if(err != NULL)
-		{
-			*err = JVM_ELOADLIB;
-		}
-		env = NULL;
-		goto EXIT;
-	}
-	
-	getDefaultJavaVMInitArgs = (JNIGetDefaultJavaVMInitArgs)GetProcAddress(jvmdll, "JNI_GetDefaultJavaVMInitArgs");
-	createJavaVM = (JNICreateJavaVM)GetProcAddress(jvmdll, "JNI_CreateJavaVM");
-
-	options[0].optionString = opt_app_path;
-	options[1].optionString = opt_app_name;
-	options[2].optionString = opt_app_version;
-	options[3].optionString = opt_app_startup;
-	options[4].optionString = classpath;
-	options[5].optionString = libpath;
-	
 	vm_args.version = JNI_VERSION_1_2;
 	vm_args.options = options;
-	vm_args.nOptions = 6;
+	vm_args.nOptions = 0;
 	vm_args.ignoreUnrecognized = 1;
 
-	if(systemClassLoader != NULL)
+	if(!path_initialized)
 	{
-		lstrcpy(opt_system_class_loader, "-Djava.system.class.loader=");
-		lstrcat(opt_system_class_loader, systemClassLoader);
-		options[vm_args.nOptions++].optionString = opt_system_class_loader;
-		options[vm_args.nOptions++].optionString = (char*)"-XX:-UseSharedSpaces";
+		initialize_path(NULL, L"lib", use_server_vm, use_side_by_side_jre);
+	}
+
+	if(jvmdll == NULL)
+	{
+		if(_AddDllDirectory != NULL)
+		{
+			jvmdll = LoadLibraryEx(L"jvm.dll", NULL, 0x00001000); // LOAD_LIBRARY_SEARCH_DEFAULT_DIRS (0x00001000)
+		}
+		else
+		{
+			// Windows XP以前はAddDllDirectory関数がなくDLL参照ディレクトリを細かく制御することができません。
+			// Windows XP以前ではPATH環境変数からもDLLを参照できるように従来のライブラリ参照方法を使用します。
+			jvmdll = LoadLibrary(L"jvm.dll");
+		}
+		if(jvmdll == NULL)
+		{
+			err = JVM_ELOADLIB;
+			goto EXIT;
+		}
 	}
 	
-	if(opt_policy_path[0] != 0x00)
+	GetDefaultJavaVMInitArgs = (JNIGetDefaultJavaVMInitArgs)GetProcAddress(jvmdll, "JNI_GetDefaultJavaVMInitArgs");
+	CreateJavaVM = (JNICreateJavaVM)GetProcAddress(jvmdll, "JNI_CreateJavaVM");
+
+	char_buf = (char*)malloc(BUFFER_SIZE * 2);
+	if(char_buf == NULL)
 	{
-		options[vm_args.nOptions++].optionString = (char*)"-Djava.security.manager";
-		options[vm_args.nOptions++].optionString = opt_policy_path;
+		err = JNI_ENOMEM;
+		goto EXIT;
+	}
+	wchar_buf = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
+	if(wchar_buf == NULL)
+	{
+		err = JNI_ENOMEM;
+		goto EXIT;
+	}
+
+	if(classpath != NULL)
+	{
+		char*  str;
+		size_t len;
+
+		str = to_platform_encoding(classpath);
+		strcpy_s(char_buf, BUFFER_SIZE * 2, "-Djava.class.path=");
+		strcat_s(char_buf, BUFFER_SIZE * 2, str);
+		free(str);
+
+		len = strlen(char_buf);
+		str = (char*)malloc(len + 1);
+		if(str == NULL)
+		{
+			err = JNI_ENOMEM;
+			goto EXIT;
+		}
+		strcpy_s(str, len + 1, char_buf);
+		options[vm_args.nOptions++].optionString = str;
+	}
+
+	if(libpath != NULL)
+	{
+		char*  str;
+		size_t len;
+
+		str = to_platform_encoding(libpath);
+		strcpy_s(char_buf, BUFFER_SIZE * 2, "-Djava.library.path=");
+		strcat_s(char_buf, BUFFER_SIZE * 2, str);
+		free(str);
+
+		len = strlen(char_buf);
+		str = (char*)malloc(len + 1);
+		if(str == NULL)
+		{
+			err = JNI_ENOMEM;
+			goto EXIT;
+		}
+		strcpy_s(str, len + 1, char_buf);
+		options[vm_args.nOptions++].optionString = str;
+	}
+
+	if(strcpy_s(char_buf, BUFFER_SIZE * 2, "-Djava.system.class.loader=Loader") == 0)
+	{
+		char*  str;
+		size_t len;
+
+		len = strlen(char_buf);
+		str = (char*)malloc(len + 1);
+		if(str == NULL)
+		{
+			err = JNI_ENOMEM;
+			goto EXIT;
+		}
+		strcpy_s(str, len + 1, char_buf);
+		options[vm_args.nOptions++].optionString = str;
+	}
+
+	if(strcpy_s(char_buf, BUFFER_SIZE * 2, "-XX:-UseSharedSpaces") == 0)
+	{
+		char*  str;
+		size_t len;
+
+		len = strlen(char_buf);
+		str = (char*)malloc(len + 1);
+		if(str == NULL)
+		{
+			err = JNI_ENOMEM;
+			goto EXIT;
+		}
+		strcpy_s(str, len + 1, char_buf);
+		options[vm_args.nOptions++].optionString = str;
+	}
+
+	if(GetModuleFileName(NULL, wchar_buf, BUFFER_SIZE) != 0)
+	{
+		wchar_t* p = wcsrchr(wchar_buf, L'\\');
+		wchar_t* app_path = wchar_buf;
+		wchar_t* app_name = p + 1;
+		char*    str;
+		size_t   len;
+
+		*p = L'\0';
+
+		str = to_platform_encoding(app_path);
+		strcpy_s(char_buf, BUFFER_SIZE * 2, "-Djava.application.path=");
+		strcat_s(char_buf, BUFFER_SIZE * 2, str);
+		free(str);
+
+		len = strlen(char_buf);
+		str = (char*)malloc(len + 1);
+		if(str == NULL)
+		{
+			err = JNI_ENOMEM;
+			goto EXIT;
+		}
+		strcpy_s(str, len + 1, char_buf);
+		options[vm_args.nOptions++].optionString = str;
+
+		str = to_platform_encoding(app_name);
+		strcpy_s(char_buf, BUFFER_SIZE * 2, "-Djava.application.name=");
+		strcat_s(char_buf, BUFFER_SIZE * 2, str);
+		free(str);
+
+		len = strlen(char_buf);
+		str = (char*)malloc(len + 1);
+		if(str == NULL)
+		{
+			err = JNI_ENOMEM;
+			goto EXIT;
+		}
+		strcpy_s(str, len + 1, char_buf);
+		options[vm_args.nOptions++].optionString = str;
 	}
 	
-	argv = GetArgsOpt(vm_args_opt, &argc);
-	for (i = 0; i < argc; i++)
+	if(GetModuleFileName(NULL, wchar_buf, BUFFER_SIZE) != 0)
 	{
-		options[vm_args.nOptions++].optionString = argv[i];
+		wchar_t* policy_file = wchar_buf;
+		wchar_t* p;
+
+		if((p = wcsrchr(policy_file, L'.')) != NULL)
+		{
+			*p = L'\0';
+			wcscat_s(policy_file, BUFFER_SIZE, L".policy");
+			if(GetFileAttributes(policy_file) != INVALID_FILE_ATTRIBUTES)
+			{
+				char*  str;
+				size_t len;
+
+				// -Djava.security.manager でセキュリティマネージャーをインストールすると、
+				// CreateJavaVM 関数を呼び出したときに Loader クラスを見つけられなくなります。(ClassNotFoundException)
+				// この問題を回避するために -Djava.security.manager を指定せずにJavaVM作成後にコードによってセキュリティマネージャーをインストールします。
+				// is_security_manager_required はセキュリティマネージャーのインストールが必要であることを示すフラグです。
+				if(is_security_manager_required != NULL)
+				{
+					*is_security_manager_required = TRUE;
+				}
+
+				str = to_platform_encoding(policy_file);
+				strcpy_s(char_buf, BUFFER_SIZE * 2, "-Djava.security.policy=");
+				strcat_s(char_buf, BUFFER_SIZE * 2, str);
+				free(str);
+
+				len = strlen(char_buf);
+				str = (char*)malloc(len + 1);
+				if(str == NULL)
+				{
+					err = JNI_ENOMEM;
+					goto EXIT;
+				}
+				strcpy_s(str, len + 1, char_buf);
+				options[vm_args.nOptions++].optionString = str;
+			}
+		}
+	}
+	
+	if(vm_args_opt != NULL)
+	{
+		int       argc = 0;
+		wchar_t** argv = NULL;
+
+		argv = CommandLineToArgvW(vm_args_opt, &argc);
+		if(argv != NULL && argc > 0)
+		{
+			int i;
+			for(i = 0; i < argc; i++)
+			{
+				char* opt = to_platform_encoding(argv[i]);
+				options[vm_args.nOptions++].optionString = opt;
+			}
+		}
+		LocalFree(argv);
 	}
 	
 	//read .exe.vmoptions
 	//同じVM引数が複数回指定された場合は後優先になるので、.exe.vmoptionsを優先するために最後に追加します。
+	//.exe.vmoptions の文字コードはプラットフォームエンコーディングである必要があります。
+	//.exe.vmoptions は32KB以下である必要があります。
+	if(GetModuleFileName(NULL, wchar_buf, BUFFER_SIZE) != 0)
 	{
-		char vm_opt_file[MAX_PATH];
-		GetModuleFileName(NULL, vm_opt_file, MAX_PATH);
-		strcat(vm_opt_file, ".vmoptions");
-		if(GetFileAttributes(vm_opt_file) != -1)
+		wchar_t* vm_opt_file = wchar_buf;
+
+		wcscat_s(vm_opt_file, MAX_LONG_PATH, L".vmoptions");
+		if(GetFileAttributes(vm_opt_file) != INVALID_FILE_ATTRIBUTES)
 		{
-			FILE* fp = fopen(vm_opt_file, "r");
-			if(fp != NULL)
+			HANDLE hFile = CreateFile(vm_opt_file, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+			if(hFile != INVALID_HANDLE_VALUE)
 			{
-				char* line = NULL;
-				i = 0;
-				while((line = get_line(fp)) != NULL)
+				char* ptr = char_buf;
+				DWORD size = BUFFER_SIZE * 2;
+				DWORD read_size;
+
+				while(size > 0)
 				{
-					vmoptions[i++] = line;
-					options[vm_args.nOptions++].optionString = line;
+					BOOL ret = ReadFile(hFile, ptr, size, &read_size, NULL);
+					if(ret == FALSE) // ERROR
+					{
+						break;
+					}
+					if(read_size == 0) // END OF FILE
+					{
+						ptr = NULL;
+						break;
+					}
+					ptr += read_size;
+					size -= read_size;
 				}
-				fclose(fp);
+				if(ptr == NULL) // READ SUCCESSFUL
+				{
+					size_t line_len;
+					char*  line = ptr = char_buf;
+					while(*ptr != '\0')
+					{
+						if(*ptr == '\r' || *ptr == '\n')
+						{
+							*ptr = '\0';
+							line_len = strlen(line);
+							if(line_len > 0)
+							{
+								char* str = malloc(line_len + 1);
+								if(str == NULL)
+								{
+									CloseHandle(hFile);
+									err = JNI_ENOMEM;
+									goto EXIT;
+								}
+								strcpy_s(str, line_len + 1, line);
+								options[vm_args.nOptions++].optionString = str;
+							}
+							line = ptr + 1;
+						}
+						ptr++;
+					}
+				}
+				CloseHandle(hFile);
 			}
 		}
 	}
 	
 	/*
-	for(i = 0; i < vm_args.nOptions; i++)
+	// FIXME: debug
 	{
-		printf("[%d] %s\n\n", i, options[i].optionString);
+		int i;
+		for(i = 0; i < vm_args.nOptions; i++)
+		{
+			printf("[%d] %s\n\n", i, options[i].optionString);
+		}
 	}
 	*/
 	
-	getDefaultJavaVMInitArgs(&vm_args);
-	result = createJavaVM(&jvm, (void**)&env, &vm_args);
-	if(err != NULL)
-	{
-		*err = result;
-	}
+	GetDefaultJavaVMInitArgs(&vm_args);
+	err = CreateJavaVM(&jvm, (void**)&env, &vm_args);
 
 EXIT:
-	if (argv != NULL)
+	if(err != JNI_OK)
 	{
-		for (i = 0; i < argc; i++)
-		{
-			HeapFree(GetProcessHeap(), 0, argv[i]);
-		}
-		HeapFree(GetProcessHeap(), 0, argv);
+		jvm = NULL;
+		env = NULL;
 	}
-	for(i = 0; i < 256; i++)
+	if(wchar_buf != NULL)
 	{
-		if(vmoptions[i] != NULL)
-		{
-			free(vmoptions[i]);
-		}
-		else
-		{
-			break;
-		}
+		free(wchar_buf);
+	}
+	if(char_buf != NULL)
+	{
+		free(char_buf);
 	}
 
+	while(vm_args.nOptions > 0)
+	{
+		free(options[vm_args.nOptions - 1].optionString);
+		vm_args.nOptions--;
+	}
+
+	if(error != NULL)
+	{
+		*error = err;
+	}
 	return env;
 }
 
-void DestroyJavaVM()
+
+jint destroy_java_vm()
 {
+	jint ret = JNI_ERR;
+
 	if(jvm != NULL)
 	{
-		(*jvm)->DestroyJavaVM(jvm);
+		ret = (*jvm)->DestroyJavaVM(jvm);
 		jvm = NULL;
 	}
 
-	if (classpath != NULL)
+	if(classpath != NULL)
 	{
-		HeapFree(GetProcessHeap(), 0, classpath);
+		free(classpath);
 		classpath = NULL;
 	}
-	if (libpath != NULL)
+	if(libpath != NULL)
 	{
-		HeapFree(GetProcessHeap(), 0, libpath);
+		free(libpath);
 		libpath = NULL;
 	}
-}
 
-JNIEnv* AttachJavaVM()
-{
-	JNIEnv* env;
-
-	if((*jvm)->AttachCurrentThread(jvm, (void**)&env, NULL) != 0)
-	{
-		env = NULL;
-	}
-	return env;
-}
-
-void DetachJavaVM()
-{
-	(*jvm)->DetachCurrentThread(jvm);
-}
-
-/*
- * major(7bit) 31-25
- * minor(7bit) 24-18
- * build(7bit) 17-11
- * revision(11bit) 10-0
- */
-DWORD GetJavaRuntimeVersion()
-{
-	jclass systemClass;
-	jmethodID getPropertyMethod;
-	char* version;
-	DWORD major = 0;
-	DWORD minor = 0;
-	DWORD build = 0;
-	DWORD revision = 0;
-	
-	if(javaRuntimeVersion == 0xFFFFFFFF)
-	{
-		systemClass = (*env)->FindClass(env, "java/lang/System");
-		if(systemClass != NULL)
-		{
-			getPropertyMethod = (*env)->GetStaticMethodID(env, systemClass, "getProperty", "(Ljava/lang/String;)Ljava/lang/String;");
-			if(getPropertyMethod != NULL)
-			{
-				version = GetShiftJIS(env, (jstring)((*env)->CallStaticObjectMethod(env, systemClass, getPropertyMethod, GetJString(env, "java.runtime.version"))));
-				//数字が出てくるまでスキップ
-				while(*version != '\0' && !('0' <= *version && *version <= '9'))
-				{
-					version++;
-				}
-				if(*version == '\0')
-				{
-					goto END_PARSE;
-				}
-				major = atoi(version);
-				
-				//数字以外が出てくるまでスキップ
-				while(*version != '\0' && ('0' <= *version && *version <= '9'))
-				{
-					version++;
-				}
-				if(*version == '\0')
-				{
-					goto END_PARSE;
-				}
-				//数字が出てくるまでスキップ
-				while(*version != '\0' && !('0' <= *version && *version <= '9'))
-				{
-					version++;
-				}
-				if(*version == '\0')
-				{
-					goto END_PARSE;
-				}
-				minor = atoi(version);
-				
-				//数字以外が出てくるまでスキップ
-				while(*version != '\0' && ('0' <= *version && *version <= '9'))
-				{
-					version++;
-				}
-				if(*version == '\0')
-				{
-					goto END_PARSE;
-				}
-				//数字が出てくるまでスキップ
-				while(*version != '\0' && !('0' <= *version && *version <= '9'))
-				{
-					version++;
-				}
-				if(*version == '\0')
-				{
-					goto END_PARSE;
-				}
-				build = atoi(version);
-				
-				//数字以外が出てくるまでスキップ
-				while(*version != '\0' && ('0' <= *version && *version <= '9'))
-				{
-					version++;
-				}
-				if(*version == '\0')
-				{
-					goto END_PARSE;
-				}
-				//数字が出てくるまでスキップ
-				while(*version != '\0' && !('0' <= *version && *version <= '9'))
-				{
-					version++;
-				}
-				if(*version == '\0')
-				{
-					goto END_PARSE;
-				}
-				revision = atoi(version);
-			}
-		}
-END_PARSE:
-		javaRuntimeVersion = ((major << 25) & 0xFE000000) | ((minor << 18) & 0x01FC0000) | ((build << 11) & 0x0003F800) | (revision & 0x000007FF);
-	}
-	return javaRuntimeVersion;
-}
-
-jstring GetJString(JNIEnv* _env, const char* src)
-{
-	int wSize;
-	WCHAR* wBuf;
-	jstring str;
-
-	if(src == NULL)
-	{
-		return NULL;
-	}
-	if(_env == NULL)
-	{
-		_env = env;
-	}
-	wSize = MultiByteToWideChar(CP_ACP, 0, src, lstrlen(src), NULL, 0);
-	wBuf = (WCHAR*)HeapAlloc(GetProcessHeap(), 0, wSize * 2);
-	MultiByteToWideChar(CP_ACP, 0, src,	lstrlen(src), wBuf, wSize);
-	str = (*_env)->NewString(_env, (jchar*)wBuf, wSize);
-	HeapFree(GetProcessHeap(), 0, wBuf);
-	return str;
-}
-
-char* GetShiftJIS(JNIEnv* _env, jstring src)
-{
-	const jchar* unicode;
-	int length;
-	char* ret;
-
-	if(src == NULL)
-	{
-		return NULL;
-	}
-	if(_env == NULL)
-	{
-		_env = env;
-	}
-	unicode = (*_env)->GetStringChars(_env, src, NULL);
-	length = lstrlenW((wchar_t*)unicode);
-	ret = (char*)HeapAlloc(GetProcessHeap(), 0, sizeof(char) * length * 2 + 1);
-	SecureZeroMemory(ret, sizeof(char) * length * 2 + 1);
-	WideCharToMultiByte(CP_ACP, 0, (WCHAR*)unicode, length, ret, length * 2 + 1, NULL, NULL);
-	(*_env)->ReleaseStringChars(_env, src, unicode);
 	return ret;
 }
 
-void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useServerVM, BOOL useSideBySideJRE, SYSTEMTIME* startup) {
-	char modulePath[_MAX_PATH];
-	char moduleFileFullPath[_MAX_PATH];
-	char* buffer;
-	char* token;
-	DWORD size = MAX_PATH;
-	TCHAR jdk1[MAX_PATH+1];
-	TCHAR jre1[MAX_PATH+1];
-	TCHAR jre2[MAX_PATH+1];
-	TCHAR jre3[MAX_PATH+1];
-	TCHAR jre4[MAX_PATH+1];
-	TCHAR search[MAX_PATH + 1];
+
+JNIEnv* attach_java_vm()
+{
+	JNIEnv* env = NULL;
+
+	if(jvm != NULL)
+	{
+		if((*jvm)->AttachCurrentThread(jvm, (void**)&env, NULL) != JNI_OK)
+		{
+			env = NULL;
+		}
+	}
+
+	return env;
+}
+
+
+jint detach_java_vm()
+{
+	jint ret = JNI_ERR;
+
+	if(jvm != NULL)
+	{
+		ret = (*jvm)->DetachCurrentThread(jvm);
+	}
+
+	return ret;
+}
+
+
+void get_java_runtime_version(const wchar_t* version_string, DWORD* major, DWORD* minor, DWORD* build, DWORD* revision)
+{
+	wchar_t*  buffer  = NULL;
+	wchar_t*  version = NULL;
+
+	if(major != NULL)
+	{
+		*major = 0;
+	}
+	if(minor != NULL)
+	{
+		*minor = 0;
+	}
+	if(build != NULL)
+	{
+		*build = 0;
+	}
+	if(revision != NULL)
+	{
+		*revision = 0;
+	}
+
+	if(version_string == NULL)
+	{
+		jclass    System;
+		jmethodID System_getProperty;
+
+		System = (*env)->FindClass(env, "java/lang/System");
+		if(System != NULL)
+		{
+			System_getProperty = (*env)->GetStaticMethodID(env, System, "getProperty", "(Ljava/lang/String;)Ljava/lang/String;");
+			if(System_getProperty != NULL)
+			{
+				jstring  param = to_jstring(env, L"java.runtime.version");
+				jstring  ret = (jstring)((*env)->CallStaticObjectMethod(env, System, System_getProperty, param));
+				version = buffer = from_jstring(env, ret);
+			}
+		}
+	}
+	else
+	{
+		size_t len = wcslen(version_string);
+		buffer = (wchar_t*)malloc((len + 1) * sizeof(wchar_t));
+		if(buffer == NULL)
+		{
+			goto EXIT;
+		}
+		wcscpy_s(buffer, len + 1, version_string);
+		version = buffer;
+	}
+
+
+	//数字が出てくるまでスキップ
+	while(*version != L'\0' && !(L'0' <= *version && *version <= L'9'))
+	{
+		version++;
+	}
+	if(*version == L'\0')
+	{
+		goto EXIT;
+	}
+	if(major != NULL)
+	{
+		*major = _wtoi(version);
+	}
+	
+	//数字以外が出てくるまでスキップ
+	while(*version != L'\0' && (L'0' <= *version && *version <= L'9'))
+	{
+		version++;
+	}
+	if(*version == L'\0')
+	{
+		goto EXIT;
+	}
+	//数字が出てくるまでスキップ
+	while(*version != L'\0' && !(L'0' <= *version && *version <= L'9'))
+	{
+		version++;
+	}
+	if(*version == L'\0')
+	{
+		goto EXIT;
+	}
+	if(minor != NULL)
+	{
+		*minor = _wtoi(version);
+	}
+	
+	//数字以外が出てくるまでスキップ
+	while(*version != L'\0' && (L'0' <= *version && *version <= L'9'))
+	{
+		version++;
+	}
+	if(*version == L'\0')
+	{
+		goto EXIT;
+	}
+	//数字が出てくるまでスキップ
+	while(*version != L'\0' && !(L'0' <= *version && *version <= L'9'))
+	{
+		version++;
+	}
+	if(*version == L'\0')
+	{
+		goto EXIT;
+	}
+	if(build != NULL)
+	{
+		*build = _wtoi(version);
+	}
+	
+	//数字以外が出てくるまでスキップ
+	while(*version != L'\0' && (L'0' <= *version && *version <= L'9'))
+	{
+		version++;
+	}
+	if(*version == L'\0')
+	{
+		goto EXIT;
+	}
+	//数字が出てくるまでスキップ
+	while(*version != L'\0' && !(L'0' <= *version && *version <= L'9'))
+	{
+		version++;
+	}
+	if(*version == L'\0')
+	{
+		goto EXIT;
+	}
+	if(revision != NULL)
+	{
+		*revision = _wtoi(version);
+	}
+
+EXIT:
+	if(buffer != NULL)
+	{
+		free(buffer);
+	}
+}
+
+
+wchar_t* get_java_version_string(DWORD major, DWORD minor, DWORD build, DWORD revision)
+{
+	int      len = 128;
+	wchar_t* buf = (wchar_t*)malloc(128 * sizeof(wchar_t));
+
+	if(buf == NULL)
+	{
+		return NULL;
+	}
+
+	//JDK9-
+	if(major >= 5)
+	{
+		if(minor == 0 && build == 0 && revision == 0)
+		{
+			swprintf_s(buf, len, L"Java %d", major);
+		}
+		else if(build == 0 && revision == 0)
+		{
+			swprintf_s(buf, len, L"Java %d.%d", major, minor);
+		}
+		else if(revision == 0)
+		{
+			swprintf_s(buf, len, L"Java %d.%d.%d", major, minor, build);
+		}
+		else
+		{
+			swprintf_s(buf, len, L"Java %d.%d.%d", major, minor, build, revision);
+		}
+		return buf;
+	}
+	
+	//1.7, 1.8
+	if(major == 1 && (minor == 7 || minor == 8))
+	{
+		if(build == 0 )
+		{
+			if(revision == 0)
+			{
+				swprintf_s(buf, len, L"Java %d", minor);
+			}
+			else
+			{
+				swprintf_s(buf, len, L"Java %du%d", minor, revision);
+			}
+		}
+		else
+		{
+			swprintf_s(buf, len, L"Java %d.%d.%d.%d", major, minor, build, revision);
+		}
+		return buf;
+	}
+	
+	//1.5, 1.6
+	if(major == 1 && (minor == 5 || minor == 6))
+	{
+		if(build == 0)
+		{
+			if(revision == 0)
+			{
+				swprintf_s(buf, len, L"Java %d.%d", minor, build);
+			}
+			else
+			{
+				swprintf_s(buf, len, L"Java %d.%d.%d", minor, build, revision);
+			}
+		}
+		else
+		{
+				swprintf_s(buf, len, L"Java %d.%d.%d.%d", major, minor, build, revision);
+		}
+		return buf;
+	}
+
+	//1.2, 1.3, 1.4
+	if(major == 1 && (minor == 2 || minor == 3 || minor == 4))
+	{
+		if(revision == 0)
+		{
+			if(build == 0)
+			{
+				swprintf_s(buf, len, L"Java2 %d.%d", major, minor);
+			}
+			else
+			{
+				swprintf_s(buf, len, L"Java2 %d.%d.%d", major, minor, build);
+			}
+		}
+		else
+		{
+			swprintf_s(buf, len, L"Java2 %d.%d.%d.%d", major, minor, build, revision);
+		}
+		return buf;
+	}
+
+	//1.0, 1.1
+	if(major == 1 && (minor == 0 || minor == 1))
+	{
+		if(revision == 0)
+		{
+			if(build == 0)
+			{
+				swprintf_s(buf, len, L"Java %d.%d", major, minor);
+			}
+			else
+			{
+				swprintf_s(buf, len, L"Java %d.%d.%d", major, minor, build);
+			}
+		}
+		else
+		{
+			swprintf_s(buf, len, L"Java %d.%d.%d.%d", major, minor, build, revision);
+		}
+		return buf;
+	}
+
+	//other
+	if(revision == 0)
+	{
+		swprintf_s(buf, len, L"Java %d.%d.%d", major, minor, build);
+	}
+	else
+	{
+		swprintf_s(buf, len, L"Java %d.%d.%d.%d", major, minor, build, revision);
+	}
+	return buf;
+}
+
+
+BOOL set_application_properties(SYSTEMTIME* startup)
+{
+	BOOL      succeeded = FALSE;
+	wchar_t*  buffer = NULL;
+	jclass    System;
+	jmethodID System_setProperty;
+	jstring   key;
+	jstring   value;
+
+	if(env == NULL)
+	{
+		goto EXIT;
+	}
+	buffer = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
+	if(buffer == NULL)
+	{
+		goto EXIT;
+	}
+	System = (*env)->FindClass(env, "java/lang/System");
+	if(System == NULL)
+	{
+		goto EXIT;
+	}
+	System_setProperty = (*env)->GetStaticMethodID(env, System, "setProperty", "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;");
+	if(System_setProperty == NULL)
+	{
+		goto EXIT;
+	}
+
+	if(startup != NULL)
+	{
+		swprintf_s(buffer, BUFFER_SIZE, L"%u-%02u-%02uT%02u:%02u:%02u.%03uZ",
+				startup->wYear, startup->wMonth, startup->wDay,
+				startup->wHour, startup->wMinute, startup->wSecond,
+				startup->wMilliseconds);
+		key = to_jstring(env, L"java.application.startup");
+		value = to_jstring(env, buffer);
+		(*env)->CallStaticObjectMethod(env, System, System_setProperty, key, value);
+	}
+
+	// Loaderクラスのコンストラクタ内で実行ファイルのパスを参照する必要があるため、
+	// java.application.path と java.application.name は create_java_vm ないで起動時パラメーターとして指定します。
+	/*
+	if(GetModuleFileName(NULL, buffer, BUFFER_SIZE) != 0)
+	{
+		wchar_t* p = wcsrchr(buffer, L'\\');
+		wchar_t* app_path = buffer;
+		wchar_t* app_name = p + 1;
+
+		*p = L'\0';
+
+		key = to_jstring(env, L"java.application.path");
+		value = to_jstring(env, app_path);
+		(*env)->CallStaticObjectMethod(env, System, System_setProperty, key, value);
+
+		key = to_jstring(env, L"java.application.name");
+		value = to_jstring(env, app_name);
+		(*env)->CallStaticObjectMethod(env, System, System_setProperty, key, value);
+	}
+	*/
+
+	if(get_module_version(buffer, BUFFER_SIZE) != NULL)
+	{
+		key = to_jstring(env, L"java.application.version");
+		value = to_jstring(env, buffer);
+		(*env)->CallStaticObjectMethod(env, System, System_setProperty, key, value);
+	}
+
+	succeeded = TRUE;
+
+EXIT:
+	if(buffer != NULL)
+	{
+		free(buffer);
+	}
+	return succeeded;
+}
+
+
+BOOL initialize_path(const wchar_t* relative_classpath, const wchar_t* relative_extdirs, BOOL use_server_vm, BOOL use_side_by_side_jre)
+{
+	wchar_t* module_path = NULL;
+	wchar_t* buffer      = NULL;
+	wchar_t* search      = NULL;
+	wchar_t* jdk         = NULL;
 	WIN32_FIND_DATA fd;
 	HANDLE hSearch;
 	BOOL found = FALSE;
+	wchar_t* token;
+	wchar_t* context;
 
-	path_initialized = TRUE;
+	path_initialized = FALSE;
 
 	if(kernel32 == NULL)
 	{
-		kernel32 = LoadLibrary("kernel32");
+		kernel32 = LoadLibrary(L"kernel32");
 	}
-	if(kernel32 != NULL)
+	if(kernel32 != NULL && _AddDllDirectory == NULL)
 	{
-		addDllDirectory = (Kernel32_AddDllDirectory)GetProcAddress(kernel32, "AddDllDirectory");
+		_AddDllDirectory = (Kernel32_AddDllDirectory)GetProcAddress(kernel32, "AddDllDirectory");
+		if(_AddDllDirectory != NULL)
+		{
+			is_add_dll_directory_supported = TRUE;
+		}
 	}
 
-	if (classpath == NULL)
+	if(binpath == NULL)
 	{
-		classpath = (char*)HeapAlloc(GetProcessHeap(), 0, 64 * 1024);
+		binpath = (wchar_t*)malloc(MAX_LONG_PATH * sizeof(wchar_t));
+		if(binpath == NULL)
+		{
+			goto EXIT;
+		}
 	}
-	if (libpath == NULL)
+	if(jvmpath == NULL)
 	{
-		libpath = (char*)HeapAlloc(GetProcessHeap(), 0, 64 * 1024);
+		jvmpath = (wchar_t*)malloc(MAX_LONG_PATH * sizeof(wchar_t));
+		if(jvmpath == NULL)
+		{
+			goto EXIT;
+		}
 	}
-
-	binpath[0] = '\0';
-	jvmpath[0] = '\0';
-	libpath[0] = '\0';
-
-	buffer = HeapAlloc(GetProcessHeap(), 0, 64 * 1024);
-
-	sprintf(buffer, "%u-%02u-%02uT%02u:%02u:%02u.%03uZ",
-		startup->wYear, startup->wMonth, startup->wDay,
-		startup->wHour, startup->wMinute, startup->wSecond,
-		startup->wMilliseconds);
-	lstrcpy(opt_app_startup, "-Djava.application.startup=");
-	lstrcat(opt_app_startup, buffer);
-
-	lstrcpy(opt_app_version, "-Djava.application.version=");
-	lstrcat(opt_app_version, GetModuleVersion(buffer));
-
-	GetModulePath(modulePath, MAX_PATH);
-	lstrcpy(opt_app_path, "-Djava.application.path=");
-	lstrcat(opt_app_path, modulePath);
-	lstrcpy(opt_policy_path, "-Djava.security.policy=");
-	lstrcat(opt_policy_path, modulePath);
-
-	GetModuleFileName(NULL, moduleFileFullPath, MAX_PATH);
-	lstrcpy(opt_app_name, "-Djava.application.name=");
-	lstrcat(opt_app_name, strrchr(moduleFileFullPath, '\\') + 1);
-
-	lstrcat(opt_policy_path, "\\");
-	*(strrchr(buffer, '.')) = 0;
-	lstrcat(opt_policy_path, strrchr(buffer, '\\') + 1);
-	lstrcat(opt_policy_path, ".policy");
-	if(GetFileAttributes(opt_policy_path + 23) == -1)
+	if(classpath == NULL)
 	{
-		opt_policy_path[0] = 0x00;
+		classpath = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
+		if(classpath == NULL)
+		{
+			goto EXIT;
+		}
 	}
+	if(libpath == NULL)
+	{
+		libpath = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
+		if(libpath == NULL)
+		{
+			goto EXIT;
+		}
+	}
+
+
+	buffer = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
+	if(buffer == NULL)
+	{
+		goto EXIT;
+	}
+	search = (wchar_t*)malloc(MAX_LONG_PATH * sizeof(wchar_t));
+	if(search == NULL)
+	{
+		goto EXIT;
+	}
+	jdk = (wchar_t*)malloc(MAX_LONG_PATH * sizeof(wchar_t));
+	if(jdk == NULL)
+	{
+		goto EXIT;
+	}
+
+	module_path = (wchar_t*)malloc(MAX_LONG_PATH * sizeof(wchar_t));
+	if(module_path == NULL)
+	{
+		goto EXIT;
+	}
+	if(GetModuleFileName(NULL, module_path, MAX_LONG_PATH) == 0)
+	{
+		goto EXIT;
+	}
+	*(wcsrchr(module_path, L'\\')) = L'\0';
+
+	jvmpath[0] = L'\0';
 
 	// Find local JDK
-	if (useSideBySideJRE && jvmpath[0] == 0)
+	if(use_side_by_side_jre && jvmpath[0] == L'\0')
 	{
-		GetModulePath(jdk1, MAX_PATH);
-		lstrcpy(search, jdk1);
-		lstrcat(search, "\\jdk*");
+		wcscpy_s(buffer, BUFFER_SIZE, module_path);
+		wcscpy_s(search, MAX_LONG_PATH, buffer);
+		wcscat_s(search, MAX_LONG_PATH, L"\\jdk*");
 		hSearch = FindFirstFile(search, &fd);
-		if (hSearch != INVALID_HANDLE_VALUE)
+		if(hSearch != INVALID_HANDLE_VALUE)
 		{
 			found = FALSE;
 			do
 			{
-				if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+				if(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
 				{
-					lstrcat(jdk1, "\\");
-					lstrcat(jdk1, fd.cFileName);
+					wcscat_s(buffer, BUFFER_SIZE, L"\\");
+					wcscat_s(buffer, BUFFER_SIZE, fd.cFileName);
 					found = TRUE;
 				}
 			} while (!found && FindNextFile(hSearch, &fd));
 			FindClose(hSearch);
-			if (found)
+			if(found)
 			{
 				//JDK9以降、jvm.dllの場所が変更になりました。
 				//JDK8までは jdk-8u152/jre/bin/server/jvm.dll のようにjdkの中にjreがありましたが、
 				//JDK9以降は jdk-9/bin/server/jvm.dll のようにjreフォルダなしで直接binが配置されるようになりました。
 				//そのため、jdk に bin/server/jvm.dll があるか探してなければ従来通り、jre/bin/server/jvm.dll を探します。
-				if (FindJavaVM(jvmpath, jdk1, useServerVM))
+				if(find_java_vm(jvmpath, buffer, use_server_vm))
 				{
-					int bits = GetArchitectureBits(jvmpath);
-					if (bits == 0 || bits == GetProcessArchitecture())
+					int bits = get_java_vm_bits(jvmpath);
+					if(bits == get_process_architecture())
 					{
-						SetEnvironmentVariable("JAVA_HOME", jdk1);
-						lstrcpy(binpath, jdk1);
-						lstrcat(binpath, "\\bin");
+						if(buffer[wcslen(buffer) - 1] != L'\\')
+						{
+							wcscat_s(buffer, BUFFER_SIZE, L"\\");
+						}
+						SetEnvironmentVariable(L"JAVA_HOME", buffer);
+						wcscpy_s(binpath, MAX_LONG_PATH, buffer);
+						wcscat_s(binpath, MAX_LONG_PATH, L"bin");
 					}
 					else
 					{
-						jvmpath[0] = '\0';
+						jvmpath[0] = L'\0';
 					}
 				}
 				else
 				{
 					//jdk直下には bin/server/jvm.dll がなかったので、jre を連結して、
-					//jre/bin/server/jvm.dll を探します。 
-					strcpy(jre1, jdk1);
-					strcat(jre1, "\\jre");
-					if(FindJavaVM(jvmpath, jre1, useServerVM))
+					//jre/bin/server/jvm.dll を探します。
+					wcscpy_s(jdk, MAX_LONG_PATH, buffer);
+					wcscat_s(buffer, BUFFER_SIZE, L"\\jre");
+					if(find_java_vm(jvmpath, buffer, use_server_vm))
 					{
-						int bits = GetArchitectureBits(jvmpath);
-						if (bits == 0 || bits == GetProcessArchitecture())
+						int bits = get_java_vm_bits(jvmpath);
+						if(bits == get_process_architecture())
 						{
 							//jdk/jreが見つかってもJAVA_HOMEに設定するのはjdkディレクトリです。
-							SetEnvironmentVariable("JAVA_HOME", jdk1);
-							lstrcpy(binpath, jdk1);
-							lstrcat(binpath, "\\bin");
+							if(jdk[wcslen(jdk) - 1] != L'\\')
+							{
+								wcscat_s(jdk, MAX_LONG_PATH, L"\\");
+							}
+							SetEnvironmentVariable(L"JAVA_HOME", jdk);
+							wcscpy_s(binpath, MAX_LONG_PATH, jdk);
+							wcscat_s(binpath, MAX_LONG_PATH, L"bin");
 						}
 						else
 						{
-							jvmpath[0] = '\0';
+							jvmpath[0] = L'\0';
 						}
 					}
 				}
@@ -538,39 +1002,43 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 	}
 
 	// Find local JRE
-	if (useSideBySideJRE && jvmpath[0] == 0)
+	if(use_side_by_side_jre && jvmpath[0] == L'\0')
 	{
-		GetModulePath(jre1, MAX_PATH);
-		lstrcpy(search, jre1);
-		lstrcat(search, "\\jre*");
+		wcscpy_s(buffer, BUFFER_SIZE, module_path);
+		wcscpy_s(search, MAX_LONG_PATH, buffer);
+		wcscat_s(search, MAX_LONG_PATH, L"\\jre*");
 		hSearch = FindFirstFile(search, &fd);
-		if (hSearch != INVALID_HANDLE_VALUE)
+		if(hSearch != INVALID_HANDLE_VALUE)
 		{
 			found = FALSE;
 			do
 			{
-				if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+				if(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
 				{
-					lstrcat(jre1, "\\");
-					lstrcat(jre1, fd.cFileName);
+					wcscat_s(buffer, BUFFER_SIZE, L"\\");
+					wcscat_s(buffer, BUFFER_SIZE, fd.cFileName);
 					found = TRUE;
 				}
 			} while (!found && FindNextFile(hSearch, &fd));
 			FindClose(hSearch);
-			if (found)
+			if(found)
 			{
-				if (FindJavaVM(jvmpath, jre1, useServerVM))
+				if(find_java_vm(jvmpath, buffer, use_server_vm))
 				{
-					int bits = GetArchitectureBits(jvmpath);
-					if (bits == 0 || bits == GetProcessArchitecture())
+					int bits = get_java_vm_bits(jvmpath);
+					if(bits == get_process_architecture())
 					{
-						SetEnvironmentVariable("JAVA_HOME", jre1);
-						lstrcpy(binpath, jre1);
-						lstrcat(binpath, "\\bin");
+						if(buffer[wcslen(buffer) - 1] != L'\\')
+						{
+							wcscat_s(buffer, BUFFER_SIZE, L"\\");
+						}
+						SetEnvironmentVariable(L"JAVA_HOME", buffer);
+						wcscpy_s(binpath, MAX_LONG_PATH, buffer);
+						wcscat_s(binpath, MAX_LONG_PATH, L"bin");
 					}
 					else
 					{
-						jvmpath[0] = '\0';
+						jvmpath[0] = L'\0';
 					}
 				}
 			}
@@ -578,39 +1046,43 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 	}
 
 	// Find local JRE (from parent folder)
-	if (useSideBySideJRE && jvmpath[0] == 0)
+	if(use_side_by_side_jre && jvmpath[0] == 0)
 	{
-		GetModulePath(jre2, MAX_PATH);
-		lstrcpy(search, jre2);
-		lstrcat(search, "\\..\\jre*");
+		wcscpy_s(buffer, BUFFER_SIZE, module_path);
+		wcscpy_s(search, MAX_LONG_PATH, buffer);
+		wcscat_s(search, MAX_LONG_PATH, L"\\..\\jre*");
 		hSearch = FindFirstFile(search, &fd);
-		if (hSearch != INVALID_HANDLE_VALUE)
+		if(hSearch != INVALID_HANDLE_VALUE)
 		{
 			found = FALSE;
 			do
 			{
 				if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
 				{
-					lstrcat(jre2, "\\..\\");
-					lstrcat(jre2, fd.cFileName);
+					wcscat_s(buffer, BUFFER_SIZE, L"\\..\\");
+					wcscat_s(buffer, BUFFER_SIZE, fd.cFileName);
 					found = TRUE;
 				}
 			} while (!found && FindNextFile(hSearch, &fd));
 			FindClose(hSearch);
-			if (found)
+			if(found)
 			{
-				if (FindJavaVM(jvmpath, jre2, useServerVM))
+				if(find_java_vm(jvmpath, buffer, use_server_vm))
 				{
-					int bits = GetArchitectureBits(jvmpath);
-					if (bits == 0 || bits == GetProcessArchitecture())
+					int bits = get_java_vm_bits(jvmpath);
+					if(bits == get_process_architecture())
 					{
-						SetEnvironmentVariable("JAVA_HOME", jre2);
-						lstrcpy(binpath, jre2);
-						lstrcat(binpath, "\\bin");
+						if(buffer[wcslen(buffer) - 1] != L'\\')
+						{
+							wcscat_s(buffer, BUFFER_SIZE, L"\\");
+						}
+						SetEnvironmentVariable(L"JAVA_HOME", buffer);
+						wcscpy_s(binpath, MAX_LONG_PATH, buffer);
+						wcscat_s(binpath, MAX_LONG_PATH, L"bin");
 					}
 					else
 					{
-						jvmpath[0] = '\0';
+						jvmpath[0] = L'\0';
 					}
 				}
 			}
@@ -618,193 +1090,401 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
 	}
 
 	// Find JDK/JRE from JAVA_HOME or registry
-	if(jvmpath[0] == 0)
+	if(jvmpath[0] == L'\0')
 	{
-		jre3[0] = '\0';
-		if(GetEnvironmentVariable("JAVA_HOME", jre3, MAX_PATH) == 0)
+		buffer[0] = L'\0';
+		if(GetEnvironmentVariable(L"JAVA_HOME", buffer, MAX_LONG_PATH) == 0)
 		{
-			char* subkeys_native[] =
+			wchar_t* subkeys_native[] =
 			{
-				"SOFTWARE\\JavaSoft\\JDK", //Java9-
-				"SOFTWARE\\JavaSoft\\JRE", //Java9-
-				"SOFTWARE\\JavaSoft\\Java Development Kit",
-				"SOFTWARE\\JavaSoft\\Java Runtime Environment",
+				L"SOFTWARE\\JavaSoft\\JDK", //Java9-
+				L"SOFTWARE\\JavaSoft\\JRE", //Java9-
+				L"SOFTWARE\\JavaSoft\\Java Development Kit",
+				L"SOFTWARE\\JavaSoft\\Java Runtime Environment",
 				NULL
 			};
 		
-			char* subkeys_wow[] = 
+			wchar_t* subkeys_wow[] = 
 			{
-				"SOFTWARE\\Wow6432Node\\JavaSoft\\JDK", //Java9-
-				"SOFTWARE\\Wow6432Node\\JavaSoft\\JRE", //Java9-
-				"SOFTWARE\\Wow6432Node\\JavaSoft\\Java Development Kit",
-				"SOFTWARE\\Wow6432Node\\JavaSoft\\Java Runtime Environment",
+				L"SOFTWARE\\Wow6432Node\\JavaSoft\\JDK", //Java9-
+				L"SOFTWARE\\Wow6432Node\\JavaSoft\\JRE", //Java9-
+				L"SOFTWARE\\Wow6432Node\\JavaSoft\\Java Development Kit",
+				L"SOFTWARE\\Wow6432Node\\JavaSoft\\Java Runtime Environment",
 				NULL
 			};
 			
-			char** subkeys = subkeys_native;
-			char* output = (char*)HeapAlloc(GetProcessHeap(), 0, MAX_PATH);
+			wchar_t** subkeys = subkeys_native;
 			int i = 0;
-			
+
 			//32ビットプロセスを64ビットOSで実行している場合はWowレジストリから検索します。
-			if(GetProcessArchitecture() == 32 && GetPlatformArchitecture() == 64)
+			if(get_process_architecture() == 32 && get_platform_architecture() == 64)
 			{
 				subkeys = subkeys_wow;
 			}
 
 			while(subkeys[i] != NULL)
 			{
-				if(FindJavaHomeFromRegistry(subkeys[i], output) != NULL)
+				if(find_java_home_from_registry(subkeys[i], buffer) != NULL)
 				{
-					lstrcpy(jre3, output);
-					SetEnvironmentVariable("JAVA_HOME", jre3);
-					break;
+					// JDK/JREをアンインストールしてもレジストリが残ってしまうディストリビューションがあるようです。
+					// ディレクトリが存在する場合は次の工程に進みます。
+					if(is_directory(buffer))
+					{
+						break;
+					}
 				}
 				i++;
 			}
-			HeapFree(GetProcessHeap(), 0, output);
 		}
 
-		if(jre3[0] != '\0')
+		if(buffer[0] != L'\0')
 		{
-			if(jre3[lstrlen(jre3) - 1] == '\\')
+			// bufferにはJAVA_HOME環境変数の値が入っています。
+
+			// 下位に jre フォルダーがあるか確認します。
+			if(buffer[wcslen(buffer) - 1] == L'\\')
 			{
-				lstrcat(jre3, "jre");
+				wcscat_s(buffer, BUFFER_SIZE, L"jre");
 			}
 			else
 			{
-				lstrcat(jre3, "\\jre");
+				wcscat_s(buffer, BUFFER_SIZE, L"\\jre");
 			}
-			if(!IsDirectory(jre3))
+			// 下位に jre フォルダーがなければ元のフォルダーに戻します。
+			if(!is_directory(buffer))
 			{
-				*(strrchr(jre3, '\\')) = '\0';
+				*(wcsrchr(buffer, L'\\')) = L'\0';
 			}
-			if(IsDirectory(jre3))
+			if(is_directory(buffer))
 			{
-				lstrcpy(binpath, jre3);
-				lstrcat(binpath, "\\bin");
-				FindJavaVM(jvmpath, jre3, useServerVM);
+				if(find_java_vm(jvmpath, buffer, use_server_vm))
+				{
+					int bits = get_java_vm_bits(jvmpath);
+					if(bits == get_process_architecture())
+					{
+						if(buffer[wcslen(buffer) - 1] != L'\\')
+						{
+							wcscat_s(buffer, BUFFER_SIZE, L"\\");
+						}
+						SetEnvironmentVariable(L"JAVA_HOME", buffer);
+						wcscpy_s(binpath, MAX_LONG_PATH, buffer);
+						wcscat_s(binpath, MAX_LONG_PATH, L"bin");
+					}
+					else
+					{
+						jvmpath[0] = L'\0';
+					}
+				}
 			}
 		}
 	}
 
 	// Find java.exe from PATH environment
-	if(jvmpath[0] == 0)
+	if(jvmpath[0] == L'\0')
 	{
-		strcpy(jre4, "java.exe");
-		if(PathFindOnPath(jre4, NULL))
+		if(GetEnvironmentVariable(L"PATH", buffer, BUFFER_SIZE))
 		{
-			char* p;
-			if((p = strrchr(jre4, '\\')) != 0)
+			wchar_t* p;
+			wchar_t* end;
+
+			if(buffer[wcslen(buffer) - 1] != L';')
 			{
-				*(p) = '\0'; // remove filename(java.exe)
+				wcscat_s(buffer, BUFFER_SIZE, L";");
 			}
-			if((p = strrchr(jre4, '\\')) != 0)
+			end = buffer + wcslen(buffer);
+
+			while((p = wcsrchr(buffer, L';')) != NULL)
 			{
-				*(p) = '\0'; // remove dirname(bin)
+				*p = L'\0';
 			}
-			lstrcpy(binpath, jre4);
-			lstrcat(binpath, "\\bin");
-			FindJavaVM(jvmpath, jre4, useServerVM);
+			p = buffer;
+			while(p < end)
+			{
+				size_t len = wcslen(p);
+
+				if(len > 0)
+				{
+					wcscpy_s(search, MAX_LONG_PATH, p);
+					if(search[wcslen(search) - 1] != L'\\')
+					{
+						wcscat_s(search, MAX_LONG_PATH, L"\\");
+					}
+					wcscat_s(search, MAX_LONG_PATH, L"java.exe");
+					if(GetFileAttributes(search) != INVALID_FILE_ATTRIBUTES)
+					{
+						wchar_t* p2;
+
+						if((p2 = wcsrchr(search, L'\\')) != NULL)
+						{
+							*p2 = L'\0'; // remove filename(java.exe)
+						}
+						if((p2 = wcsrchr(search, L'\\')) != NULL)
+						{
+							*p2 = L'\0'; // remove dirname(bin)
+						}
+						if(find_java_vm(jvmpath, search, use_server_vm))
+						{
+							int bits = get_java_vm_bits(jvmpath);
+							if(bits == get_process_architecture())
+							{
+								if(search[wcslen(search) - 1] != L'\\')
+								{
+									wcscat_s(search, MAX_LONG_PATH, L"\\");
+								}
+								SetEnvironmentVariable(L"JAVA_HOME", search);
+								wcscpy_s(binpath, MAX_LONG_PATH, search);
+								wcscat_s(binpath, MAX_LONG_PATH, L"bin");
+								break;
+							}
+							else
+							{
+								jvmpath[0] = L'\0';
+							}
+						}
+						//JDK8以前はjdk-8u152/jre/bin/server/jvm.dll のようにjdkの中にjreがありました。これも確認します。
+						wcscat_s(search, MAX_LONG_PATH, L"\\jre");
+						if(find_java_vm(jvmpath, search, use_server_vm))
+						{
+							int bits = get_java_vm_bits(jvmpath);
+							if(bits == get_process_architecture())
+							{
+								if(search[wcslen(search) - 1] != L'\\')
+								{
+									wcscat_s(search, BUFFER_SIZE, L"\\");
+								}
+								SetEnvironmentVariable(L"JAVA_HOME", search);
+								wcscpy_s(binpath, MAX_LONG_PATH, search);
+								wcscat_s(binpath, MAX_LONG_PATH, L"bin");
+								break;
+							}
+							else
+							{
+								jvmpath[0] = L'\0';
+							}
+						}
+					}
+				}
+				p += len + 1;
+			}
 		}
 	}
 
-	lstrcpy(classpath, "-Djava.class.path=");
-	lstrcat(classpath, moduleFileFullPath);
-	lstrcat(classpath, ";");
-	lstrcpy(libpath, "-Djava.library.path=.;");
-	lstrcat(libpath, jvmpath);
-	lstrcat(libpath, ";");
-	lstrcat(libpath, binpath);
-	lstrcat(libpath, ";");
+	// Find .jar association from registry
+	if(jvmpath[0] == L'\0')
+	{
+		HKEY   key1 = NULL;
+		HKEY   key2 = NULL;
+		DWORD  size;
 
-	AddPath(jvmpath);
-	AddDllDir(jvmpath);
+		wcscpy_s(search, MAX_LONG_PATH, L".jar");
+		if(RegOpenKeyEx(HKEY_CLASSES_ROOT, search, 0, KEY_READ, &key1) == ERROR_SUCCESS)
+		{
+			size = BUFFER_SIZE;
+			memset(buffer, 0x00, BUFFER_SIZE * sizeof(wchar_t));
+			if(RegQueryValueEx(key1, NULL, NULL, NULL, (LPBYTE)buffer, &size) == ERROR_SUCCESS)
+			{
+				wcscpy_s(search, MAX_LONG_PATH, buffer);
+				wcscat_s(search, MAX_LONG_PATH, L"\\shell\\open\\command");
+				if(RegOpenKeyEx(HKEY_CLASSES_ROOT, search, 0, KEY_READ, &key2) == ERROR_SUCCESS)
+				{
+					size = BUFFER_SIZE;
+					memset(buffer, 0x00, BUFFER_SIZE * sizeof(wchar_t));
+					if(RegQueryValueEx(key2, NULL, NULL, NULL, (LPBYTE)buffer, &size) == ERROR_SUCCESS)
+					{
+						wchar_t* file = NULL;
+						wchar_t* p;
+						while((p = wcsrchr(buffer, L'.')) != NULL)
+						{
+							if(wcslen(p) >= 4)
+							{
+								*(p + 4) = L'\0';
+							}
+							if(_wcsicmp(p, L".EXE") == 0)
+							{
+								file = buffer + ((buffer[0] == L'"') ? 1 : 0);
+								break;
+							}
+							*p = '\0';
+						}
+						if(file != NULL)
+						{
+							if((p = wcsrchr(file, L'\\')) != NULL)
+							{
+								*p = L'\0'; // remove filename(javaw.exe)
+							}
+							if((p = wcsrchr(file, L'\\')) != NULL)
+							{
+								*p = L'\0'; // remove dirname(bin)
+							}
+							// 下位に jre フォルダーがあるか確認します。
+							wcscat_s(file, BUFFER_SIZE - 1, L"\\jre");
+							// 下位に jre フォルダーがなければ元のフォルダーに戻します。
+							if(!is_directory(file))
+							{
+								*(wcsrchr(file, L'\\')) = L'\0';
+							}
+							if(is_directory(file))
+							{
+								if(find_java_vm(jvmpath, file, use_server_vm))
+								{
+									int bits = get_java_vm_bits(jvmpath);
+									if(bits == get_process_architecture())
+									{
+										if(file[wcslen(file) - 1] != L'\\')
+										{
+											wcscat_s(file, BUFFER_SIZE - 1, L"\\");
+										}
+										SetEnvironmentVariable(L"JAVA_HOME", file);
+										wcscpy_s(binpath, MAX_LONG_PATH, file);
+										wcscat_s(binpath, MAX_LONG_PATH, L"bin");
+									}
+									else
+									{
+										jvmpath[0] = L'\0';
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		if(key2 != NULL)
+		{
+			RegCloseKey(key2);
+		}
+		if(key1 != NULL)
+		{
+			RegCloseKey(key1);
+		}
+	}
 
-	AddPath(binpath);
-	AddDllDir(binpath);
+
+	GetModuleFileName(NULL, buffer, BUFFER_SIZE);
+	wcscpy_s(classpath, BUFFER_SIZE, buffer);
+	wcscat_s(classpath, BUFFER_SIZE, L";");
+
+	wcscpy_s(libpath, BUFFER_SIZE, L".;");
+	wcscat_s(libpath, BUFFER_SIZE, jvmpath);
+	wcscat_s(libpath, BUFFER_SIZE, L";");
+	wcscat_s(libpath, BUFFER_SIZE, binpath);
+	wcscat_s(libpath, BUFFER_SIZE, L";");
 
 	if(relative_classpath != NULL)
 	{
-		while((token = strtok(relative_classpath, " ")) != NULL)
+		wchar_t* p = buffer;
+
+		wcscpy_s(p, BUFFER_SIZE, relative_classpath);
+		while((token = wcstok_s(p, L" ", &context)) != NULL)
 		{
-			token = urldecode(buffer, token);
-		
-			if(strstr(token, ":") == NULL)
+			token = urldecode(search, MAX_LONG_PATH, token);
+			if(token != NULL)
 			{
-				lstrcat(classpath, modulePath);
-				lstrcat(classpath, "\\");
+				if(wcsstr(token, L":") == NULL) // パスに : を含んでいない場合は相対パスと見なしてmodule_pathを付加します。
+				{
+					wcscat_s(classpath, BUFFER_SIZE, module_path);
+					wcscat_s(classpath, BUFFER_SIZE, L"\\");
+				}
+				wcscat_s(classpath, BUFFER_SIZE, token);
+				wcscat_s(classpath, BUFFER_SIZE, L";");
 			}
-			lstrcat(classpath, token);
-			lstrcat(classpath, ";");
-			relative_classpath = NULL;
+			p = NULL;
 		}
 	}
-	lstrcat(classpath, ".");
+	wcscat_s(classpath, BUFFER_SIZE, L".");
 
 	if(relative_extdirs != NULL)
 	{
-		char* extdir = (char*)HeapAlloc(GetProcessHeap(), 0, MAX_PATH);
-		char* buf_extdirs = (char*)HeapAlloc(GetProcessHeap(), 0, lstrlen(relative_extdirs) + 1);
-		char* p = buf_extdirs;
+		wchar_t* extdirs = buffer;
+		wchar_t* extdir  = search;
 
-		lstrcpy(buf_extdirs, relative_extdirs);
-		while((token = strtok(p, ";")) != NULL)
+		wcscpy_s(extdirs, BUFFER_SIZE, relative_extdirs);
+		while((token = wcstok_s(extdirs, L";", &context)) != NULL)
 		{
-			p = NULL;
+			extdirs = NULL;
 
-			if(strlen(token) == 0)
+			if(wcslen(token) == 0)
 			{
 				continue;
 			}
 
-			extdir[0] = '\0';
-			if(strstr(token, ":") == NULL)
+			extdir[0] = L'\0';
+			if(wcsstr(token, L":") == NULL) // パスに : を含んでいない場合は相対パスと見なしてmodule_pathを付加します。
 			{
-				lstrcat(extdir, modulePath);
-				lstrcat(extdir, "\\");
+				wcscpy_s(extdir, MAX_LONG_PATH, module_path);
+				wcscat_s(extdir, MAX_LONG_PATH, L"\\");
 			}
-			lstrcat(extdir, token);
-			if(IsDirectory(extdir))
+			wcscat_s(extdir, MAX_LONG_PATH, token);
+			if(is_directory(extdir))
 			{
-				char* dirs = GetSubDirs(extdir);
-				char* dir = dirs;
-				while (*dir)
+				wchar_t* dirs = get_sub_dirs(extdir);
+				if(dirs != NULL)
 				{
-					char* jars = GetJars(dir);
-					char* jar = jars;
-					while(*jar)
+					wchar_t* dir = dirs;
+					while(*dir)
 					{
-						if(strstr(classpath, jar) == NULL)
+						wchar_t* jars = get_jars(dir);
+						if(jars != NULL)
 						{
-							lstrcat(classpath, ";");
-							lstrcat(classpath, jar);
+							wchar_t* jar = jars;
+							while(*jar)
+							{
+								if(wcsstr(classpath, jar) == NULL)
+								{
+									wcscat_s(classpath, BUFFER_SIZE, L";");
+									wcscat_s(classpath, BUFFER_SIZE, jar);
+								}
+								jar += wcslen(jar) + 1;
+							}
+							free(jars);
 						}
-						jar += lstrlen(jar) + 1;
+						wcscat_s(classpath, BUFFER_SIZE, L";");
+						wcscat_s(classpath, BUFFER_SIZE, dir);
+
+						add_path_env(dir);
+						add_dll_directory(dir);
+
+						dir += wcslen(dir) + 1;
 					}
-					HeapFree(GetProcessHeap(), 0, jars);
-					
-					lstrcat(classpath, ";");
-					lstrcat(classpath, dir);
-
-					AddPath(dir);
-					AddDllDir(dir);
-
-					dir += lstrlen(dir) + 1;
+					free(dirs);
 				}
-				HeapFree(GetProcessHeap(), 0, dirs);
 			}
 		}
-		HeapFree(GetProcessHeap(), 0, buf_extdirs);
-		HeapFree(GetProcessHeap(), 0, extdir);
 	}
 
-	if(GetEnvironmentVariable("PATH", buffer, 64 * 1024))
+	if(GetEnvironmentVariable(L"PATH", buffer, BUFFER_SIZE))
 	{
-		lstrcat(libpath, buffer);
+		wcscat_s(libpath, BUFFER_SIZE, buffer);
 	}
 
-	HeapFree(GetProcessHeap(), 0, buffer);
+	add_path_env(binpath);
+	add_dll_directory(binpath);
+	
+	add_path_env(jvmpath);
+	add_dll_directory(jvmpath);
+
+	path_initialized = TRUE;
+
+EXIT:
+	if(module_path != NULL)
+	{
+		free(module_path);
+	}
+	if(jdk != NULL)
+	{
+		free(jdk);
+	}
+	if(search != NULL)
+	{
+		free(search);
+	}
+	if(buffer != NULL)
+	{
+		free(buffer);
+	}
+	return path_initialized;
 }
+
 
 /* 指定したJRE BINディレクトリで client\jvm.dll または server\jvm.dll を検索します。
  * jvm.dll の見つかったディレクトリを output に格納します。
@@ -812,159 +1492,217 @@ void InitializePath(char* relative_classpath, char* relative_extdirs, BOOL useSe
  * useServerVM が TRUE の場合、Server VM を優先検索します。
  * jvm.dll が見つかった場合は TRUE, 見つからなかった場合は FALSE を返します。
  */
-BOOL FindJavaVM(char* output, const char* jre, BOOL useServerVM)
+BOOL find_java_vm(wchar_t* output, const wchar_t* jre, BOOL useServerVM)
 {
-	char path[MAX_PATH];
-	char buf[MAX_PATH];
+	BOOL     found = FALSE;
+	wchar_t* path = NULL;
+	wchar_t* buf  = NULL;
 
-	if (useServerVM)
+	path = (wchar_t*)malloc(MAX_LONG_PATH * sizeof(wchar_t));
+	if(path == NULL)
 	{
-		lstrcpy(path, jre);
-		lstrcat(path, "\\bin\\server");
-		lstrcpy(buf, path);
-		lstrcat(buf, "\\jvm.dll");
-		if (GetFileAttributes(buf) == -1)
+		goto EXIT;
+	}
+
+	buf = (wchar_t*)malloc(MAX_LONG_PATH * sizeof(wchar_t));
+	if(buf == NULL)
+	{
+		goto EXIT;
+	}
+
+	if(useServerVM)
+	{
+		wcscpy_s(path, MAX_LONG_PATH, jre);
+		wcscat_s(path, MAX_LONG_PATH, L"\\bin\\server");
+		wcscpy_s(buf, MAX_LONG_PATH, path);
+		wcscpy_s(buf, MAX_LONG_PATH, L"\\jvm.dll");
+		if(GetFileAttributes(buf) == INVALID_FILE_ATTRIBUTES)
 		{
-			lstrcpy(path, jre);
-			lstrcat(path, "\\bin\\client");
-			lstrcpy(buf, path);
-			lstrcat(buf, "\\jvm.dll");
-			if (GetFileAttributes(buf) == -1)
+			wcscpy_s(path, MAX_LONG_PATH, jre);
+			wcscat_s(path, MAX_LONG_PATH, L"\\bin\\client");
+			wcscpy_s(buf, MAX_LONG_PATH, path);
+			wcscat_s(buf, MAX_LONG_PATH, L"\\jvm.dll");
+			if(GetFileAttributes(buf) == INVALID_FILE_ATTRIBUTES)
 			{
-				path[0] = '\0';
+				path[0] = L'\0';
 			}
 		}
 	}
 	else
 	{
-		lstrcpy(path, jre);
-		lstrcat(path, "\\bin\\client");
-		lstrcpy(buf, path);
-		lstrcat(buf, "\\jvm.dll");
-		if (GetFileAttributes(buf) == -1)
+		wcscpy_s(path, MAX_LONG_PATH, jre);
+		wcscat_s(path, MAX_LONG_PATH, L"\\bin\\client");
+		wcscpy_s(buf, MAX_LONG_PATH, path);
+		wcscat_s(buf, MAX_LONG_PATH, L"\\jvm.dll");
+		if(GetFileAttributes(buf) == INVALID_FILE_ATTRIBUTES)
 		{
-			lstrcpy(path, jre);
-			lstrcat(path, "\\bin\\server");
-			lstrcpy(buf, path);
-			lstrcat(buf, "\\jvm.dll");
-			if (GetFileAttributes(buf) == -1)
+			wcscpy_s(path, MAX_LONG_PATH, jre);
+			wcscat_s(path, MAX_LONG_PATH, L"\\bin\\server");
+			wcscpy_s(buf, MAX_LONG_PATH, path);
+			wcscat_s(buf, MAX_LONG_PATH, L"\\jvm.dll");
+			if(GetFileAttributes(buf) == INVALID_FILE_ATTRIBUTES)
 			{
-				path[0] = '\0';
+				path[0] = L'\0';
 			}
 		}
 	}
-	if (path[0] != '\0')
+	if(path[0] != L'\0')
 	{
-		lstrcpy(output, path);
-		return TRUE;
+		wcscpy_s(output, MAX_LONG_PATH, path);
+		found = TRUE;
 	}
-	else
+
+EXIT:
+	if(buf != NULL)
 	{
-		return FALSE;
+		free(buf);
 	}
+	if(path != NULL)
+	{
+		free(path);
+	}
+	return found;
 }
 
-char* FindJavaHomeFromRegistry(LPCTSTR _subkey, char* output)
+
+wchar_t* find_java_home_from_registry(const wchar_t* _subkey, wchar_t* output)
 {
-	char* JavaHome = NULL;
-	HKEY  key = NULL;
-	DWORD size;
-	char* subkey;
-	char* buf;
+	HKEY     key    = NULL;
+	DWORD    size;
+	wchar_t* subkey = NULL;
+	wchar_t* buf    = NULL;
 
-	subkey = (char*)HeapAlloc(GetProcessHeap(), 0, MAX_PATH);
-	lstrcpy(subkey, _subkey);
-	buf = (char*)HeapAlloc(GetProcessHeap(), 0, MAX_PATH);
+	if(output != NULL)
+	{
+		output[0] = L'\0';
+	}
+
+	subkey = (wchar_t*)malloc(MAX_LONG_PATH * sizeof(wchar_t));
+	if(subkey == NULL)
+	{
+		goto EXIT;
+	}
+	wcscpy_s(subkey, MAX_LONG_PATH, _subkey);
+
+	buf = (wchar_t*)malloc(MAX_LONG_PATH * sizeof(wchar_t));
+	if(buf == NULL)
+	{
+		goto EXIT;
+	}
 
 	if(RegOpenKeyEx(HKEY_LOCAL_MACHINE, subkey, 0, KEY_READ, &key) != ERROR_SUCCESS)
 	{
 		goto EXIT;
 	}
-	size = MAX_PATH;
-	if(RegQueryValueEx(key, "CurrentVersion", NULL, NULL, (LPBYTE)buf, &size) != ERROR_SUCCESS)
+	size = MAX_LONG_PATH;
+	memset(buf, 0x00, MAX_LONG_PATH * sizeof(wchar_t));
+	if(RegQueryValueEx(key, L"CurrentVersion", NULL, NULL, (LPBYTE)buf, &size) != ERROR_SUCCESS)
 	{
 		goto EXIT;
 	}
 	RegCloseKey(key);
 	key = NULL;
 
-	lstrcat(subkey, "\\");
-	lstrcat(subkey, buf);
+	wcscat_s(subkey, MAX_LONG_PATH, L"\\");
+	wcscat_s(subkey, MAX_LONG_PATH, buf);
 
 	if(RegOpenKeyEx(HKEY_LOCAL_MACHINE, subkey, 0, KEY_READ, &key) != ERROR_SUCCESS)
 	{
 		goto EXIT;
 	}
 
-	size = MAX_PATH;
-	if(RegQueryValueEx(key, "JavaHome", NULL, NULL, (LPBYTE)buf, &size) != ERROR_SUCCESS)
+	size = MAX_LONG_PATH;
+	memset(buf, 0x00, MAX_LONG_PATH * sizeof(wchar_t));
+	if(RegQueryValueEx(key, L"JavaHome", NULL, NULL, (LPBYTE)buf, &size) != ERROR_SUCCESS)
 	{
 		goto EXIT;
 	}
 	RegCloseKey(key);
 	key = NULL;
 
-	lstrcpy(output, buf);
-	return output;
+	wcscpy_s(output, MAX_LONG_PATH, buf);
 
 EXIT:
 	if(key != NULL)
 	{
 		RegCloseKey(key);
 	}
-	HeapFree(GetProcessHeap(), 0, buf);
-	HeapFree(GetProcessHeap(), 0, subkey);
-
-	return NULL;
-}
-
-void AddPath(LPCTSTR path)
-{
-	char* buf = (char*)HeapAlloc(GetProcessHeap(), 0, 64 * 1024);
-	char* old_path = (char*)HeapAlloc(GetProcessHeap(), 0, 64 * 1024);
-
-	GetEnvironmentVariable("PATH", old_path, 64 * 1024);
-	lstrcpy(buf, path);
-	lstrcat(buf, ";");
-	lstrcat(buf, old_path);
-	SetEnvironmentVariable("PATH", buf);
-
-	HeapFree(GetProcessHeap(), 0, buf);
-	HeapFree(GetProcessHeap(), 0, old_path);
-}
-
-void AddDllDir(LPCTSTR path)
-{
-	if(addDllDirectory != NULL)
+	if(buf != NULL)
 	{
-		LPWSTR wPath = A2W(path);
-		addDllDirectory(wPath);
-		HeapFree(GetProcessHeap(), 0, wPath);
+		free(buf);
+	}
+	if(subkey != NULL)
+	{
+		free(subkey);
+	}
+
+	return (output[0] != L'\0' ? output : NULL);
+}
+
+static BOOL add_path_env(const wchar_t* path)
+{
+	BOOL succeeded = FALSE;
+	wchar_t* buf = NULL;
+	wchar_t* old = NULL;
+
+	if(path == NULL)
+	{
+		goto EXIT;
+	}
+	buf = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
+	if(buf == NULL)
+	{
+		goto EXIT;
+	}
+	old = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
+	if(old == NULL)
+	{
+		goto EXIT;
+	}
+
+	GetEnvironmentVariable(L"PATH", old, BUFFER_SIZE);
+	wcscpy_s(buf, MAX_LONG_PATH, path);
+	wcscat_s(buf, MAX_LONG_PATH, L";");
+	wcscat_s(buf, MAX_LONG_PATH, old);
+	SetEnvironmentVariable(L"PATH", buf);
+	succeeded = TRUE;
+
+EXIT:
+	if(old != NULL)
+	{
+		free(old);
+	}
+	if(buf != NULL)
+	{
+		free(buf);
+	}
+	return succeeded;
+}
+
+
+static void add_dll_directory(const wchar_t* path)
+{
+	if(_AddDllDirectory != NULL)
+	{
+		_AddDllDirectory(path);
 	}
 }
 
-char* GetModulePath(char* buf, DWORD size)
-{
-	GetModuleFileName(NULL, buf, size);
-	*(strrchr(buf, '\\')) = 0;
 
-	return buf;
-}
-
-char* GetModuleVersion(char* buf)
+wchar_t* get_module_version(wchar_t* buf, size_t size)
 {
 	HRSRC hrsrc;
 	VS_FIXEDFILEINFO* verInfo;
 
-	hrsrc = FindResource(NULL, (char*)VS_VERSION_INFO, RT_VERSION);
-	if (hrsrc == NULL)
+	hrsrc = FindResource(NULL, MAKEINTRESOURCE(VS_VERSION_INFO), RT_VERSION);
+	if(hrsrc == NULL)
 	{
-		*buf = '\0';
-		return buf;
+		*buf = L'\0';
+		return NULL;
 	}
 
 	verInfo = (VS_FIXEDFILEINFO*)((char*)LockResource(LoadResource(NULL, hrsrc)) + 40);
-	sprintf(buf, "%d.%d.%d.%d",
+	swprintf_s(buf, size, L"%d.%d.%d.%d",
 		verInfo->dwFileVersionMS >> 16,
 		verInfo->dwFileVersionMS & 0xFFFF,
 		verInfo->dwFileVersionLS >> 16,
@@ -974,120 +1712,190 @@ char* GetModuleVersion(char* buf)
 	return buf;
 }
 
-BOOL IsDirectory(char* path)
+
+static BOOL is_directory(const wchar_t* path)
 {
-	return (GetFileAttributes(path) != -1) && (GetFileAttributes(path) & FILE_ATTRIBUTE_DIRECTORY);
+	DWORD attr = GetFileAttributes(path);
+	return (attr != INVALID_FILE_ATTRIBUTES) && (attr & FILE_ATTRIBUTE_DIRECTORY);
 }
 
-char* GetSubDirs(char* dir)
+
+static wchar_t* get_sub_dirs(const wchar_t* dir)
 {
-	int size = lstrlen(dir) + 2;
-	char* buf;
+	size_t   size;
+	wchar_t* buf;
 
-	AddSubDirs(NULL, dir, &size);
-	buf = (char*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, size);
-	lstrcpy(buf, dir);
-	AddSubDirs(buf + lstrlen(dir) + 1, dir, NULL);
-	return buf;
-}
-
-char* AddSubDirs(char* buf, char* dir, int* size)
-{
-	WIN32_FIND_DATA fd;
-	HANDLE hSearch;
-	char search[MAX_PATH];
-	char child[MAX_PATH];
-	lstrcpy(search, dir);
-	lstrcat(search, "\\*");
-
-	hSearch = FindFirstFile(search, &fd);
-	if (hSearch != INVALID_HANDLE_VALUE)
+	size = wcslen(dir) + 2;
+	if(add_sub_dirs(NULL, 0, dir, &size) == FALSE)
 	{
-		do
-		{
-			if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-			{
-				if (lstrcmp(fd.cFileName, ".") == 0 || lstrcmp(fd.cFileName, "..") == 0)
-				{
-					continue;
-				}
-
-				lstrcpy(child, dir);
-				lstrcat(child, "\\");
-				lstrcat(child, fd.cFileName);
-				if (size != NULL)
-				{
-					*size = *size + lstrlen(child) + 1;
-				}
-				if (buf != NULL)
-				{
-					lstrcpy(buf, child);
-					buf += lstrlen(child) + 1;
-				}
-				buf = AddSubDirs(buf, child, size);
-			}
-		} while (FindNextFile(hSearch, &fd));
-		FindClose(hSearch);
+		return NULL;
+	}
+	buf = (wchar_t*)calloc(size, sizeof(wchar_t));
+	if(buf == NULL)
+	{
+		return NULL;
+	}
+	wcscpy_s(buf, size, dir);
+	if(add_sub_dirs(buf + wcslen(dir) + 1, size - wcslen(dir) - 1, dir, NULL) == FALSE)
+	{
+		free(buf);
+		return NULL;
 	}
 	return buf;
 }
 
-char* GetJars(char* dir)
-{
-	int size = lstrlen(dir) + 2;
-	char* buf;
 
-	AddJars(NULL, dir, &size);
-	buf = (char*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, size);
-	AddJars(buf, dir, NULL);
-	return buf;
-}
-
-char* AddJars(char* buf, char* dir, int* size)
+static BOOL add_sub_dirs(wchar_t* buf, size_t buf_size, const wchar_t* dir, size_t* size)
 {
+	BOOL succeeded = FALSE;
 	WIN32_FIND_DATA fd;
 	HANDLE hSearch;
-	char search[MAX_PATH];
-	char child[MAX_PATH];
-	lstrcpy(search, dir);
-	lstrcat(search, "\\*");
-	
+	wchar_t* search = NULL;
+	wchar_t* child = NULL;
+
+	search = (wchar_t*)malloc(MAX_LONG_PATH * sizeof(wchar_t));
+	if(search == NULL)
+	{
+		goto EXIT;
+	}
+	child = (wchar_t*)malloc(MAX_LONG_PATH * sizeof(wchar_t));
+	if(child == NULL)
+	{
+		goto EXIT;
+	}
+
+	wcscpy_s(search, MAX_LONG_PATH, dir);
+	wcscat_s(search, MAX_LONG_PATH, L"\\*");
+
 	hSearch = FindFirstFile(search, &fd);
-	if (hSearch != INVALID_HANDLE_VALUE)
+	if(hSearch != INVALID_HANDLE_VALUE)
 	{
 		do
 		{
-			if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+			if(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
 			{
-				if (lstrcmp(fd.cFileName, ".") == 0 || lstrcmp(fd.cFileName, "..") == 0)
+				if (wcscmp(fd.cFileName, L".") == 0 || wcscmp(fd.cFileName, L"..") == 0)
 				{
 					continue;
 				}
 
-				lstrcpy(child, dir);
-				lstrcat(child, "\\");
-				lstrcat(child, fd.cFileName);
-				buf = AddJars(buf, child, size);
+				wcscpy_s(child, MAX_LONG_PATH, dir);
+				wcscat_s(child, MAX_LONG_PATH, L"\\");
+				wcscat_s(child, MAX_LONG_PATH, fd.cFileName);
+				if(size != NULL)
+				{
+					*size = *size + wcslen(child) + 1;
+				}
+				if(buf != NULL)
+				{
+					wcscpy_s(buf, buf_size, child);
+					buf += wcslen(child) + 1;
+					buf_size -= wcslen(child) + 1;
+				}
+				add_sub_dirs(buf, buf_size, child, size);
+			}
+		} while (FindNextFile(hSearch, &fd));
+		FindClose(hSearch);
+	}
+	succeeded = TRUE;
+
+EXIT:
+	if(child != NULL)
+	{
+		free(child);
+	}
+	if(search != NULL)
+	{
+		free(search);
+	}
+
+	return succeeded;
+}
+
+
+static wchar_t* get_jars(const wchar_t* dir)
+{
+	size_t   size;
+	wchar_t* buf;
+
+	size = wcslen(dir) + 2;
+	if(add_jars(NULL, 0, dir, &size) == FALSE)
+	{
+		return NULL;
+	}
+	buf = (wchar_t*)calloc(size, sizeof(wchar_t));
+	if(buf == NULL)
+	{
+		return NULL;
+	}
+	if(add_jars(buf, size, dir, NULL) == FALSE)
+	{
+		free(buf);
+		return NULL;
+	}
+	return buf;
+}
+
+
+static BOOL add_jars(wchar_t* buf, size_t buf_size, const wchar_t* dir, size_t* size)
+{
+	BOOL succeeded = FALSE;
+	WIN32_FIND_DATA fd;
+	HANDLE hSearch;
+	wchar_t* search = NULL;
+	wchar_t* child = NULL;
+
+	search = (wchar_t*)malloc(MAX_LONG_PATH * sizeof(wchar_t));
+	if(search == NULL)
+	{
+		goto EXIT;
+	}
+	child = (wchar_t*)malloc(MAX_LONG_PATH * sizeof(wchar_t));
+	if(child == NULL)
+	{
+		goto EXIT;
+	}
+
+	wcscpy_s(search, MAX_LONG_PATH, dir);
+	wcscat_s(search, MAX_LONG_PATH, L"\\*");
+	
+	hSearch = FindFirstFile(search, &fd);
+	if(hSearch != INVALID_HANDLE_VALUE)
+	{
+		do
+		{
+			if(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+			{
+				if (wcscmp(fd.cFileName, L".") == 0 || wcscmp(fd.cFileName, L"..") == 0)
+				{
+					continue;
+				}
+
+				wcscpy_s(child, MAX_LONG_PATH, dir);
+				wcscat_s(child, MAX_LONG_PATH, L"\\");
+				wcscat_s(child, MAX_LONG_PATH, fd.cFileName);
+				add_jars(buf, buf_size, child, size);
 			}
 			else
 			{
-				int len = lstrlen(fd.cFileName);
+				size_t len = wcslen(fd.cFileName);
 				if(len >= 4)
 				{
-					char* ext = fd.cFileName + len - 4;
-					if(lstrcmpi(ext, ".JAR") == 0)
+					wchar_t* ext = fd.cFileName + len - 4;
+					if(_wcsicmp(ext, L".JAR") == 0)
 					{
-						lstrcpy(child, dir);
-						lstrcat(child, "\\");
-						lstrcat(child, fd.cFileName);
-						if (size != NULL)
+						wcscpy_s(child, MAX_LONG_PATH, dir);
+						wcscat_s(child, MAX_LONG_PATH, L"\\");
+						wcscat_s(child, MAX_LONG_PATH, fd.cFileName);
+						if(size != NULL)
 						{
-							*size = *size + lstrlen(child) + 1;
+							*size = *size + wcslen(child) + 1;
 						}
 						if(buf != NULL)
 						{
-							lstrcpy(buf, child);
-							buf += lstrlen(child) + 1;
+							wcscpy_s(buf, buf_size, child);
+							buf += wcslen(child) + 1;
+							buf_size -= wcslen(child) + 1;
 						}
 					}
 				}
@@ -1095,75 +1903,58 @@ char* AddJars(char* buf, char* dir, int* size)
 		} while (FindNextFile(hSearch, &fd));
 		FindClose(hSearch);
 	}
-	return buf;
+	succeeded = TRUE;
+
+EXIT:
+	if(child != NULL)
+	{
+		free(child);
+	}
+	if(search != NULL)
+	{
+		free(search);
+	}
+	return succeeded;
 }
 
-char** GetArgsOpt(char* vm_args_opt, int* argc)
-{
-	LPWSTR lpCmdLineW;
-	LPWSTR* argvW;
-	LPSTR* argvA;
-	int i;
 
-	if (vm_args_opt == NULL || vm_args_opt[0] == '\0') {
-		argvA = (char**)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, 1);
-		*argc = 0;
-		return argvA;
-	}
-
-	lpCmdLineW = A2W((LPCSTR)vm_args_opt);
-	if (lpCmdLineW == NULL)
-	{
-		return NULL;
-	}
-	argvW = CommandLineToArgvW(lpCmdLineW, argc);
-	HeapFree(GetProcessHeap(), 0, lpCmdLineW);
-	if (argvW == NULL)
-	{
-		return NULL;
-	}
-
-	argvA = (LPSTR*)HeapAlloc(GetProcessHeap(), 0, (*argc + 1) * sizeof(LPSTR));
-	for (i = 0; i < *argc; i++)
-	{
-		argvA[i] = W2A(argvW[i]);
-	}
-	argvA[*argc] = NULL;
-	LocalFree(argvW);
-	return (LPTSTR*)argvA;
-}
-
-int GetArchitectureBits(const char* jvmpath)
+int get_java_vm_bits(const wchar_t* jvmpath)
 {
 	int bits = 0;
-	char*  file = NULL;
+	wchar_t* file = NULL;
 	HANDLE hFile = NULL;
 	BYTE*  buf = NULL;
 	DWORD size = 512;
 	DWORD read_size;
 	UINT  i;
 
-	file = (char*)malloc(1024);
-	sprintf(file, "%s\\jvm.dll", jvmpath);
+	file = (wchar_t*)malloc(MAX_LONG_PATH * sizeof(wchar_t));
+	if(file == NULL)
+	{
+		goto EXIT;
+	}
+	swprintf_s(file, MAX_LONG_PATH, L"%s\\jvm.dll", jvmpath);
 
 	buf = (BYTE*)malloc(size);
+	if(buf == NULL)
+	{
+		goto EXIT;
+	}
 
 	hFile = CreateFile(file, GENERIC_READ, FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	if (hFile == INVALID_HANDLE_VALUE)
+	if(hFile == INVALID_HANDLE_VALUE)
 	{
 		goto EXIT;
 	}
 
-	if (ReadFile(hFile, buf, size, &read_size, NULL) == 0)
+	if(ReadFile(hFile, buf, size, &read_size, NULL) == 0)
 	{
 		goto EXIT;
 	}
-	CloseHandle(hFile);
-	hFile = NULL;
 
-	for (i = 0; i < size - 6; i++)
+	for(i = 0; i < size - 6; i++)
 	{
-		if (buf[i + 0] == 'P' && buf[i + 1] == 'E' && buf[i + 2] == 0x00 && buf[i + 3] == 0x00)
+		if(buf[i + 0] == 'P' && buf[i + 1] == 'E' && buf[i + 2] == 0x00 && buf[i + 3] == 0x00)
 		{
 			if (buf[i + 4] == 0x4C && buf[i + 5] == 0x01)
 			{
@@ -1179,112 +1970,41 @@ int GetArchitectureBits(const char* jvmpath)
 	}
 
 EXIT:
-	if (hFile != NULL)
+	if(hFile != NULL)
 	{
 		CloseHandle(hFile);
 	}
-	if (buf != NULL)
+	if(buf != NULL)
 	{
 		free(buf);
 	}
-	if (file != NULL)
+	if(file != NULL)
 	{
 		free(file);
 	}
-
 	return bits;
 }
 
-static LPWSTR A2W(LPCSTR s)
+
+static wchar_t* urldecode(wchar_t *dst, size_t dst_size, const wchar_t *src)
 {
-	LPWSTR buf;
-	int ret;
+	wchar_t* result = NULL;
+	char*    src_utf8 = NULL;
+	char*    dst_utf8 = NULL;
+	char     a;
+	char     b;
+	wchar_t* buf = NULL;
 
-	ret = MultiByteToWideChar(CP_ACP, 0, s, -1, NULL, 0);
-	if (ret == 0)
+	src_utf8 = to_utf8(src);
+	dst_utf8 = (char*)malloc(strlen(src_utf8) + 1);
+	if(dst_utf8 == NULL)
 	{
-		return NULL;
+		goto EXIT;
 	}
 
-	buf = (LPWSTR)HeapAlloc(GetProcessHeap(), 0, (ret + 1) * sizeof(WCHAR));
-	ret = MultiByteToWideChar(CP_ACP, 0, s, -1, buf, (ret + 1));
-	if (ret == 0)
+	while(*src_utf8)
 	{
-		HeapFree(GetProcessHeap(), 0, buf);
-		return NULL;
-	}
-	buf[ret] = L'\0';
-
-	return buf;
-}
-
-static LPSTR W2A(LPCWSTR s)
-{
-	LPSTR buf;
-	int ret;
-
-	ret = WideCharToMultiByte(CP_ACP, 0, s, -1, NULL, 0, NULL, NULL);
-	if (ret == 0)
-	{
-		return NULL;
-	}
-	buf = (LPSTR)HeapAlloc(GetProcessHeap(), 0, ret + 1);
-	ret = WideCharToMultiByte(CP_ACP, 0, s, -1, buf, (ret + 1), NULL, NULL);
-	if (ret == 0)
-	{
-		HeapFree(GetProcessHeap(), 0, buf);
-		return NULL;
-	}
-	buf[ret] = '\0';
-
-	return buf;
-}
-
-static char* get_line(FILE* fp)
-{
-	int size = 32;
-	int pos = 0;
-	int c;
-	char* buf = (char*)malloc(size);
-	
-	do {
-		c = fgetc(fp);
-		if(c != EOF)
-		{
-			buf[pos++] = (char)c;
-		}
-		if(pos >= size - 1)
-		{
-			size *= 2;
-			buf = (char*)realloc(buf, size);
-		}
-	} while(c != EOF && c != '\n');
-	
-	if(pos == 0)
-	{
-		free(buf);
-		return NULL;
-	}
-	if(pos >= 1 && buf[pos - 1] == '\n')
-	{
-		buf[pos - 1] = '\0';
-		if(pos >= 2 && buf[pos -2] == '\r')
-		{
-			buf[pos -2] = '\0';
-		}
-	}
-	buf[pos] = '\0';
-	return buf;
-}
-
-static char* urldecode(char *dst, const char *src)
-{
-	char* result = dst;
-	char a;
-	char b;
-	while(*src)
-	{
-		if((*src == '%') && ((a = src[1]) && (b = src[2])) && (isxdigit(a) && isxdigit(b)))
+		if(*src_utf8 == '%' && (a = src_utf8[1]) != '\0' && (b = src_utf8[2]) != '\0' && isxdigit(a) && isxdigit(b))
 		{
 			if(a >= 'a')
 			{
@@ -1314,19 +2034,163 @@ static char* urldecode(char *dst, const char *src)
 				b -= '0';
 			}
 			
-			*dst++ = 16*a+b;
-			src+=3;
+			*dst_utf8++ = 16 * a + b;
+			src_utf8 += 3;
 		}
-		else if(*src == '+')
+		else if(*src_utf8 == '+')
 		{
-			*dst++ = ' ';
-			src++;
+			*dst_utf8++ = ' ';
+			src_utf8++;
 		}
 		else
 		{
-			*dst++ = *src++;
+			*dst_utf8++ = *src_utf8++;
 		}
 	}
-	*dst++ = '\0';
+	*dst_utf8++ = '\0';
+
+	buf = from_utf8(dst_utf8);
+	wcscpy_s(dst, dst_size, buf);
+	result = dst;
+
+EXIT:
+	if(buf != NULL)
+	{
+		free(buf);
+	}
+	if(dst_utf8 != NULL)
+	{
+		free(dst_utf8);
+	}
+	if(src_utf8 != NULL)
+	{
+		free(src_utf8);
+	}
 	return result;
+}
+
+
+char* to_platform_encoding(const wchar_t* str)
+{
+	int    mb_size;
+	char*  mb_buf;
+
+	if(str == NULL)
+	{
+		return NULL;
+	}
+
+	mb_size = WideCharToMultiByte(CP_ACP, 0, str, -1, NULL, 0, NULL, NULL);
+	if(mb_size == 0)
+	{
+		return NULL;
+	}
+	mb_buf = (char*)malloc(mb_size);
+	if(mb_buf == NULL)
+	{
+		return NULL;
+	}
+	if(WideCharToMultiByte(CP_ACP, 0, str, -1, mb_buf, mb_size, NULL, NULL) == 0)
+	{
+		free(mb_buf);
+		return NULL;
+	}
+	return mb_buf;
+}
+
+
+char* to_utf8(const wchar_t* str)
+{
+	int    mb_size;
+	char*  mb_buf;
+
+	if(str == NULL)
+	{
+		return NULL;
+	}
+
+	mb_size = WideCharToMultiByte(CP_UTF8, 0, str, -1, NULL, 0, NULL, NULL);
+	if(mb_size == 0)
+	{
+		return NULL;
+	}
+	mb_buf = (char*)malloc(mb_size);
+	if(mb_buf == NULL)
+	{
+		return NULL;
+	}
+	if(WideCharToMultiByte(CP_UTF8, 0, str, -1, mb_buf, mb_size, NULL, NULL) == 0)
+	{
+		free(mb_buf);
+		return NULL;
+	}
+	return mb_buf;
+}
+
+
+wchar_t* from_utf8(const char* utf8)
+{
+	int      wc_size;
+	wchar_t* wc_buf;
+
+	if(utf8 == NULL)
+	{
+		return NULL;
+	}
+
+	wc_size = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, NULL, 0);
+	if(wc_size == 0)
+	{
+		return NULL;
+	}
+	wc_buf = (wchar_t*)malloc(wc_size * sizeof(wchar_t));
+	if(wc_buf == NULL)
+	{
+		return NULL;
+	}
+	if(MultiByteToWideChar(CP_UTF8, 0, utf8, -1, wc_buf, wc_size) == 0)
+	{
+		free(wc_buf);
+		return NULL;
+	}
+	return wc_buf;
+}
+
+
+jstring to_jstring(JNIEnv* env, const wchar_t* str)
+{
+	jstring jstr;
+
+	if(str == NULL)
+	{
+		return NULL;
+	}
+	jstr = (*env)->NewString(env, (jchar*)str, (jsize)wcslen(str));
+	return jstr;
+}
+
+
+wchar_t* from_jstring(JNIEnv* env, jstring jstr)
+{
+	const jchar* unicode;
+	size_t       wc_size;
+	wchar_t*     wc_buf;
+
+	if(jstr == NULL)
+	{
+		return NULL;
+	}
+	unicode = (*env)->GetStringChars(env, jstr, NULL);
+	if(unicode == NULL)
+	{
+		return NULL;
+	}
+	wc_size = wcslen(unicode) + 1;
+	wc_buf = malloc(wc_size * sizeof(wchar_t));
+	if(wc_buf != NULL)
+	{
+		wcscpy_s(wc_buf, wc_size, unicode);
+	}
+	(*env)->ReleaseStringChars(env, jstr, unicode);
+	return wc_buf;
 }
