@@ -29,10 +29,8 @@ int wmain(int argc, wchar_t* argv[])
 	DWORD     read_size;
 	BYTE*     tmp;
 	DWORD     i;
-	BOOL      ret1 = FALSE;
-	BOOL      ret2 = FALSE;
+	BOOL      ret;
 	HANDLE    resource_handle = NULL;
-	DWORD     last_error = 0;
 
 	if(argc < 4 || (wcscmp(argv[1], L"-r") == 0 && argc < 5))
 	{
@@ -105,7 +103,7 @@ int wmain(int argc, wchar_t* argv[])
 		{
 			exit_process(ERROR_NOT_ENOUGH_MEMORY, L"malloc");
 		}
-		CopyMemory(tmp, resource_data, resource_size);
+		memcpy_s(tmp, resource_size, resource_data, resource_size);
 		for (i = 0; i < resource_size; i++)
 		{
 			resource_data[i] = ~tmp[resource_size - 1 - i];
@@ -113,42 +111,24 @@ int wmain(int argc, wchar_t* argv[])
 		free(tmp);
 	}
 	
-	for(i = 0; i < 100; i++)
+	resource_handle = BeginUpdateResource(filepath, FALSE);
+	if(resource_handle == NULL)
 	{
-		ret1 = FALSE;
-		ret2 = FALSE;
-		resource_handle = BeginUpdateResource(filepath, FALSE);
-		if(resource_handle != NULL)
-		{
-			ret1 = UpdateResource(resource_handle, RT_RCDATA, resource_name, MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL), resource_data, resource_size);
-			if(ret1 == FALSE)
-			{
-				last_error = GetLastError();
-			}
-			ret2 = EndUpdateResource(resource_handle, FALSE);
-			if(ret1 == TRUE && ret2 == FALSE)
-			{
-				last_error = GetLastError();
-			}
-		}
-		else
-		{
-			last_error = GetLastError();
-		}
-		if(ret1 && ret2)
-		{
-			break;
-		}
-		Sleep(100);
+		exit_process(GetLastError(), filepath);
 	}
-	if(ret1 == FALSE || ret2 == FALSE)
+	ret = UpdateResource(resource_handle, RT_RCDATA, resource_name, MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL), resource_data, resource_size);
+	if(ret == FALSE)
 	{
-		exit_process(last_error, filepath);
+		exit_process(GetLastError(), resource_name);
+	}
+	ret = EndUpdateResource(resource_handle, FALSE);
+	if(ret == FALSE)
+	{
+		exit_process(GetLastError(), L"EndUpdateResource");
 	}
 	CloseHandle(resource_handle);
-
 	free(resource_data);
-	return 0;
+	return NO_ERROR;
 }
 
 static void exit_process(DWORD last_error, const wchar_t* append)
