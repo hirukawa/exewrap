@@ -1,7 +1,7 @@
 /* このファイルの文字コードは Shift_JIS (MS932) です。*/
 
-#include <Windows.h>
-#include <Shlobj.h>
+#include <windows.h>
+#include <shlobj.h>
 #include <jni.h>
 
 #include "include/jvm.h"
@@ -28,6 +28,7 @@ static BYTE*     get_jar_buf(const wchar_t* jar_file, DWORD* jar_len);
 static BOOL      set_application_icon_file(const wchar_t* filename, const wchar_t* icon_file);
 static BOOL      set_application_icon(const wchar_t* filename, const BYTE* icon_bytes);
 static wchar_t*  set_version_info(const wchar_t* filename, const wchar_t* version_number, DWORD previous_revision, const wchar_t* file_description, const wchar_t* copyright, const wchar_t* company_name, const wchar_t* product_name, const wchar_t* product_version, const wchar_t* original_filename, const wchar_t* jar_file);
+static wchar_t*  get_exewrap_version_string(void);
 
 static BOOL      g_is_dirty_exe = FALSE;
 static wchar_t*  g_exe_file = NULL;
@@ -78,6 +79,7 @@ int wmain(int argc, wchar_t* argv[])
 
 	if((argc < 2) || ((opt['j'] == NULL) && (opt[0] == NULL)))
 	{
+		wchar_t* exewrap_version_string = get_exewrap_version_string();
 		int bits = get_process_architecture();
 
 		if(wcsrchr(argv[0], L'\\') > 0)
@@ -89,7 +91,7 @@ int wmain(int argc, wchar_t* argv[])
 			exe_file = argv[0];
 		}
 				
-		wcoutf( L"exewrap 1.6.0 for %ls (%d-bit) \r\n"
+		wcoutf( L"exewrap <%ls> for %ls (%d-bit) \r\n"
 				L"Native executable java application wrapper.\r\n"
 				L"Copyright (C) 2005-2020 HIRUKAWA Ryo. All rights reserved.\r\n"
 				L"\r\n"
@@ -114,9 +116,16 @@ int wmain(int argc, wchar_t* argv[])
 				L"  -V <product-version>\t Set product version.\r\n"
 				L"  -j <jar-file>       \t Input jar-file.\r\n"
 				L"  -o <exe-file>       \t Output exe-file.\r\n"
-			, (bits == 64 ? L"x64" : L"x86"), bits, exe_file, (bits == 64 ? L"x64" : L"x86"));
+			, exewrap_version_string, (bits == 64 ? L"x64" : L"x86"), bits, exe_file, (bits == 64 ? L"x64" : L"x86"));
 
-		return 0;
+		return NO_ERROR;
+	}
+	else
+	{
+		wchar_t* exewrap_version_string = get_exewrap_version_string();
+		int bits = get_process_architecture();
+
+		wcoutf(L"exewrap %ls for %ls (%d-bit) \r\n", exewrap_version_string, (bits == 64 ? L"x64" : L"x86"), bits);
 	}
 
 	buf = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
@@ -1421,6 +1430,49 @@ static wchar_t* set_version_info(const wchar_t* filename, const wchar_t* version
 
 	return new_version;
 }
+
+static wchar_t* get_exewrap_version_string()
+{
+	HRSRC             hrsrc;
+	VS_FIXEDFILEINFO* verInfo;
+	size_t            buf_size;
+	wchar_t*          buf = NULL;
+	DWORD             major;
+	DWORD             minor;
+	DWORD             build;
+	DWORD             revision;
+
+	hrsrc = FindResource(NULL, MAKEINTRESOURCE(VS_VERSION_INFO), RT_VERSION);
+	if(hrsrc == NULL)
+	{
+		return NULL;
+	}
+
+	verInfo = (VS_FIXEDFILEINFO*)((char*)LockResource(LoadResource(NULL, hrsrc)) + 40);
+
+	buf_size = 24;
+	buf = (wchar_t*)malloc(buf_size * sizeof(wchar_t));
+	if(buf == NULL)
+	{
+		return NULL;
+	}
+
+	major = verInfo->dwFileVersionMS >> 16;
+	minor = verInfo->dwFileVersionMS & 0xFFFF;
+	build = verInfo->dwFileVersionLS >> 16;
+	revision = verInfo->dwFileVersionLS & 0xFFFF;
+
+	if(revision != 0)
+	{
+		swprintf_s(buf, buf_size, L"%d.%d.%d.%d", major, minor, build, revision);
+	}
+	else
+	{
+		swprintf_s(buf, buf_size, L"%d.%d.%d", major, minor, build);
+	}
+	return buf;
+}
+
 
 
 DWORD uncaught_exception(JNIEnv* env, jstring thread, jthrowable throwable)

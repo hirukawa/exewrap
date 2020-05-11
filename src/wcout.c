@@ -1,7 +1,6 @@
-#include <Windows.h>
+#include <windows.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <wchar.h>
 
 int      wcout(const wchar_t* str);
 int      wcerr(const wchar_t* str);
