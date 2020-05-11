@@ -91,7 +91,7 @@ int wmain(int argc, wchar_t* argv[])
 			exe_file = argv[0];
 		}
 				
-		wcoutf( L"exewrap <%ls> for %ls (%d-bit) \r\n"
+		wcoutf( L"exewrap %ls for %ls (%d-bit) \r\n"
 				L"Native executable java application wrapper.\r\n"
 				L"Copyright (C) 2005-2020 HIRUKAWA Ryo. All rights reserved.\r\n"
 				L"\r\n"
