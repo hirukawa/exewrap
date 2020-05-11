@@ -1,6 +1,4 @@
 #include <windows.h>
-#include <locale.h>
-#include <mbctype.h>
 #include "include/message.h"
 
 static const DWORD LCID_ja_JP = MAKELCID(MAKELANGID(LANG_JAPANESE, SUBLANG_JAPANESE_JAPAN), SORT_DEFAULT);
