@@ -4,7 +4,6 @@
 #include <stdio.h>
 #include <shlobj.h>
 #include <jni.h>
-#include <locale.h>
 
 #define JVM_ELOADLIB  (+1)
 #define BUFFER_SIZE   32768
@@ -1988,23 +1987,29 @@ EXIT:
 
 static wchar_t* urldecode(wchar_t *dst, size_t dst_size, const wchar_t *src)
 {
-	wchar_t* result = NULL;
+	wchar_t* result   = NULL;
 	char*    src_utf8 = NULL;
 	char*    dst_utf8 = NULL;
+	char*    src_ptr;
+	char*    dst_ptr;
 	char     a;
 	char     b;
 	wchar_t* buf = NULL;
 
-	src_utf8 = to_utf8(src);
-	dst_utf8 = (char*)malloc(strlen(src_utf8) + 1);
+	src_ptr = src_utf8 = to_utf8(src);
+	if(src_utf8 == NULL)
+	{
+		goto EXIT;
+	}
+	dst_ptr = dst_utf8 = (char*)malloc(strlen(src_utf8) + 1);
 	if(dst_utf8 == NULL)
 	{
 		goto EXIT;
 	}
 
-	while(*src_utf8)
+	while(*src_ptr)
 	{
-		if(*src_utf8 == '%' && (a = src_utf8[1]) != '\0' && (b = src_utf8[2]) != '\0' && isxdigit(a) && isxdigit(b))
+		if(*src_ptr == '%' && (a = src_ptr[1]) != '\0' && (b = src_ptr[2]) != '\0' && isxdigit(a) && isxdigit(b))
 		{
 			if(a >= 'a')
 			{
@@ -2034,20 +2039,20 @@ static wchar_t* urldecode(wchar_t *dst, size_t dst_size, const wchar_t *src)
 				b -= '0';
 			}
 			
-			*dst_utf8++ = 16 * a + b;
-			src_utf8 += 3;
+			*dst_ptr++ = 16 * a + b;
+			src_ptr += 3;
 		}
-		else if(*src_utf8 == '+')
+		else if(*src_ptr == '+')
 		{
-			*dst_utf8++ = ' ';
-			src_utf8++;
+			*dst_ptr++ = ' ';
+			src_ptr++;
 		}
 		else
 		{
-			*dst_utf8++ = *src_utf8++;
+			*dst_ptr++ = *src_ptr++;
 		}
 	}
-	*dst_utf8++ = '\0';
+	*dst_ptr++ = '\0';
 
 	buf = from_utf8(dst_utf8);
 	wcscpy_s(dst, dst_size, buf);
