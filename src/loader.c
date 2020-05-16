@@ -20,6 +20,7 @@ BOOL             set_splash_screen_resource(const wchar_t* splash_screen_name, c
 wchar_t*         get_module_object_name(const wchar_t* prefix);
 BYTE*            get_resource(const wchar_t* name, RESOURCE* resource);
 wchar_t*         get_jni_error_message(int err, int* exit_code, wchar_t* buf, size_t len);
+wchar_t*         get_exception_message(JNIEnv* env, jthrowable throwable);
 wchar_t*         get_stack_trace(JNIEnv* env, jobject thread, jthrowable throwable);
 
 static wchar_t**        split_args(wchar_t* buffer, int* p_argc);
@@ -400,7 +401,7 @@ BOOL load_main_class(int argc, const wchar_t* argv[], const wchar_t* utilities, 
 		(*env)->SetObjectArrayElement(env, jars, 1, jarInputStream);
 	}
 	
-	// call Main
+	// call Loader.initialize
 	main_class = from_utf8((char*)get_resource(L"MAIN_CLASS", NULL)); // MAIN_CLASS‚Í’è‹`‚³‚ê‚Ä‚¢‚È‚¢ê‡‚Í main_class = NULL ‚Ì‚Ü‚Üˆ—‚ði‚ß‚Ü‚·B
 	console_code_page = GetConsoleOutputCP();
 	MainClass = (*env)->CallStaticObjectMethod(env, Loader, Loader_initialize, jars, urlStreamHandlerFactory, to_jstring(env, utilities), to_jstring(env, main_class), console_code_page);
@@ -432,11 +433,6 @@ BOOL load_main_class(int argc, const wchar_t* argv[], const wchar_t* utilities, 
 	return TRUE;
 
 EXIT:
-	if((*env)->ExceptionCheck(env) == JNI_TRUE)
-	{
-		(*env)->ExceptionDescribe(env);
-		(*env)->ExceptionClear(env);
-	}
 
 	return FALSE;
 }
@@ -699,6 +695,54 @@ wchar_t* get_jni_error_message(int error, int* exit_code, wchar_t* buf, size_t l
 		break;
 	}
 	return buf;
+}
+
+
+wchar_t* get_exception_message(JNIEnv* env, jthrowable throwable)
+{
+	jclass    Throwable            = NULL;
+	jmethodID throwable_getMessage = NULL;
+	jstring   message              = NULL;
+	wchar_t*  buf                  = NULL;
+	wchar_t*  str_message          = NULL;
+
+	if(throwable == NULL)
+	{
+		goto EXIT;
+	}
+
+	buf = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
+	if(buf == NULL)
+	{
+		goto EXIT;
+	}
+
+	Throwable = (*env)->FindClass(env, "java/lang/Throwable");
+	if(Throwable == NULL)
+	{
+		swprintf_s(buf, BUFFER_SIZE, _(MSG_ID_ERR_FIND_CLASS), L"java.lang.Throwable");
+		goto EXIT;
+	}
+	throwable_getMessage = (*env)->GetMethodID(env, Throwable, "getMessage", "()Ljava/lang/String;");
+	if(throwable_getMessage == NULL)
+	{
+		swprintf_s(buf, BUFFER_SIZE, _(MSG_ID_ERR_GET_METHOD), L"java.lang.Throwable.getMessage()");
+		goto EXIT;
+	}
+
+	message = (jstring)(*env)->CallObjectMethod(env, throwable, throwable_getMessage);
+	str_message = from_jstring(env, message);
+	
+EXIT:
+	if(message != NULL)
+	{
+		(*env)->DeleteLocalRef(env, message);
+	}
+	if(buf != NULL)
+	{
+		free(buf);
+	}
+	return str_message;
 }
 
 

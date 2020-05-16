@@ -240,6 +240,26 @@ INT WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, wchar_t* lpCmd
 
 	if(load_main_class(argc, argv, utilities, &result) == FALSE)
 	{
+		if((*env)->ExceptionCheck(env) == JNI_TRUE)
+		{
+			jthrowable throwable = (*env)->ExceptionOccurred(env);
+			if(throwable != NULL)
+			{
+				// メッセージボックスで表示するメッセージに例外メッセージを連結します。
+				wchar_t* exception_message = get_exception_message(env, throwable);
+				if(exception_message != NULL && wcslen(exception_message) > 0)
+				{
+					wcscat_s(result.msg, BUFFER_SIZE, L"\r\n\r\n");
+					wcscat_s(result.msg, BUFFER_SIZE, exception_message);
+				}
+	
+				// スタックトレースをログに出力します。
+				uncaught_exception(env, NULL, throwable);
+
+				(*env)->DeleteLocalRef(env, throwable);
+			}
+			(*env)->ExceptionClear(env);
+		}
 		show_error_message_box(result.msg);
 		ExitProcess(ERROR_INVALID_DATA);
 	}

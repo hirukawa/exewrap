@@ -183,6 +183,14 @@ int wmain(int argc, wchar_t* argv[])
 	{
 		wcerr(result.msg);
 		wcerr(L"\r\n");
+
+		//例外が発生している場合はスタックトレースを出力します。
+		if((*env)->ExceptionCheck(env) == JNI_TRUE)
+		{
+			(*env)->ExceptionDescribe(env);
+			(*env)->ExceptionClear(env);
+		}
+
 		ExitProcess(ERROR_INVALID_DATA);
 	}
 	if(synchronize_mutex_handle != NULL)

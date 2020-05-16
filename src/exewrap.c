@@ -321,6 +321,14 @@ int wmain(int argc, wchar_t* argv[])
 		if(load_main_class(argc, argv, NULL, &result) == FALSE)
 		{
 			wcerrf(L"ERROR: load_main_class: tool.jar exewrap.tool.JarProcessor: %ls\r\n", result.msg);
+
+			//例外が発生している場合はスタックトレースを出力します。
+			if((*env)->ExceptionCheck(env) == JNI_TRUE)
+			{
+				(*env)->ExceptionDescribe(env);
+				(*env)->ExceptionClear(env);
+			}
+
 			cleanup();
 			ExitProcess(ERROR_INVALID_DATA);
 		}
