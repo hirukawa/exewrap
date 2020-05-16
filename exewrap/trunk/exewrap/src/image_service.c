@@ -343,7 +343,20 @@ static int service_main(int argc, const wchar_t* argv[])
 
 	if(load_main_class(argc, argv, utilities, &result) == FALSE)
 	{
-		write_message(event_type, result.msg);
+		if((*env)->ExceptionCheck(env) == JNI_TRUE)
+		{
+			jthrowable throwable = (*env)->ExceptionOccurred(env);
+			if(throwable != NULL)
+			{
+				uncaught_exception(env, NULL, throwable);
+				(*env)->DeleteLocalRef(env, throwable);
+			}
+			(*env)->ExceptionClear(env);
+		}
+		else
+		{
+			write_message(event_type, result.msg);
+		}
 		error = ERROR_INVALID_DATA;
 		goto EXIT;
 	}

@@ -39,6 +39,7 @@ extern BOOL        set_splash_screen_resource(const wchar_t* splash_screen_name,
 extern wchar_t*    get_module_object_name(const wchar_t* prefix);
 extern BYTE*       get_resource(const wchar_t* name, RESOURCE* resource);
 extern wchar_t*    get_jni_error_message(int error, int* exit_code, wchar_t* buf, size_t len);
+extern wchar_t*    get_exception_message(JNIEnv* env, jthrowable throwable);
 extern wchar_t*    get_stack_trace(JNIEnv* env, jstring thread, jthrowable throwable);
 extern UINT WINAPI remote_call_main_method(const void* shared_memory_handle);
 extern DWORD       uncaught_exception(JNIEnv* env, jobject thread, jthrowable throwable);
