@@ -411,19 +411,23 @@ BOOL load_main_class(int argc, const wchar_t* argv[], const wchar_t* utilities, 
 		swprintf_s(result->msg, LOAD_RESULT_MAX_MESSAGE_LENGTH, _(MSG_ID_ERR_LOAD_MAIN_CLASS), main_class);
 		goto EXIT;
 	}
-	MainClass_main = (*env)->GetStaticMethodID(env, MainClass, "main", "([Ljava/lang/String;)V");
-	if(MainClass_main == NULL)
+
+	if(utilities == NULL || wcsstr(utilities, UTIL_NO_MAIN) == NULL) // NO-MAIN; が指定されている場合はmainメソッドを探しません。NO-MAIN; はサービスアプリケーションで指定されます。
 	{
-		result->msg_id = MSG_ID_ERR_FIND_MAIN_METHOD;
-		wcscpy_s(result->msg, LOAD_RESULT_MAX_MESSAGE_LENGTH, _(MSG_ID_ERR_FIND_MAIN_METHOD));
-		goto EXIT;
-	}
-	result->MainClass_main_args = (*env)->NewObjectArray(env, argc - 1, (*env)->FindClass(env, "java/lang/String"), NULL);
-	{
-		int i;
-		for (i = 1; i < argc; i++)
+		MainClass_main = (*env)->GetStaticMethodID(env, MainClass, "main", "([Ljava/lang/String;)V");
+		if(MainClass_main == NULL)
 		{
-			(*env)->SetObjectArrayElement(env, result->MainClass_main_args, (i - 1), to_jstring(env, argv[i]));
+			result->msg_id = MSG_ID_ERR_FIND_MAIN_METHOD;
+			wcscpy_s(result->msg, LOAD_RESULT_MAX_MESSAGE_LENGTH, _(MSG_ID_ERR_FIND_MAIN_METHOD));
+			goto EXIT;
+		}
+		result->MainClass_main_args = (*env)->NewObjectArray(env, argc - 1, (*env)->FindClass(env, "java/lang/String"), NULL);
+		{
+			int i;
+			for (i = 1; i < argc; i++)
+			{
+				(*env)->SetObjectArrayElement(env, result->MainClass_main_args, (i - 1), to_jstring(env, argv[i]));
+			}
 		}
 	}
 	result->MainClass = MainClass;

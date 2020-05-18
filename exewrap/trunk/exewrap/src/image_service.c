@@ -210,6 +210,7 @@ static int service_main(int argc, const wchar_t* argv[])
 		goto EXIT;
 	}
 	utilities[0] = L'\0';
+	wcscat_s(utilities, BUFFER_SIZE, UTIL_NO_MAIN);
 
 	result.msg_id = NO_ERROR;
 	result.msg = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
