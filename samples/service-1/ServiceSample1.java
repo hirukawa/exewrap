@@ -14,31 +14,23 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public class ServiceSample1 {
 
-	public static void main(String[] args) throws IOException {
-		start(args);
-	}
-
 	private static AtomicBoolean isStopRequested = new AtomicBoolean(false);
 	private static ServerSocket serverSocket;
 
 	public static void start(String[] args) throws IOException {
-		SERVER: for(;;) {
-			serverSocket = new ServerSocket(80, 50, InetAddress.getLoopbackAddress());
-			for(;;) {
-				Socket socket;
-				try {
-					socket = serverSocket.accept();
-				} catch(SocketException e) {
-					if(isStopRequested.get()) {
-						break SERVER;
-					}
-					throw e;
+		serverSocket = new ServerSocket(80, 50, InetAddress.getLoopbackAddress());
+		for(;;) {
+			Socket socket;
+			try {
+				socket = serverSocket.accept();
+			} catch(SocketException e) {
+				if(isStopRequested.get()) {
+					return;
 				}
-				new Worker(socket).start();
+				throw e;
 			}
+			new Worker(socket).start();
 		}
-		serverSocket = null;
-		isStopRequested.set(false);
 	}
 
 	public static void stop() throws IOException {

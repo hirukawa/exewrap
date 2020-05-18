@@ -6,6 +6,7 @@
 #include <Windows.h>
 #include <jni.h>
 
+#define UTIL_NO_MAIN                    L"NO-MAIN;"
 #define UTIL_ENCODING_FIX               L"ENCODING-FIX;"
 #define UTIL_UNCAUGHT_EXCEPTION_HANDLER L"UncaughtExceptionHandler;"
 #define UTIL_FILE_LOG_STREAM            L"FileLogStream;"
