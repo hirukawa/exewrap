@@ -251,7 +251,7 @@ $(OBJ)\exewrap\core\URLStreamHandlerFactory.class : $(OBJ) java\exewrap\core\URL
 
 ### exewrap.util
 
-$(OBJ)\util.jar : $(OBJ) $(OBJ)\exewrap\util\EventLogHandler.class $(OBJ)\exewrap\util\EventLogStream.class $(OBJ)\exewrap\util\FileLogStream.class $(OBJ)\exewrap\util\UncaughtExceptionHandler.class $(OBJ)\exewrap\util\Environment.class
+$(OBJ)\util.jar : $(OBJ) $(OBJ)\exewrap\util\EventLogHandler.class $(OBJ)\exewrap\util\FileLogStream.class $(OBJ)\exewrap\util\UncaughtExceptionHandler.class $(OBJ)\exewrap\util\Environment.class
 	$(JAR) cvfM $(OBJ)\util.jar -C $(OBJ) exewrap\util
 
 $(OBJ)\exewrap\util\Environment.class : $(OBJ) java\exewrap\util\Environment.java
@@ -259,9 +259,6 @@ $(OBJ)\exewrap\util\Environment.class : $(OBJ) java\exewrap\util\Environment.jav
 
 $(OBJ)\exewrap\util\EventLogHandler.class : $(OBJ) java\exewrap\util\EventLogHandler.java
 	$(JAVAC) -Xlint:none -g:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\util\EventLogHandler.java
-
-$(OBJ)\exewrap\util\EventLogStream.class : $(OBJ) java\exewrap\util\EventLogStream.java
-	$(JAVAC) -Xlint:none -g:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\util\EventLogStream.java
 
 $(OBJ)\exewrap\util\FileLogStream.class : $(OBJ) java\exewrap\util\FileLogStream.java
 	$(JAVAC) -Xlint:none -g:none -source 1.5 -target 1.5 -sourcepath java -d $(OBJ) java\exewrap\util\FileLogStream.java

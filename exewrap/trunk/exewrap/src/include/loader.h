@@ -9,7 +9,6 @@
 #define UTIL_ENCODING_FIX               L"ENCODING-FIX;"
 #define UTIL_UNCAUGHT_EXCEPTION_HANDLER L"UncaughtExceptionHandler;"
 #define UTIL_FILE_LOG_STREAM            L"FileLogStream;"
-#define UTIL_EVENT_LOG_STREAM           L"EventLogStream;"
 #define UTIL_EVENT_LOG_HANDLER          L"EventLogHandler;"
 
 #define LOAD_RESULT_MAX_MESSAGE_LENGTH 32678

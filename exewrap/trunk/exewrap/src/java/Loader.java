@@ -98,9 +98,6 @@ public class Loader extends ClassLoader {
 			if(utilities.contains("FileLogStream;")) {
 				Class.forName("exewrap.util.FileLogStream", true, systemClassLoader);
 			}
-			if(utilities.contains("EventLogStream;")) {
-				Class.forName("exewrap.util.EventLogStream", true, systemClassLoader);
-			}
 			if(utilities.contains("EventLogHandler;")) {
 				Class.forName("exewrap.util.EventLogHandler", true, systemClassLoader);
 			}
