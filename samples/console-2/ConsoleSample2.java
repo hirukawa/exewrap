@@ -1,10 +1,13 @@
+import java.io.IOException;
 
 public class ConsoleSample2 {
 
-	public static void main(String[] args) {
+	public static void main(String[] args) throws IOException {
 
-		System.out.println("java.runtime.version=" + System.getProperty("java.runtime.version"));
-		System.out.println("JAVA_HOME=" + System.getenv("JAVA_HOME"));
+		System.out.println("Hello, World!!");
+
+		System.out.println("Enterキーを押すと終了します。");
+		System.in.read();
 
 	}
 }

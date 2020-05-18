@@ -252,7 +252,7 @@ static int service_main(int argc, const wchar_t* argv[])
 	{
 		if(ext_flags == NULL || wcsstr(ext_flags, L"NOLOG") == NULL)
 		{
-			wcscat_s(utilities, BUFFER_SIZE, UTIL_EVENT_LOG_STREAM);
+			wcscat_s(utilities, BUFFER_SIZE, UTIL_FILE_LOG_STREAM);
 		}
 		wcscat_s(utilities, BUFFER_SIZE, UTIL_EVENT_LOG_HANDLER);
 	}
