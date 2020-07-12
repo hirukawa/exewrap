@@ -48,7 +48,6 @@ static wchar_t**   parse_opt(int argc, const wchar_t* argv[]);
 static void        write_message(WORD event_type, const wchar_t* message);
 static void        write_message_by_error_code(WORD evnet_type, DWORD last_error, const wchar_t* append);
 static void        show_help_message(void);
-static void        set_current_directory(void);
 static wchar_t*    get_service_name(void);
 static wchar_t*    get_pipe_name(void);
 static DWORD       run_as_administrator(HANDLE pipe, int argc, const wchar_t* argv[], const wchar_t* append);
@@ -64,6 +63,7 @@ static HANDLE    hConOut = NULL;
 
 int wmain(int argc, wchar_t* argv[])
 {
+	wchar_t*  ext_flags    = NULL;
 	wchar_t*  service_name = NULL;
 	int       opt_end      = 0;
 	wchar_t*  pipe_name    = NULL;
@@ -72,10 +72,10 @@ int wmain(int argc, wchar_t* argv[])
 
 	service_name = get_service_name();
 	flags = parse_args(&argc, argv, &opt_end);
+	ext_flags = from_utf8((char*)get_resource(L"EXTFLAGS", NULL));
 
 	if(flags & SHOW_HELP_MESSAGE)
 	{
-		wchar_t* ext_flags = from_utf8((char*)get_resource(L"EXTFLAGS", NULL));
 		if(ext_flags == NULL || wcsstr(ext_flags, L"NOHELP") == NULL)
 		{
 			show_help_message();
@@ -83,11 +83,23 @@ int wmain(int argc, wchar_t* argv[])
 		}
 	}
 
+	// プロセスがサービスとして実行されている場合、または拡張フラグ CD_APPDIR が指定されている場合、
+	// 実行ファイルのあるフォルダーをカレントディレクトリに設定します。
+	// これによりJavaのシステムプロパティ user.dir にも実行ファイルのあるフォルダーが設定されることになります。
+	if((flags & SERVICE_START_BY_SCM) || (ext_flags != NULL && wcsstr(ext_flags, L"CD_APPDIR") != NULL))
+	{
+		wchar_t* app_dir = (wchar_t*)malloc(MAX_LONG_PATH * sizeof(wchar_t));
+		if(app_dir != NULL) {
+			GetModuleFileName(NULL, app_dir, MAX_LONG_PATH);
+			*(wcsrchr(app_dir, L'\\')) = L'\0';
+			SetCurrentDirectory(app_dir);
+			free(app_dir);
+		}
+	}
+
 	if(flags & SERVICE_START_BY_SCM)
 	{
 		SERVICE_TABLE_ENTRY ServiceTable[2];
-
-		set_current_directory();
 		
 		ARG_COUNT = argc;
 		ARG_VALUE = argv;
@@ -173,6 +185,10 @@ EXIT:
 	if(service_name != NULL)
 	{
 		free(service_name);
+	}
+	if(ext_flags != NULL)
+	{
+		free(ext_flags);
 	}
 
 	ExitProcess(error);
@@ -1274,24 +1290,6 @@ static void show_help_message()
 	{
 		free(buf);
 	}
-}
-
-
-static void set_current_directory()
-{
-	wchar_t* filepath = NULL;
-
-	filepath = (wchar_t*)malloc(MAX_LONG_PATH * sizeof(wchar_t));
-	if(filepath == NULL)
-	{
-		return;
-	}
-
-	GetModuleFileName(NULL, filepath, MAX_LONG_PATH);
-	*(wcsrchr(filepath, L'\\')) = L'\0';
-	SetCurrentDirectory(filepath);
-
-	free(filepath);
 }
 
 

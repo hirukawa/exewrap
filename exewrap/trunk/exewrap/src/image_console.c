@@ -88,6 +88,19 @@ int wmain(int argc, wchar_t* argv[])
 				exit_process(ERROR_BUSY, NULL);
 			}
 		}
+		if(wcsstr(ext_flags, L"CD_APPDIR") != NULL)
+		{
+			// 拡張フラグ CD_APPDIR が指定されている場合、実行ファイルのあるフォルダーをカレントディレクトリに設定します。
+			// これによりJavaのシステムプロパティ user.dir にも実行ファイルのあるフォルダーが設定されることになります。
+			wchar_t* app_dir = (wchar_t*)malloc(MAX_LONG_PATH * sizeof(wchar_t));
+			if(app_dir == NULL) {
+				exit_process(ERROR_NOT_ENOUGH_MEMORY, L"malloc");
+			}
+			GetModuleFileName(NULL, app_dir, MAX_LONG_PATH);
+			*(wcsrchr(app_dir, L'\\')) = L'\0';
+			SetCurrentDirectory(app_dir);
+			free(app_dir);
+		}
 	}
 	if(ext_flags == NULL || wcsstr(ext_flags, L"NOENCODINGFIX") == NULL)
 	{
