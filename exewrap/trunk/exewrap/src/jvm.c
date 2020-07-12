@@ -17,6 +17,7 @@ jint     destroy_java_vm(void);
 JNIEnv*  attach_java_vm(void);
 jint     detach_java_vm(void);
 BOOL     set_application_properties(SYSTEMTIME* startup);
+wchar_t* get_class_path(void);
 void     get_java_runtime_version(const wchar_t* version_string, DWORD* major, DWORD* minor, DWORD* build, DWORD* revision);
 wchar_t* get_java_version_string(DWORD major, DWORD minor, DWORD build, DWORD revision);
 wchar_t* get_module_version(wchar_t* buf, size_t size);
@@ -149,12 +150,12 @@ JNIEnv* create_java_vm(const wchar_t* vm_args_opt, BOOL use_server_vm, BOOL use_
 		goto EXIT;
 	}
 
-	if(classpath != NULL)
+	if(GetModuleFileName(NULL, wchar_buf, BUFFER_SIZE) != 0)
 	{
 		char*  str;
 		size_t len;
 
-		str = to_platform_encoding(classpath);
+		str = to_platform_encoding(wchar_buf);
 		strcpy_s(char_buf, BUFFER_SIZE * 2, "-Djava.class.path=");
 		strcat_s(char_buf, BUFFER_SIZE * 2, str);
 		free(str);
@@ -836,6 +837,12 @@ EXIT:
 }
 
 
+wchar_t* get_classpath()
+{
+    return classpath;
+}
+
+
 BOOL initialize_path(const wchar_t* relative_classpath, const wchar_t* relative_extdirs, BOOL use_server_vm, BOOL use_side_by_side_jre)
 {
 	wchar_t* module_path = NULL;
@@ -1360,8 +1367,7 @@ BOOL initialize_path(const wchar_t* relative_classpath, const wchar_t* relative_
 
 
 	GetModuleFileName(NULL, buffer, BUFFER_SIZE);
-	wcscpy_s(classpath, BUFFER_SIZE, buffer);
-	wcscat_s(classpath, BUFFER_SIZE, L";");
+	wcscpy_s(classpath, BUFFER_SIZE, L"");
 
 	wcscpy_s(libpath, BUFFER_SIZE, L".;");
 	wcscat_s(libpath, BUFFER_SIZE, jvmpath);
@@ -1390,7 +1396,6 @@ BOOL initialize_path(const wchar_t* relative_classpath, const wchar_t* relative_
 			p = NULL;
 		}
 	}
-	wcscat_s(classpath, BUFFER_SIZE, L".");
 
 	if(relative_extdirs != NULL)
 	{

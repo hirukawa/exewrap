@@ -1,4 +1,5 @@
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.FileDescriptor;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -6,6 +7,7 @@ import java.io.PrintStream;
 import java.io.UnsupportedEncodingException;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.net.URLClassLoader;
 import java.net.URLEncoder;
 import java.net.URLStreamHandler;
 import java.net.URLStreamHandlerFactory;
@@ -15,15 +17,17 @@ import java.security.Policy;
 import java.security.ProtectionDomain;
 import java.security.cert.Certificate;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.Queue;
+import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.jar.JarInputStream;
 import java.util.jar.Manifest;
 import java.util.jar.Attributes.Name;
 
-public class Loader extends ClassLoader {
+public class Loader extends URLClassLoader {
 	
 	private static String CONTEXT_PATH;
 	private static Map<String, byte[]> classes = new HashMap<String, byte[]>();
@@ -41,7 +45,7 @@ public class Loader extends ClassLoader {
 	private static URL context;
 	private static URLStreamHandler handler;
 
-	public static Class<?> initialize(JarInputStream[] jars, URLStreamHandlerFactory factory, String utilities, String mainClassName, int consoleCodePage) throws MalformedURLException, ClassNotFoundException {
+	public static Class<?> initialize(JarInputStream[] jars, URLStreamHandlerFactory factory, String utilities, String classPath, String mainClassName, int consoleCodePage) throws MalformedURLException, ClassNotFoundException {
 		URL.setURLStreamHandlerFactory(factory);
 		handler = factory.createURLStreamHandler("exewrap");
 		context = new URL("exewrap:" + CONTEXT_PATH + "!/");
@@ -69,7 +73,7 @@ public class Loader extends ClassLoader {
 		jar = inputs.poll();
 		
 		ClassLoader systemClassLoader = ClassLoader.getSystemClassLoader();
-		
+
 		if(utilities != null) {
 			if(System.getProperty("exewrap.console.encoding") == null)
 			{
@@ -102,7 +106,31 @@ public class Loader extends ClassLoader {
 				Class.forName("exewrap.util.EventLogHandler", true, systemClassLoader);
 			}
 		}
-		
+
+		if(systemClassLoader instanceof Loader) {
+			Loader loader = (Loader)systemClassLoader;
+
+			try {
+				// カレントディレクトリをCLASS_PATHに追加します。
+				classPath = new File(".").getCanonicalPath() + ";" + classPath;
+			} catch(Exception ignore) {}
+
+			Set<String> paths = new HashSet<String>();
+			for(String path : classPath.split(";")) {
+				try {
+					if(path.length() > 0) {
+						File file = new File(path).getCanonicalFile();
+						String s = file.toString().toLowerCase();
+						if(!paths.contains(s)) {
+							URL url = file.toURI().toURL();
+							loader.addURL(url);
+							paths.add(s);
+						}
+					}
+				} catch(Exception ignore) {}
+			}
+		}
+
 		if(mainClassName != null) {
 			return Class.forName(mainClassName, true, systemClassLoader);
 		} else {
@@ -114,7 +142,7 @@ public class Loader extends ClassLoader {
 	private ProtectionDomain protectionDomain;
 
 	public Loader(ClassLoader parent) throws MalformedURLException {
-		super(parent);
+		super(new URL[0], parent);
 		
 		String path = System.getProperty("java.application.path");
 		if(path == null) {
@@ -140,6 +168,11 @@ public class Loader extends ClassLoader {
 	}
 	
 	protected Class<?> findClass(String name) throws ClassNotFoundException {
+		// 外部ライブラリ（JAR）からクラスを探します。見つからなければEXEリソースからクラスを探します。
+		try {
+			return super.findClass(name);
+		} catch(ClassNotFoundException ignore) {}
+
 		String entryName = name.replace('.', '/').concat(".class");
 		byte[] bytes = classes.remove(entryName);
 		if(bytes == null) {
@@ -169,7 +202,13 @@ public class Loader extends ClassLoader {
 		return defineClass(name, bytes, 0, bytes.length, protectionDomain);
 	}
 	
-	protected URL findResource(String name) {
+	public URL findResource(String name) {
+		// 外部ライブラリ（JAR）からリソースを探します。見つからなければEXEリソースからリソースを探します。
+		URL url = super.findResource(name);
+		if(url != null) {
+			return url;
+		}
+
 		byte[] bytes = resources.get(name);
 		if(bytes == null) {
 			try {
