@@ -27,6 +27,9 @@ public class SwingSample3 {
 						if(text.length() > 0) {
 							label.setText(text.toString());
 						}
+						if((frame.getExtendedState() & JFrame.ICONIFIED) != 0) {
+							frame.setExtendedState(frame.getExtendedState() & ~JFrame.ICONIFIED);
+						}
 						frame.toFront();
 					}
 				}
