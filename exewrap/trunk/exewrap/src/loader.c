@@ -15,7 +15,7 @@
 #define MAX_LONG_PATH  32768
 
 wchar_t*         install_security_manager(JNIEnv* env);
-BOOL             load_main_class(int argc, const wchar_t* argv[], const wchar_t* utilities, LOAD_RESULT* result);
+BOOL             load_main_class(int argc, const wchar_t* argv[], const wchar_t* utilities, const wchar_t* relative_classpath, const wchar_t* relative_extdirs, LOAD_RESULT* result);
 BOOL             set_splash_screen_resource(const wchar_t* splash_screen_name, const BYTE* splash_screen_image_buf, DWORD splash_screen_image_len);
 wchar_t*         get_module_object_name(const wchar_t* prefix);
 BYTE*            get_resource(const wchar_t* name, RESOURCE* resource);
@@ -99,7 +99,7 @@ EXIT:
 	return buf;
 }
 
-BOOL load_main_class(int argc, const wchar_t* argv[], const wchar_t* utilities, LOAD_RESULT* result)
+BOOL load_main_class(int argc, const wchar_t* argv[], const wchar_t* utilities, const wchar_t* relative_classpath, const wchar_t* relative_extdirs, LOAD_RESULT* result)
 {
 	RESOURCE     res;
 	jclass       ClassLoader;
@@ -179,11 +179,11 @@ BOOL load_main_class(int argc, const wchar_t* argv[], const wchar_t* utilities, 
 		swprintf_s(result->msg, LOAD_RESULT_MAX_MESSAGE_LENGTH, _(MSG_ID_ERR_GET_FIELD), L"Loader.resources");
 		goto EXIT;
 	}
-	Loader_initialize = (*env)->GetStaticMethodID(env, Loader, "initialize", "([Ljava/util/jar/JarInputStream;Ljava/net/URLStreamHandlerFactory;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)Ljava/lang/Class;");
+	Loader_initialize = (*env)->GetStaticMethodID(env, Loader, "initialize", "([Ljava/util/jar/JarInputStream;Ljava/net/URLStreamHandlerFactory;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)Ljava/lang/Class;");
 	if(Loader_initialize == NULL)
 	{
 		result->msg_id = MSG_ID_ERR_GET_METHOD;
-		swprintf_s(result->msg, LOAD_RESULT_MAX_MESSAGE_LENGTH, _(MSG_ID_ERR_GET_METHOD), L"Loader.initialize(java.util.jar.JarInputStream[], java.net.URLStreamHandlerFactory, java.lang.String, java.lang.String, java.lang.String, int)");
+		swprintf_s(result->msg, LOAD_RESULT_MAX_MESSAGE_LENGTH, _(MSG_ID_ERR_GET_METHOD), L"Loader.initialize(java.util.jar.JarInputStream[], java.net.URLStreamHandlerFactory, java.lang.String, java.lang.String, java.lang.String, java.lang.String, int)");
 		goto EXIT;
 	}
 	
@@ -404,7 +404,7 @@ BOOL load_main_class(int argc, const wchar_t* argv[], const wchar_t* utilities, 
 	// call Loader.initialize
 	main_class = from_utf8((char*)get_resource(L"MAIN_CLASS", NULL)); // MAIN_CLASS‚Í’è‹`‚³‚ê‚Ä‚¢‚È‚¢ê‡‚Í main_class = NULL ‚Ì‚Ü‚Üˆ—‚ði‚ß‚Ü‚·B
 	console_code_page = GetConsoleOutputCP();
-	MainClass = (*env)->CallStaticObjectMethod(env, Loader, Loader_initialize, jars, urlStreamHandlerFactory, to_jstring(env, utilities), to_jstring(env, get_classpath()), to_jstring(env, main_class), console_code_page);
+	MainClass = (*env)->CallStaticObjectMethod(env, Loader, Loader_initialize, jars, urlStreamHandlerFactory, to_jstring(env, utilities), to_jstring(env, relative_classpath), to_jstring(env, relative_extdirs), to_jstring(env, main_class), console_code_page);
 	if(MainClass == NULL)
 	{
 		result->msg_id = MSG_ID_ERR_LOAD_MAIN_CLASS;

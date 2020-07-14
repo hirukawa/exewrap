@@ -34,7 +34,7 @@ extern "C" {
 #endif
 
 extern wchar_t*    install_security_manager(JNIEnv* env);
-extern BOOL        load_main_class(int argc, const wchar_t* argv[], const wchar_t* utilities, LOAD_RESULT* result);
+extern BOOL        load_main_class(int argc, const wchar_t* argv[], const wchar_t* utilities, const wchar_t* relative_classpath, const wchar_t* relative_extdirs, LOAD_RESULT* result);
 extern BOOL        set_splash_screen_resource(const wchar_t* splash_screen_name, const BYTE* splash_screen_image_buf, DWORD splash_screen_image_len);
 extern wchar_t*    get_module_object_name(const wchar_t* prefix);
 extern BYTE*       get_resource(const wchar_t* name, RESOURCE* resource);

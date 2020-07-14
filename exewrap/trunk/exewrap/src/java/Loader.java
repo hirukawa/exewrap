@@ -8,6 +8,7 @@ import java.io.UnsupportedEncodingException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.net.URLStreamHandler;
 import java.net.URLStreamHandlerFactory;
@@ -16,8 +17,10 @@ import java.security.PermissionCollection;
 import java.security.Policy;
 import java.security.ProtectionDomain;
 import java.security.cert.Certificate;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.Queue;
@@ -45,7 +48,7 @@ public class Loader extends URLClassLoader {
 	private static URL context;
 	private static URLStreamHandler handler;
 
-	public static Class<?> initialize(JarInputStream[] jars, URLStreamHandlerFactory factory, String utilities, String classPath, String mainClassName, int consoleCodePage) throws MalformedURLException, ClassNotFoundException {
+	public static Class<?> initialize(JarInputStream[] jars, URLStreamHandlerFactory factory, String utilities, String relativeClassPath, String relativeExtDirs, String mainClassName, int consoleCodePage) throws MalformedURLException, ClassNotFoundException {
 		URL.setURLStreamHandlerFactory(factory);
 		handler = factory.createURLStreamHandler("exewrap");
 		context = new URL("exewrap:" + CONTEXT_PATH + "!/");
@@ -107,27 +110,69 @@ public class Loader extends URLClassLoader {
 			}
 		}
 
+		Set<String> paths = new HashSet<String>();
 		if(systemClassLoader instanceof Loader) {
 			Loader loader = (Loader)systemClassLoader;
+			String appDir = System.getProperty("java.application.path");
 
 			try {
-				// カレントディレクトリをCLASS_PATHに追加します。
-				classPath = new File(".").getCanonicalPath() + ";" + classPath;
+				File file = new File(appDir);
+				URL url = file.toURI().toURL();
+				loader.addURL(url);
+				paths.add(file.toString().toLowerCase());
 			} catch(Exception ignore) {}
 
-			Set<String> paths = new HashSet<String>();
-			for(String path : classPath.split(";")) {
-				try {
-					if(path.length() > 0) {
-						File file = new File(path).getCanonicalFile();
+			if(relativeClassPath != null) {
+				for(String path : relativeClassPath.split(" ")) {
+					if(path.length() == 0) {
+						continue;
+					}
+					try {
+						path = URLDecoder.decode(path, "UTF-8");
+						path = path.replace('/', '\\');
+						path = appDir + '\\' + path;
+						File file = new File(path);
 						String s = file.toString().toLowerCase();
 						if(!paths.contains(s)) {
 							URL url = file.toURI().toURL();
 							loader.addURL(url);
 							paths.add(s);
 						}
+					} catch(Exception ignore) {}
+				}
+			}
+
+			if(relativeExtDirs != null) {
+				for(String path : relativeExtDirs.split(";")) {
+					if(path.length() == 0) {
+						continue;
 					}
-				} catch(Exception ignore) {}
+					path = path.replace('/', '\\');
+					path = appDir + '\\' + path;
+					File dir = new File(path);
+					try {
+						String s = dir.toString().toLowerCase();
+						if(!paths.contains(s)) {
+							URL url = dir.toURI().toURL();
+							loader.addURL(url);
+							paths.add(s);
+						}
+					} catch(Exception ignore) {}
+
+					if(dir.isDirectory()) {
+						List<File> files = retrieveJars(dir);
+						for(File file : files) {
+							try {
+								String s = file.toString().toLowerCase();
+								if(!paths.contains(s)) {
+									URL url = file.toURI().toURL();
+									loader.addURL(url);
+									paths.add(s);
+								}
+							} catch(Exception ignore) {}
+						}
+					}
+				}
 			}
 		}
 
@@ -137,7 +182,23 @@ public class Loader extends URLClassLoader {
 			return Class.forName(MAIN_CLASS, true, systemClassLoader);
 		}
 	}
-	
+
+	private static List<File> retrieveJars(File dir) {
+		List<File> list = new ArrayList<File>();
+		for(File child : dir.listFiles()) {
+			if(!child.isDirectory() && child.getName().toLowerCase().endsWith(".jar")) {
+				list.add(child);
+			}
+			if(child.isDirectory()) {
+				List<File> subList = retrieveJars(child);
+				if(subList.size() > 0) {
+					list.addAll(subList);
+				}
+			}
+		}
+		return list;
+	}
+
 	
 	private ProtectionDomain protectionDomain;
 

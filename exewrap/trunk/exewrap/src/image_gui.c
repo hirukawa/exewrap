@@ -86,17 +86,6 @@ INT WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, wchar_t* lpCmd
 	use_side_by_side_jre = (ext_flags == NULL) || (wcsstr(ext_flags, L"NOSIDEBYSIDE") == NULL);
 	initialize_path(relative_classpath, relative_extdirs, use_server_vm, use_side_by_side_jre);
 
-	if(relative_classpath != NULL)
-	{
-		free(relative_classpath);
-		relative_classpath = NULL;
-	}
-	if(relative_extdirs != NULL)
-	{
-		free(relative_extdirs);
-		relative_extdirs = NULL;
-	}
-
 	if(ext_flags != NULL)
 	{
 		if(wcsstr(ext_flags, L"SHARE") != NULL)
@@ -251,7 +240,7 @@ INT WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, wchar_t* lpCmd
 		free(target_version);
 	}
 
-	if(load_main_class(argc, argv, utilities, &result) == FALSE)
+	if(load_main_class(argc, argv, utilities, relative_classpath, relative_extdirs, &result) == FALSE)
 	{
 		if((*env)->ExceptionCheck(env) == JNI_TRUE)
 		{
@@ -275,6 +264,17 @@ INT WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, wchar_t* lpCmd
 		}
 		show_error_message_box(result.msg);
 		ExitProcess(ERROR_INVALID_DATA);
+	}
+
+	if(relative_classpath != NULL)
+	{
+		free(relative_classpath);
+		relative_classpath = NULL;
+	}
+	if(relative_extdirs != NULL)
+	{
+		free(relative_extdirs);
+		relative_extdirs = NULL;
 	}
 
 	if(get_resource(L"SPLASH_SCREEN_IMAGE", &res) != NULL)
