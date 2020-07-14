@@ -19,7 +19,6 @@ extern jint     destroy_java_vm(void);
 extern JNIEnv*  attach_java_vm(void);
 extern jint     detach_java_vm(void);
 extern BOOL     set_application_properties(SYSTEMTIME* startup);
-extern wchar_t* get_classpath(void);
 extern void     get_java_runtime_version(const wchar_t* version_string, DWORD* major, DWORD* minor, DWORD* build, DWORD* revision);
 extern wchar_t* get_java_version_string(DWORD major, DWORD minor, DWORD build, DWORD revision);
 extern wchar_t* get_module_version(wchar_t* buf, size_t size);

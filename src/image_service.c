@@ -246,17 +246,6 @@ static int service_main(int argc, const wchar_t* argv[])
 	use_side_by_side_jre = (ext_flags == NULL) || (wcsstr(ext_flags, L"NOSIDEBYSIDE") == NULL);
 	initialize_path(relative_classpath, relative_extdirs, use_server_vm, use_side_by_side_jre);
 
-	if(relative_classpath != NULL)
-	{
-		free(relative_classpath);
-		relative_classpath = NULL;
-	}
-	if(relative_extdirs != NULL)
-	{
-		free(relative_extdirs);
-		relative_extdirs = NULL;
-	}
-
 	if(ext_flags == NULL || wcsstr(ext_flags, L"NOENCODINGFIX") == NULL)
 	{
 		wcscat_s(utilities, BUFFER_SIZE, UTIL_ENCODING_FIX);
@@ -358,7 +347,7 @@ static int service_main(int argc, const wchar_t* argv[])
 		free(target_version);
 	}
 
-	if(load_main_class(argc, argv, utilities, &result) == FALSE)
+	if(load_main_class(argc, argv, utilities, relative_classpath, relative_extdirs, &result) == FALSE)
 	{
 		if((*env)->ExceptionCheck(env) == JNI_TRUE)
 		{
@@ -378,6 +367,17 @@ static int service_main(int argc, const wchar_t* argv[])
 		goto EXIT;
 	}
 	MainClass = result.MainClass;
+
+	if(relative_classpath != NULL)
+	{
+		free(relative_classpath);
+		relative_classpath = NULL;
+	}
+	if(relative_extdirs != NULL)
+	{
+		free(relative_extdirs);
+		relative_extdirs = NULL;
+	}
 
 	MainClass_start = (*env)->GetStaticMethodID(env, result.MainClass, "start", "([Ljava/lang/String;)V");
 	if(MainClass_start == NULL)

@@ -59,17 +59,6 @@ int wmain(int argc, wchar_t* argv[])
 	use_side_by_side_jre = (ext_flags == NULL) || (wcsstr(ext_flags, L"NOSIDEBYSIDE") == NULL);
 	initialize_path(relative_classpath, relative_extdirs, use_server_vm, use_side_by_side_jre);
 
-	if(relative_classpath != NULL)
-	{
-		free(relative_classpath);
-		relative_classpath = NULL;
-	}
-	if(relative_extdirs != NULL)
-	{
-		free(relative_extdirs);
-		relative_extdirs = NULL;
-	}
-
 	if(ext_flags != NULL)
 	{
 		if(wcsstr(ext_flags, L"SHARE") != NULL)
@@ -192,7 +181,7 @@ int wmain(int argc, wchar_t* argv[])
 		free(target_version);
 	}
 
-	if(load_main_class(argc, argv, utilities, &result) == FALSE)
+	if(load_main_class(argc, argv, utilities, relative_classpath, relative_extdirs, &result) == FALSE)
 	{
 		wcerr(result.msg);
 		wcerr(L"\r\n");
@@ -206,6 +195,18 @@ int wmain(int argc, wchar_t* argv[])
 
 		ExitProcess(ERROR_INVALID_DATA);
 	}
+
+	if(relative_classpath != NULL)
+	{
+		free(relative_classpath);
+		relative_classpath = NULL;
+	}
+	if(relative_extdirs != NULL)
+	{
+		free(relative_extdirs);
+		relative_extdirs = NULL;
+	}
+
 	if(synchronize_mutex_handle != NULL)
 	{
 		ReleaseMutex(synchronize_mutex_handle);

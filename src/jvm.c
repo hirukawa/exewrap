@@ -52,7 +52,6 @@ BOOL    is_security_manager_required   = FALSE;
 static BOOL     path_initialized = FALSE;
 static wchar_t* binpath = NULL;
 static wchar_t* jvmpath = NULL;
-static wchar_t* classpath = NULL;
 static wchar_t* libpath = NULL;
 
 static HMODULE jvmdll = NULL;
@@ -442,11 +441,6 @@ jint destroy_java_vm()
 		jvm = NULL;
 	}
 
-	if(classpath != NULL)
-	{
-		free(classpath);
-		classpath = NULL;
-	}
 	if(libpath != NULL)
 	{
 		free(libpath);
@@ -837,12 +831,6 @@ EXIT:
 }
 
 
-wchar_t* get_classpath()
-{
-    return classpath;
-}
-
-
 BOOL initialize_path(const wchar_t* relative_classpath, const wchar_t* relative_extdirs, BOOL use_server_vm, BOOL use_side_by_side_jre)
 {
 	wchar_t* module_path = NULL;
@@ -882,14 +870,6 @@ BOOL initialize_path(const wchar_t* relative_classpath, const wchar_t* relative_
 	{
 		jvmpath = (wchar_t*)malloc(MAX_LONG_PATH * sizeof(wchar_t));
 		if(jvmpath == NULL)
-		{
-			goto EXIT;
-		}
-	}
-	if(classpath == NULL)
-	{
-		classpath = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
-		if(classpath == NULL)
 		{
 			goto EXIT;
 		}
@@ -1367,8 +1347,6 @@ BOOL initialize_path(const wchar_t* relative_classpath, const wchar_t* relative_
 
 
 	GetModuleFileName(NULL, buffer, BUFFER_SIZE);
-	wcscpy_s(classpath, BUFFER_SIZE, L"");
-
 	wcscpy_s(libpath, BUFFER_SIZE, L".;");
 	wcscat_s(libpath, BUFFER_SIZE, jvmpath);
 	wcscat_s(libpath, BUFFER_SIZE, L";");
@@ -1377,7 +1355,8 @@ BOOL initialize_path(const wchar_t* relative_classpath, const wchar_t* relative_
 
 	if(relative_classpath != NULL)
 	{
-		wchar_t* p = buffer;
+		wchar_t* p    = buffer;
+		wchar_t* path = search;
 
 		wcscpy_s(p, BUFFER_SIZE, relative_classpath);
 		while((token = wcstok_s(p, L" ", &context)) != NULL)
@@ -1385,13 +1364,18 @@ BOOL initialize_path(const wchar_t* relative_classpath, const wchar_t* relative_
 			token = urldecode(search, MAX_LONG_PATH, token);
 			if(token != NULL)
 			{
+			    wcscpy_s(path, BUFFER_SIZE, L"");
 				if(wcsstr(token, L":") == NULL) // パスに : を含んでいない場合は相対パスと見なしてmodule_pathを付加します。
 				{
-					wcscat_s(classpath, BUFFER_SIZE, module_path);
-					wcscat_s(classpath, BUFFER_SIZE, L"\\");
+					wcscat_s(path, BUFFER_SIZE, module_path);
+					wcscat_s(path, BUFFER_SIZE, L"\\");
 				}
-				wcscat_s(classpath, BUFFER_SIZE, token);
-				wcscat_s(classpath, BUFFER_SIZE, L";");
+				wcscat_s(path, BUFFER_SIZE, token);
+				if(is_directory(path))
+				{
+					add_path_env(path);
+					add_dll_directory(path);
+				}
 			}
 			p = NULL;
 		}
@@ -1427,24 +1411,6 @@ BOOL initialize_path(const wchar_t* relative_classpath, const wchar_t* relative_
 					wchar_t* dir = dirs;
 					while(*dir)
 					{
-						wchar_t* jars = get_jars(dir);
-						if(jars != NULL)
-						{
-							wchar_t* jar = jars;
-							while(*jar)
-							{
-								if(wcsstr(classpath, jar) == NULL)
-								{
-									wcscat_s(classpath, BUFFER_SIZE, L";");
-									wcscat_s(classpath, BUFFER_SIZE, jar);
-								}
-								jar += wcslen(jar) + 1;
-							}
-							free(jars);
-						}
-						wcscat_s(classpath, BUFFER_SIZE, L";");
-						wcscat_s(classpath, BUFFER_SIZE, dir);
-
 						add_path_env(dir);
 						add_dll_directory(dir);
 
