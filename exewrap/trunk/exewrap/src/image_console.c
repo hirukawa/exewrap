@@ -34,6 +34,7 @@ int wmain(int argc, wchar_t* argv[])
 	BOOL        use_side_by_side_jre;
 	BOOL        is_security_manager_required = FALSE;
 	HANDLE      synchronize_mutex_handle = NULL;
+	HANDLE      singleton_mutex_handle = NULL;
 	RESOURCE    res;
 	LOAD_RESULT result;
 
@@ -72,9 +73,27 @@ int wmain(int argc, wchar_t* argv[])
 		}
 		if(wcsstr(ext_flags, L"SINGLE") != NULL)
 		{
-			if(CreateMutex(NULL, TRUE, get_module_object_name(L"SINGLE")), GetLastError() == ERROR_ALREADY_EXISTS)
+			singleton_mutex_handle = CreateMutex(NULL, FALSE, get_module_object_name(L"SINGLE"));
+			if(singleton_mutex_handle == NULL)
 			{
-				exit_process(ERROR_BUSY, NULL);
+				exit_process(GetLastError(), L"CreateMutex");	
+			}
+			else
+			{
+				DWORD ret = WaitForSingleObject(singleton_mutex_handle, 0);
+				if(ret == WAIT_FAILED)
+				{
+					CloseHandle(singleton_mutex_handle);
+					singleton_mutex_handle = NULL;
+					exit_process(GetLastError(), L"WaitForSingleObject");
+				}
+				else if(ret == WAIT_TIMEOUT)
+				{
+					CloseHandle(singleton_mutex_handle);
+					singleton_mutex_handle = NULL;
+					exit_process(ERROR_BUSY, NULL);
+				}
+				// retが上記以外（WAIT_OBJECT_0 または WAIT_ABANDONED）であればミューテックスの所有権を獲得できているので処理を続行します。
 			}
 		}
 		if(wcsstr(ext_flags, L"CD_APPDIR") != NULL)
@@ -262,6 +281,12 @@ EXIT:
 	}
 
 	notify_close();
+
+	if(singleton_mutex_handle != NULL)
+	{
+		ReleaseMutex(singleton_mutex_handle);
+		CloseHandle(singleton_mutex_handle);
+	}
 
 	return result.msg_id;
 }
