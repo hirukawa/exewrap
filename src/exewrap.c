@@ -101,7 +101,7 @@ int wmain(int argc, wchar_t* argv[])
 				L"  -s                  \t Create Windows Service application.\r\n"
 				L"  -A <architecture>   \t Select exe-file architecture. (default %ls)\r\n"
 				L"  -t <version>        \t Set target java runtime version. (default 1.5)\r\n"
-				L"  -l <search-flags>   \t Set Java VM search location flags\r\n"
+				L"  -l <search-flags>   \t Set Java VM search location flags.\r\n"
 				L"  -M <main-class>     \t Set main-class.\r\n"
 				L"  -L <ext-dirs>       \t Set ext-dirs.\r\n"
 				L"  -e <ext-flags>      \t Set extended flags.\r\n"
