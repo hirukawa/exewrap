@@ -28,7 +28,7 @@ wchar_t* from_utf8(const char* utf8);
 jstring  to_jstring(JNIEnv* env, const wchar_t* str);
 wchar_t* from_jstring(JNIEnv* env, jstring jstr);
 
-static BOOL     find_java_vm(wchar_t* output, const wchar_t* jre, BOOL useServerVM);
+static BOOL     find_java_vm(wchar_t* output, const wchar_t* jre, BOOL use_server_vm);
 static wchar_t* find_java_home_from_registry(const wchar_t* _subkey, wchar_t* output);
 static BOOL     add_path_env(const wchar_t* path);
 static void     add_dll_directory(const wchar_t* path);
@@ -1459,10 +1459,10 @@ EXIT:
 /* 指定したJRE BINディレクトリで client\jvm.dll または server\jvm.dll を検索します。
  * jvm.dll の見つかったディレクトリを output に格納します。
  * jvm.dll が見つからなかった場合は output に client のパスを格納します。
- * useServerVM が TRUE の場合、Server VM を優先検索します。
+ * use_server_vm が TRUE の場合、Server VM を優先検索します。
  * jvm.dll が見つかった場合は TRUE, 見つからなかった場合は FALSE を返します。
  */
-BOOL find_java_vm(wchar_t* output, const wchar_t* jre, BOOL useServerVM)
+BOOL find_java_vm(wchar_t* output, const wchar_t* jre, BOOL use_server_vm)
 {
 	BOOL     found = FALSE;
 	wchar_t* path = NULL;
@@ -1480,12 +1480,12 @@ BOOL find_java_vm(wchar_t* output, const wchar_t* jre, BOOL useServerVM)
 		goto EXIT;
 	}
 
-	if(useServerVM)
+	if(use_server_vm)
 	{
 		wcscpy_s(path, MAX_LONG_PATH, jre);
 		wcscat_s(path, MAX_LONG_PATH, L"\\bin\\server");
 		wcscpy_s(buf, MAX_LONG_PATH, path);
-		wcscpy_s(buf, MAX_LONG_PATH, L"\\jvm.dll");
+		wcscat_s(buf, MAX_LONG_PATH, L"\\jvm.dll");
 		if(GetFileAttributes(buf) == INVALID_FILE_ATTRIBUTES)
 		{
 			wcscpy_s(path, MAX_LONG_PATH, jre);
