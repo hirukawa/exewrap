@@ -842,6 +842,7 @@ EXIT:
 
 BOOL initialize_path(const wchar_t* relative_classpath, const wchar_t* relative_extdirs, BOOL use_server_vm, DWORD vm_search_locations)
 {
+    wchar_t* path_env    = NULL;
 	wchar_t* module_path = NULL;
 	wchar_t* buffer      = NULL;
 	wchar_t* search      = NULL;
@@ -919,6 +920,13 @@ BOOL initialize_path(const wchar_t* relative_classpath, const wchar_t* relative_
 		goto EXIT;
 	}
 	*(wcsrchr(module_path, L'\\')) = L'\0';
+
+	path_env = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
+	if(path_env == NULL)
+	{
+	    goto EXIT;
+	}
+   	GetEnvironmentVariable(L"PATH", path_env, BUFFER_SIZE);
 
 	jvmpath[0] = L'\0';
 
@@ -1435,10 +1443,6 @@ BOOL initialize_path(const wchar_t* relative_classpath, const wchar_t* relative_
 
 	GetModuleFileName(NULL, buffer, BUFFER_SIZE);
 	wcscpy_s(libpath, BUFFER_SIZE, L".;");
-	wcscat_s(libpath, BUFFER_SIZE, jvmpath);
-	wcscat_s(libpath, BUFFER_SIZE, L";");
-	wcscat_s(libpath, BUFFER_SIZE, binpath);
-	wcscat_s(libpath, BUFFER_SIZE, L";");
 
 	if(relative_classpath != NULL)
 	{
@@ -1460,6 +1464,8 @@ BOOL initialize_path(const wchar_t* relative_classpath, const wchar_t* relative_
 				wcscat_s(path, BUFFER_SIZE, token);
 				if(is_directory(path))
 				{
+				    wcscat_s(libpath, BUFFER_SIZE, path);
+				    wcscat_s(libpath, BUFFER_SIZE, L";");
 					add_path_env(path);
 					add_dll_directory(path);
 				}
@@ -1498,6 +1504,8 @@ BOOL initialize_path(const wchar_t* relative_classpath, const wchar_t* relative_
 					wchar_t* dir = dirs;
 					while(*dir)
 					{
+                        wcscat_s(libpath, BUFFER_SIZE, dir);
+                        wcscat_s(libpath, BUFFER_SIZE, L";");
 						add_path_env(dir);
 						add_dll_directory(dir);
 
@@ -1509,9 +1517,11 @@ BOOL initialize_path(const wchar_t* relative_classpath, const wchar_t* relative_
 		}
 	}
 
-	if(GetEnvironmentVariable(L"PATH", buffer, BUFFER_SIZE))
+    // PATH環境変数の内容もjava.library.pathに含めます。
+    // JPKIなどのライブラリをロードするために必要になります。
+	if(path_env != NULL)
 	{
-		wcscat_s(libpath, BUFFER_SIZE, buffer);
+		wcscat_s(libpath, BUFFER_SIZE, path_env);
 	}
 
 	add_path_env(binpath);
@@ -1523,6 +1533,10 @@ BOOL initialize_path(const wchar_t* relative_classpath, const wchar_t* relative_
 	path_initialized = TRUE;
 
 EXIT:
+    if(path_env != NULL)
+    {
+        free(path_env);
+    }
 	if(module_path != NULL)
 	{
 		free(module_path);
