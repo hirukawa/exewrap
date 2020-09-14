@@ -31,7 +31,7 @@ int wmain(int argc, wchar_t* argv[])
 	wchar_t*    vm_args_opt        = NULL;
 	wchar_t*    utilities          = NULL;
 	BOOL        use_server_vm;
-	BOOL        use_side_by_side_jre;
+	DWORD       vm_search_locations = 0;
 	BOOL        is_security_manager_required = FALSE;
 	HANDLE      synchronize_mutex_handle = NULL;
 	HANDLE      singleton_mutex_handle = NULL;
@@ -57,8 +57,24 @@ int wmain(int argc, wchar_t* argv[])
 	relative_extdirs = from_utf8((char*)get_resource(L"EXTDIRS", NULL));
 	ext_flags = from_utf8((char*)get_resource(L"EXTFLAGS", NULL));
 	use_server_vm = (ext_flags != NULL && wcsstr(ext_flags, L"SERVER") != NULL);
-	use_side_by_side_jre = (ext_flags == NULL) || (wcsstr(ext_flags, L"NOSIDEBYSIDE") == NULL);
-	initialize_path(relative_classpath, relative_extdirs, use_server_vm, use_side_by_side_jre);
+	{
+        wchar_t* s = from_utf8((char*)get_resource(L"VM_SEARCH_LOCATIONS", NULL));
+        if(s != NULL)
+        {
+            vm_search_locations += wcsstr(s, L"APPDIR")    == NULL ? 0 : VM_SEARCH_APPDIR;
+            vm_search_locations += wcsstr(s, L"PARENTDIR") == NULL ? 0 : VM_SEARCH_PARENTDIR;
+            vm_search_locations += wcsstr(s, L"JAVAHOME")  == NULL ? 0 : VM_SEARCH_JAVAHOME;
+            vm_search_locations += wcsstr(s, L"REGISTRY")  == NULL ? 0 : VM_SEARCH_REGISTRY;
+            vm_search_locations += wcsstr(s, L"PATHENV")   == NULL ? 0 : VM_SEARCH_PATHENV;
+            vm_search_locations += wcsstr(s, L"JARASSOC")  == NULL ? 0 : VM_SEARCH_JARASSOC;
+        }
+        if(vm_search_locations == 0)
+        {
+            vm_search_locations = VM_SEARCH_ALL;
+        }
+        free(s);
+	}
+	initialize_path(relative_classpath, relative_extdirs, use_server_vm, vm_search_locations);
 
 	if(ext_flags != NULL)
 	{
@@ -128,7 +144,7 @@ int wmain(int argc, wchar_t* argv[])
 	//wcscat_s(utilities, BUFFER_SIZE, UTIL_EVENT_LOG_HANDLER);
 
 	vm_args_opt = from_utf8((char*)get_resource(L"VMARGS", NULL));
-	create_java_vm(vm_args_opt, use_server_vm, use_side_by_side_jre, &is_security_manager_required, &error);
+	create_java_vm(vm_args_opt, use_server_vm, vm_search_locations, &is_security_manager_required, &error);
 	if(error != JNI_OK)
 	{
 		get_jni_error_message(error, &result.msg_id, result.msg, BUFFER_SIZE);

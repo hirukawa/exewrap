@@ -5,6 +5,13 @@
 
 #define JVM_ELOADLIB  (+1)
 
+#define VM_SEARCH_APPDIR    (0x00000001)
+#define VM_SEARCH_PARENTDIR (0x00000002)
+#define VM_SEARCH_JAVAHOME  (0x00000004)
+#define VM_SEARCH_REGISTRY  (0x00000008)
+#define VM_SEARCH_PATHENV   (0x00000010)
+#define VM_SEARCH_JARASSOC  (0x00000020)
+#define VM_SEARCH_ALL       (0xFFFFFFFF)
 
 #ifdef __cplusplus
 extern "C" {
@@ -13,8 +20,8 @@ extern "C" {
 
 extern int      get_process_architecture(void);
 extern int      get_platform_architecture(void);
-extern BOOL     initialize_path(const wchar_t* relative_classpath, const wchar_t* relative_extdirs, BOOL use_server_vm, BOOL use_side_by_side_jre);
-extern JNIEnv*  create_java_vm(const wchar_t* vm_args_opt, BOOL use_server_vm, BOOL use_side_by_side_jre, BOOL* is_security_manager_required, int* error);
+extern BOOL     initialize_path(const wchar_t* relative_classpath, const wchar_t* relative_extdirs, BOOL use_server_vm, DWORD vm_search_locations);
+extern JNIEnv*  create_java_vm(const wchar_t* vm_args_opt, BOOL use_server_vm, DWORD vm_search_locations, BOOL* is_security_manager_required, int* error);
 extern jint     destroy_java_vm(void);
 extern JNIEnv*  attach_java_vm(void);
 extern jint     detach_java_vm(void);
