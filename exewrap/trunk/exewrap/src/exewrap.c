@@ -101,6 +101,7 @@ int wmain(int argc, wchar_t* argv[])
 				L"  -s                  \t Create Windows Service application.\r\n"
 				L"  -A <architecture>   \t Select exe-file architecture. (default %ls)\r\n"
 				L"  -t <version>        \t Set target java runtime version. (default 1.5)\r\n"
+				L"  -l <search-flags>   \t Set Java VM search location flags\r\n"
 				L"  -M <main-class>     \t Set main-class.\r\n"
 				L"  -L <ext-dirs>       \t Set ext-dirs.\r\n"
 				L"  -e <ext-flags>      \t Set extended flags.\r\n"
@@ -292,7 +293,7 @@ int wmain(int argc, wchar_t* argv[])
 		free(utf8);
 	}
 
-	is_java_enabled = create_java_vm(NULL, FALSE, TRUE, NULL, NULL) != NULL;
+	is_java_enabled = create_java_vm(NULL, FALSE, VM_SEARCH_ALL, NULL, NULL) != NULL;
 	if(is_java_enabled)
 	{
 		LOAD_RESULT result;
@@ -488,6 +489,13 @@ int wmain(int argc, wchar_t* argv[])
 	set_resource(exe_file, L"EXTFLAGS", RT_RCDATA, (BYTE*)utf8, (DWORD)(strlen(utf8) + 1));
 	free(utf8);
 	free(ext_flags);
+
+	if(opt['l'] != NULL && *opt['l'] != L'-' && *opt['l'] != L'\0')
+	{
+	    utf8 = to_utf8(opt['l']);
+	    set_resource(exe_file, L"VM_SEARCH_LOCATIONS", RT_RCDATA, (BYTE*)utf8, (DWORD)(strlen(utf8) + 1));
+	    free(utf8);
+	}
 
 	vmargs = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
 	if(vmargs == NULL)

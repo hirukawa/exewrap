@@ -6,13 +6,22 @@
 #include <jni.h>
 
 #define JVM_ELOADLIB  (+1)
+
+#define VM_SEARCH_APPDIR    (0x00000001)
+#define VM_SEARCH_PARENTDIR (0x00000002)
+#define VM_SEARCH_JAVAHOME  (0x00000004)
+#define VM_SEARCH_REGISTRY  (0x00000008)
+#define VM_SEARCH_PATHENV   (0x00000010)
+#define VM_SEARCH_JARASSOC  (0x00000020)
+#define VM_SEARCH_ALL       (0xFFFFFFFF)
+
 #define BUFFER_SIZE   32768
 #define MAX_LONG_PATH 32768
 
 int      get_process_architecture(void);
 int      get_platform_architecture(void);
-BOOL     initialize_path(const wchar_t* relative_classpath, const wchar_t* relative_extdirs, BOOL use_server_vm, BOOL use_side_by_side_jre);
-JNIEnv*  create_java_vm(const wchar_t* vm_args_opt, BOOL use_server_vm, BOOL use_side_by_side_jre, BOOL* is_security_manager_required, int* error);
+BOOL     initialize_path(const wchar_t* relative_classpath, const wchar_t* relative_extdirs, BOOL use_server_vm, DWORD vm_search_locations);
+JNIEnv*  create_java_vm(const wchar_t* vm_args_opt, BOOL use_server_vm, DWORD vm_search_locations, BOOL* is_security_manager_required, int* error);
 jint     destroy_java_vm(void);
 JNIEnv*  attach_java_vm(void);
 jint     detach_java_vm(void);
@@ -94,7 +103,7 @@ int get_platform_architecture()
 }
 
 
-JNIEnv* create_java_vm(const wchar_t* vm_args_opt, BOOL use_server_vm, BOOL use_side_by_side_jre, BOOL* is_security_manager_required, int* error)
+JNIEnv* create_java_vm(const wchar_t* vm_args_opt, BOOL use_server_vm, DWORD vm_search_locations, BOOL* is_security_manager_required, int* error)
 {
 	JNIGetDefaultJavaVMInitArgs GetDefaultJavaVMInitArgs;
 	JNICreateJavaVM             CreateJavaVM;
@@ -111,7 +120,7 @@ JNIEnv* create_java_vm(const wchar_t* vm_args_opt, BOOL use_server_vm, BOOL use_
 
 	if(!path_initialized)
 	{
-		initialize_path(NULL, L"lib", use_server_vm, use_side_by_side_jre);
+		initialize_path(NULL, L"lib", use_server_vm, vm_search_locations);
 	}
 
 	if(jvmdll == NULL)
@@ -831,7 +840,7 @@ EXIT:
 }
 
 
-BOOL initialize_path(const wchar_t* relative_classpath, const wchar_t* relative_extdirs, BOOL use_server_vm, BOOL use_side_by_side_jre)
+BOOL initialize_path(const wchar_t* relative_classpath, const wchar_t* relative_extdirs, BOOL use_server_vm, DWORD vm_search_locations)
 {
 	wchar_t* module_path = NULL;
 	wchar_t* buffer      = NULL;
@@ -914,7 +923,7 @@ BOOL initialize_path(const wchar_t* relative_classpath, const wchar_t* relative_
 	jvmpath[0] = L'\0';
 
 	// Find local JDK
-	if(use_side_by_side_jre && jvmpath[0] == L'\0')
+	if((vm_search_locations & VM_SEARCH_APPDIR) && jvmpath[0] == L'\0')
 	{
 		wcscpy_s(buffer, BUFFER_SIZE, module_path);
 		wcscpy_s(search, MAX_LONG_PATH, buffer);
@@ -988,7 +997,7 @@ BOOL initialize_path(const wchar_t* relative_classpath, const wchar_t* relative_
 	}
 
 	// Find local JRE
-	if(use_side_by_side_jre && jvmpath[0] == L'\0')
+	if((vm_search_locations & VM_SEARCH_APPDIR) && jvmpath[0] == L'\0')
 	{
 		wcscpy_s(buffer, BUFFER_SIZE, module_path);
 		wcscpy_s(search, MAX_LONG_PATH, buffer);
@@ -1031,8 +1040,52 @@ BOOL initialize_path(const wchar_t* relative_classpath, const wchar_t* relative_
 		}
 	}
 
+	// Find local JDK (from parent folder)
+	if((vm_search_locations & VM_SEARCH_PARENTDIR) && jvmpath[0] == L'\0')
+	{
+		wcscpy_s(buffer, BUFFER_SIZE, module_path);
+		wcscpy_s(search, MAX_LONG_PATH, buffer);
+		wcscat_s(search, MAX_LONG_PATH, L"\\..\\jdk*");
+		hSearch = FindFirstFile(search, &fd);
+		if(hSearch != INVALID_HANDLE_VALUE)
+		{
+			found = FALSE;
+			do
+			{
+				if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+				{
+					wcscat_s(buffer, BUFFER_SIZE, L"\\..\\");
+					wcscat_s(buffer, BUFFER_SIZE, fd.cFileName);
+					found = TRUE;
+				}
+			} while (!found && FindNextFile(hSearch, &fd));
+			FindClose(hSearch);
+			if(found)
+			{
+				if(find_java_vm(jvmpath, buffer, use_server_vm))
+				{
+					int bits = get_java_vm_bits(jvmpath);
+					if(bits == get_process_architecture())
+					{
+						if(buffer[wcslen(buffer) - 1] != L'\\')
+						{
+							wcscat_s(buffer, BUFFER_SIZE, L"\\");
+						}
+						SetEnvironmentVariable(L"JAVA_HOME", buffer);
+						wcscpy_s(binpath, MAX_LONG_PATH, buffer);
+						wcscat_s(binpath, MAX_LONG_PATH, L"bin");
+					}
+					else
+					{
+						jvmpath[0] = L'\0';
+					}
+				}
+			}
+		}
+	}
+
 	// Find local JRE (from parent folder)
-	if(use_side_by_side_jre && jvmpath[0] == 0)
+	if((vm_search_locations & VM_SEARCH_PARENTDIR) && jvmpath[0] == L'\0')
 	{
 		wcscpy_s(buffer, BUFFER_SIZE, module_path);
 		wcscpy_s(search, MAX_LONG_PATH, buffer);
@@ -1075,98 +1128,132 @@ BOOL initialize_path(const wchar_t* relative_classpath, const wchar_t* relative_
 		}
 	}
 
-	// Find JDK/JRE from JAVA_HOME or registry
-	if(jvmpath[0] == L'\0')
+	// Find JDK/JRE from JAVA_HOME
+	if((vm_search_locations & VM_SEARCH_JAVAHOME) && jvmpath[0] == L'\0')
 	{
 		buffer[0] = L'\0';
-		if(GetEnvironmentVariable(L"JAVA_HOME", buffer, MAX_LONG_PATH) == 0)
+		if(GetEnvironmentVariable(L"JAVA_HOME", buffer, MAX_LONG_PATH) > 0)
 		{
-			wchar_t* subkeys_native[] =
-			{
-				L"SOFTWARE\\JavaSoft\\JDK", //Java9-
-				L"SOFTWARE\\JavaSoft\\JRE", //Java9-
-				L"SOFTWARE\\JavaSoft\\Java Development Kit",
-				L"SOFTWARE\\JavaSoft\\Java Runtime Environment",
-				NULL
-			};
-		
-			wchar_t* subkeys_wow[] = 
-			{
-				L"SOFTWARE\\Wow6432Node\\JavaSoft\\JDK", //Java9-
-				L"SOFTWARE\\Wow6432Node\\JavaSoft\\JRE", //Java9-
-				L"SOFTWARE\\Wow6432Node\\JavaSoft\\Java Development Kit",
-				L"SOFTWARE\\Wow6432Node\\JavaSoft\\Java Runtime Environment",
-				NULL
-			};
-			
-			wchar_t** subkeys = subkeys_native;
-			int i = 0;
-
-			//32ビットプロセスを64ビットOSで実行している場合はWowレジストリから検索します。
-			if(get_process_architecture() == 32 && get_platform_architecture() == 64)
-			{
-				subkeys = subkeys_wow;
-			}
-
-			while(subkeys[i] != NULL)
-			{
-				if(find_java_home_from_registry(subkeys[i], buffer) != NULL)
-				{
-					// JDK/JREをアンインストールしてもレジストリが残ってしまうディストリビューションがあるようです。
-					// ディレクトリが存在する場合は次の工程に進みます。
-					if(is_directory(buffer))
-					{
-						break;
-					}
-				}
-				i++;
-			}
-		}
-
-		if(buffer[0] != L'\0')
-		{
-			// bufferにはJAVA_HOME環境変数の値が入っています。
-
-			// 下位に jre フォルダーがあるか確認します。
-			if(buffer[wcslen(buffer) - 1] == L'\\')
-			{
-				wcscat_s(buffer, BUFFER_SIZE, L"jre");
-			}
-			else
-			{
-				wcscat_s(buffer, BUFFER_SIZE, L"\\jre");
-			}
-			// 下位に jre フォルダーがなければ元のフォルダーに戻します。
-			if(!is_directory(buffer))
-			{
-				*(wcsrchr(buffer, L'\\')) = L'\0';
-			}
-			if(is_directory(buffer))
-			{
-				if(find_java_vm(jvmpath, buffer, use_server_vm))
-				{
-					int bits = get_java_vm_bits(jvmpath);
-					if(bits == get_process_architecture())
-					{
-						if(buffer[wcslen(buffer) - 1] != L'\\')
-						{
-							wcscat_s(buffer, BUFFER_SIZE, L"\\");
-						}
-						SetEnvironmentVariable(L"JAVA_HOME", buffer);
-						wcscpy_s(binpath, MAX_LONG_PATH, buffer);
-						wcscat_s(binpath, MAX_LONG_PATH, L"bin");
-					}
-					else
-					{
-						jvmpath[0] = L'\0';
-					}
-				}
-			}
+            // 下位に jre フォルダーがあるか確認します。
+            if(buffer[wcslen(buffer) - 1] == L'\\')
+            {
+                wcscat_s(buffer, BUFFER_SIZE, L"jre");
+            }
+            else
+            {
+                wcscat_s(buffer, BUFFER_SIZE, L"\\jre");
+            }
+            // 下位に jre フォルダーがなければ元のフォルダーに戻します。
+            if(!is_directory(buffer))
+            {
+                *(wcsrchr(buffer, L'\\')) = L'\0';
+            }
+            if(is_directory(buffer))
+            {
+                if(find_java_vm(jvmpath, buffer, use_server_vm))
+                {
+                    int bits = get_java_vm_bits(jvmpath);
+                    if(bits == get_process_architecture())
+                    {
+                        if(buffer[wcslen(buffer) - 1] != L'\\')
+                        {
+                            wcscat_s(buffer, BUFFER_SIZE, L"\\");
+                        }
+                        SetEnvironmentVariable(L"JAVA_HOME", buffer);
+                        wcscpy_s(binpath, MAX_LONG_PATH, buffer);
+                        wcscat_s(binpath, MAX_LONG_PATH, L"bin");
+                    }
+                    else
+                    {
+                        jvmpath[0] = L'\0';
+                    }
+                }
+            }
 		}
 	}
 
+	// Find JDK/JRE from registry
+	if((vm_search_locations & VM_SEARCH_REGISTRY) && jvmpath[0] == L'\0')
+	{
+        wchar_t* subkeys_native[] =
+        {
+            L"SOFTWARE\\JavaSoft\\JDK", //Java9-
+            L"SOFTWARE\\JavaSoft\\JRE", //Java9-
+            L"SOFTWARE\\JavaSoft\\Java Development Kit",
+            L"SOFTWARE\\JavaSoft\\Java Runtime Environment",
+            NULL
+        };
+
+        wchar_t* subkeys_wow[] =
+        {
+            L"SOFTWARE\\Wow6432Node\\JavaSoft\\JDK", //Java9-
+            L"SOFTWARE\\Wow6432Node\\JavaSoft\\JRE", //Java9-
+            L"SOFTWARE\\Wow6432Node\\JavaSoft\\Java Development Kit",
+            L"SOFTWARE\\Wow6432Node\\JavaSoft\\Java Runtime Environment",
+            NULL
+        };
+
+        wchar_t** subkeys = subkeys_native;
+        int i = 0;
+
+        //32ビットプロセスを64ビットOSで実行している場合はWowレジストリから検索します。
+        if(get_process_architecture() == 32 && get_platform_architecture() == 64)
+        {
+            subkeys = subkeys_wow;
+        }
+
+        while(subkeys[i] != NULL)
+        {
+            if(find_java_home_from_registry(subkeys[i], buffer) != NULL)
+            {
+                // JDK/JREをアンインストールしてもレジストリが残ってしまうディストリビューションがあるようです。
+                // ディレクトリが存在する場合は次の工程に進みます。
+                if(is_directory(buffer))
+                {
+                    // 下位に jre フォルダーがあるか確認します。
+                    if(buffer[wcslen(buffer) - 1] == L'\\')
+                    {
+                        wcscat_s(buffer, BUFFER_SIZE, L"jre");
+                    }
+                    else
+                    {
+                        wcscat_s(buffer, BUFFER_SIZE, L"\\jre");
+                    }
+                    // 下位に jre フォルダーがなければ元のフォルダーに戻します。
+                    if(!is_directory(buffer))
+                    {
+                        *(wcsrchr(buffer, L'\\')) = L'\0';
+                    }
+                    if(is_directory(buffer))
+                    {
+                        if(find_java_vm(jvmpath, buffer, use_server_vm))
+                        {
+                            int bits = get_java_vm_bits(jvmpath);
+                            if(bits == get_process_architecture())
+                            {
+                                if(buffer[wcslen(buffer) - 1] != L'\\')
+                                {
+                                    wcscat_s(buffer, BUFFER_SIZE, L"\\");
+                                }
+                                SetEnvironmentVariable(L"JAVA_HOME", buffer);
+                                wcscpy_s(binpath, MAX_LONG_PATH, buffer);
+                                wcscat_s(binpath, MAX_LONG_PATH, L"bin");
+                                break; // JavaVM found!!
+                            }
+                            else
+                            {
+                                jvmpath[0] = L'\0';
+                            }
+                        }
+                    }
+                }
+            }
+            i++;
+        }
+	}
+
 	// Find java.exe from PATH environment
-	if(jvmpath[0] == L'\0')
+	if((vm_search_locations & VM_SEARCH_PATHENV) && jvmpath[0] == L'\0')
 	{
 		if(GetEnvironmentVariable(L"PATH", buffer, BUFFER_SIZE))
 		{
@@ -1256,7 +1343,7 @@ BOOL initialize_path(const wchar_t* relative_classpath, const wchar_t* relative_
 	}
 
 	// Find .jar association from registry
-	if(jvmpath[0] == L'\0')
+	if((vm_search_locations & VM_SEARCH_JARASSOC) && jvmpath[0] == L'\0')
 	{
 		HKEY   key1 = NULL;
 		HKEY   key2 = NULL;
