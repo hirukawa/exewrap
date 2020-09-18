@@ -1443,6 +1443,8 @@ BOOL initialize_path(const wchar_t* relative_classpath, const wchar_t* relative_
 
 	GetModuleFileName(NULL, buffer, BUFFER_SIZE);
 	wcscpy_s(libpath, BUFFER_SIZE, L".;");
+    wcscat_s(libpath, BUFFER_SIZE, binpath); // binpath‚àjava.library.path‚ÉŠÜ‚Ü‚ê‚ê‚é‚æ‚¤‚É‚µ‚Ü‚·B
+	wcscat_s(libpath, BUFFER_SIZE, L";");    // ‚»‚¤‚µ‚È‚¢‚Æ prism_sw.dll ‚È‚Çˆê•”‚ÌDLL‚ª“Ç‚İ‚ß‚È‚¢‚æ‚¤‚Å‚·cB
 
 	if(relative_classpath != NULL)
 	{
