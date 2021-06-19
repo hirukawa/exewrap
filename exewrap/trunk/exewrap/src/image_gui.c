@@ -34,11 +34,14 @@ static wchar_t* get_error_message(DWORD last_error);
 
 typedef void(*SplashInit_t)(void);
 typedef int(*SplashLoadMemory_t)(void* pdata, int size);
-SplashInit_t       SplashInit;
-SplashLoadMemory_t SplashLoadMemory;
-HMODULE            splashscreendll;
-static HANDLE      hConOut = NULL;
-
+typedef int(*SplashLoadFile_t)(const char* filename);
+// typedef void (*SplashSetScaleFactor_t)(float scaleFactor);
+SplashInit_t           SplashInit;
+SplashLoadMemory_t     SplashLoadMemory;
+SplashLoadFile_t       SplashLoadFile;
+// SplashSetScaleFactor_t SplashSetScaleFactor;
+HMODULE                splashscreendll;
+static HANDLE          hConOut = NULL;
 
 
 INT WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, wchar_t* lpCmdLine, int nCmdShow)
@@ -51,7 +54,8 @@ INT WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, wchar_t* lpCmd
 	wchar_t*    relative_extdirs   = NULL;
 	wchar_t*    ext_flags          = NULL;
 	wchar_t*    vm_args_opt        = NULL;
-	wchar_t*    utilities           = NULL;
+	wchar_t*    utilities          = NULL;
+	wchar_t*    splash_screen_name = NULL;
 	BOOL        use_server_vm;
 	DWORD       vm_search_locations = 0;
 	BOOL        is_security_manager_required = FALSE;
@@ -178,7 +182,8 @@ INT WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, wchar_t* lpCmd
 	//wcscat_s(utilities, BUFFER_SIZE, UTIL_EVENT_LOG_HANDLER);
 
 	// Display Splash Screen
-	if(get_resource(L"SPLASH_SCREEN_IMAGE", &res) != NULL)
+	splash_screen_name = from_utf8((char*)get_resource(L"SPLASH_SCREEN_NAME", NULL));
+	if(splash_screen_name != NULL)
 	{
 		if(is_add_dll_directory_supported)
 		{
@@ -193,15 +198,24 @@ INT WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, wchar_t* lpCmd
 		if(splashscreendll != NULL)
 		{
 			SplashInit = (SplashInit_t)GetProcAddress(splashscreendll, "SplashInit");
-			if(SplashInit != NULL)
-			{
-				SplashLoadMemory = (SplashLoadMemory_t)GetProcAddress(splashscreendll, "SplashLoadMemory");
-				if(SplashLoadMemory != NULL)
-				{
-					SplashInit();
-					SplashLoadMemory(res.buf, res.len);
-				}
-			}
+			SplashLoadMemory = (SplashLoadMemory_t)GetProcAddress(splashscreendll, "SplashLoadMemory");
+			SplashLoadFile = (SplashLoadFile_t)GetProcAddress(splashscreendll, "SplashLoadFile");
+		}
+
+		// SPLASH_SCREEN_NAME に格納されているファイル名がファイルシステム上に存在する場合はそれを SPLASH_SCREEN_IMAGE より優先して扱います。
+		if(SplashInit != NULL && SplashLoadFile != NULL && GetFileAttributes(splash_screen_name) != INVALID_FILE_ATTRIBUTES)
+		{
+			char* filename = to_platform_encoding(splash_screen_name);
+
+			SplashInit();
+			SplashLoadFile(filename);
+
+			free(filename);
+		}
+		else if(SplashInit != NULL && SplashLoadMemory != NULL && get_resource(L"SPLASH_SCREEN_IMAGE", &res) != NULL)
+		{
+			SplashInit();
+			SplashLoadMemory(res.buf, res.len);
 		}
 	}
 
@@ -314,11 +328,10 @@ INT WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, wchar_t* lpCmd
 		relative_extdirs = NULL;
 	}
 
-	if(get_resource(L"SPLASH_SCREEN_IMAGE", &res) != NULL)
+	if(splash_screen_name != NULL && get_resource(L"SPLASH_SCREEN_IMAGE", &res) != NULL)
 	{
 		BYTE*    splash_screen_image_buf = res.buf;
 		DWORD    splash_screen_image_len = res.len;
-		wchar_t* splash_screen_name = from_utf8((char*)get_resource(L"SPLASH_SCREEN_NAME", NULL));
 
 		// exewrapで実行ファイルを作成時にマニフェストファイルのSplash-Image:に指定されたファイルは
 		// 実行ファイルのリソース SPLASH_SCREEN_NAME と SPLASH_SCREEN_IMAGE に配置され、
@@ -326,11 +339,11 @@ INT WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, wchar_t* lpCmd
 		// 実行ファイルの起動時にリソース SPLASH_SCREEN_NAME と SPLASH_SCREEN_IMAGE を Loader の resources に登録することでJavaコードからもリソースを参照できるようにます。
 		// (JARから取り除かれたスプラッシュスクリーンのリソースがちゃんと参照できます。)
 		set_splash_screen_resource(splash_screen_name, splash_screen_image_buf, splash_screen_image_len);
-
-		if(splash_screen_name != NULL)
-		{
-			free(splash_screen_name);
-		}
+	}
+	if(splash_screen_name != NULL)
+	{
+		free(splash_screen_name);
+		splash_screen_name = NULL;
 	}
 
 	if(synchronize_mutex_handle != NULL)
