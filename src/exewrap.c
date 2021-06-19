@@ -93,7 +93,7 @@ int wmain(int argc, wchar_t* argv[])
 				
 		wcoutf( L"exewrap %ls for %ls (%d-bit) \r\n"
 				L"Native executable java application wrapper.\r\n"
-				L"Copyright (C) 2005-2020 HIRUKAWA Ryo. All rights reserved.\r\n"
+				L"Copyright (C) 2005-2021 HIRUKAWA Ryo. All rights reserved.\r\n"
 				L"\r\n"
 				L"Usage: %ls <options> <jar-file>\r\n"
 				L"Options:\r\n"
