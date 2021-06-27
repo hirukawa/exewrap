@@ -177,7 +177,7 @@ INT WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, wchar_t* lpCmd
 		free(ext_flags);
 		ext_flags = NULL;
 	}
-	//コンソールアプリケーションではイベントログ出力を有効化しません。
+	//GUIアプリケーションではイベントログ出力を有効化しません。
 	//イベントログの出力にはレジストリにメッセージファイルを登録する必要があるためです。
 	//wcscat_s(utilities, BUFFER_SIZE, UTIL_EVENT_LOG_HANDLER);
 
@@ -200,22 +200,34 @@ INT WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, wchar_t* lpCmd
 			SplashInit = (SplashInit_t)GetProcAddress(splashscreendll, "SplashInit");
 			SplashLoadMemory = (SplashLoadMemory_t)GetProcAddress(splashscreendll, "SplashLoadMemory");
 			SplashLoadFile = (SplashLoadFile_t)GetProcAddress(splashscreendll, "SplashLoadFile");
-		}
 
-		// SPLASH_SCREEN_NAME に格納されているファイル名がファイルシステム上に存在する場合はそれを SPLASH_SCREEN_IMAGE より優先して扱います。
-		if(SplashInit != NULL && SplashLoadFile != NULL && GetFileAttributes(splash_screen_name) != INVALID_FILE_ATTRIBUTES)
-		{
-			char* filename = to_platform_encoding(splash_screen_name);
+            if(SplashInit != NULL && SplashLoadMemory != NULL && SplashLoadFile != NULL)
+            {
+                wchar_t* splash_screen_fullpath = (wchar_t*)malloc(MAX_LONG_PATH * sizeof(wchar_t));
+                if(splash_screen_fullpath == NULL) {
+                    exit_process(ERROR_NOT_ENOUGH_MEMORY, L"malloc");
+                }
+                GetModuleFileName(NULL, splash_screen_fullpath, MAX_LONG_PATH);
+                *(wcsrchr(splash_screen_fullpath, L'\\') + 1) = L'\0';
+                wcscat_s(splash_screen_fullpath, MAX_LONG_PATH, splash_screen_name);
 
-			SplashInit();
-			SplashLoadFile(filename);
+                // SPLASH_SCREEN_NAME に格納されているファイル名がファイルシステム上に存在する場合はそれを SPLASH_SCREEN_IMAGE より優先して扱います。
+                if(GetFileAttributes(splash_screen_fullpath) != INVALID_FILE_ATTRIBUTES)
+                {
+                    char* filename = to_platform_encoding(splash_screen_fullpath);
 
-			free(filename);
-		}
-		else if(SplashInit != NULL && SplashLoadMemory != NULL && get_resource(L"SPLASH_SCREEN_IMAGE", &res) != NULL)
-		{
-			SplashInit();
-			SplashLoadMemory(res.buf, res.len);
+                    SplashInit();
+                    SplashLoadFile(filename);
+
+                    free(filename);
+                }
+                else if(get_resource(L"SPLASH_SCREEN_IMAGE", &res) != NULL)
+                {
+                    SplashInit();
+                    SplashLoadMemory(res.buf, res.len);
+                }
+                free(splash_screen_fullpath);
+            }
 		}
 	}
 
