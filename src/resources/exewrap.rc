@@ -13,8 +13,8 @@ FILETYPE       VFT_APP
 	{
 		BLOCK "000004B0"
 		{
-			VALUE "FileDescription", "Native executable java application wrapper.\0"
-			VALUE "LegalCopyright", "(C) 2005-2021 HIRUKAWA Ryo\0"
+			VALUE "FileDescription", "Native executable Java application wrapper.\0"
+			VALUE "LegalCopyright", "(C) 2005-2022 HIRUKAWA Ryo\0"
 			VALUE "ProductName", "exewrap\0"
 			VALUE "ProductVersion", "1.6.5\0"
 			VALUE "OriginalFilename", "exewrap.exe\0"

@@ -2,6 +2,7 @@
 
 SETLOCAL
 SET DDK=C:\WinDDK
+SET SDK=C:\Program Files (x86)\Windows Kits\10\bin\10.0.22000.0
 SET PATH_ORIGINAL=%PATH%
 
 REM clean ############################################################
@@ -49,13 +50,13 @@ goto END
 REM SETENV ###########################################################
 
 :SETENV_X86
-SET PATH=%DDK%\bin\x86\x86;%DDK%\bin\x86;%PATH_ORIGINAL%
+SET PATH=%DDK%\bin\x86\x86;%DDK%\bin\x86;%SDK%\x86;%PATH_ORIGINAL%
 SET INCLUDE=%DDK%\inc\crt;%DDK%\inc\api
 SET LIB=%DDK%\lib\win7\i386;%DDK%\lib\crt\i386
 exit /b
 
 :SETENV_X64
-SET PATH=%DDK%\bin\x86\amd64;%DDK%\bin\x86;%PATH_ORIGINAL%
+SET PATH=%DDK%\bin\x86\amd64;%DDK%\bin\x86;%SDK%\x64;%PATH_ORIGINAL%
 SET INCLUDE=%DDK%\inc\crt;%DDK%\inc\api
 SET LIB=%DDK%\lib\win7\amd64;%DDK%\lib\crt\amd64
 exit /b

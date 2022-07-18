@@ -216,22 +216,6 @@ JNIEnv* create_java_vm(const wchar_t* vm_args_opt, BOOL use_server_vm, DWORD vm_
 		options[vm_args.nOptions++].optionString = str;
 	}
 
-	if(strcpy_s(char_buf, BUFFER_SIZE * 2, "-XX:-UseSharedSpaces") == 0)
-	{
-		char*  str;
-		size_t len;
-
-		len = strlen(char_buf);
-		str = (char*)malloc(len + 1);
-		if(str == NULL)
-		{
-			err = JNI_ENOMEM;
-			goto EXIT;
-		}
-		strcpy_s(str, len + 1, char_buf);
-		options[vm_args.nOptions++].optionString = str;
-	}
-
 	if(GetModuleFileName(NULL, wchar_buf, BUFFER_SIZE) != 0)
 	{
 		wchar_t* p = wcsrchr(wchar_buf, L'\\');
