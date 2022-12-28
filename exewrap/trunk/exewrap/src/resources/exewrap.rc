@@ -3,7 +3,7 @@
 LANGUAGE 0,0
 
 VS_VERSION_INFO VERSIONINFO
-FILEVERSION    1,6,5,0
+FILEVERSION    1,6,6,0
 FILEFLAGSMASK  VS_FFI_FILEFLAGSMASK
 FILEFLAGS      VS_FF_PRERELEASE
 FILEOS         VOS_NT_WINDOWS32
@@ -14,9 +14,9 @@ FILETYPE       VFT_APP
 		BLOCK "000004B0"
 		{
 			VALUE "FileDescription", "Native executable Java application wrapper.\0"
-			VALUE "LegalCopyright", "(C) 2005-2022 HIRUKAWA Ryo\0"
+			VALUE "LegalCopyright", "(C) 2005-2023 HIRUKAWA Ryo\0"
 			VALUE "ProductName", "exewrap\0"
-			VALUE "ProductVersion", "1.6.5\0"
+			VALUE "ProductVersion", "1.6.6\0"
 			VALUE "OriginalFilename", "exewrap.exe\0"
 		}
 	}
