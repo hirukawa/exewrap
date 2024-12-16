@@ -1,0 +1,37 @@
+# Ignore Gradle project-specific cache directory
+.gradle
+local.properties
+
+# Ignore Gradle build output directory
+build
+
+# Ignore Eclipse JDT/CDT project files
+.classpath
+.settings
+.project
+.cproject
+
+# Ignore CDT output directory
+bin
+obj
+
+# Ignore IDEA / Android Studio...
+.idea
+*.ipr
+*.iml
+out
+captures
+device-*.png
+projectFilesBackup
+
+# Ignore image cache
+Thumbs.db
+.DS_Store
+
+# virtual machine crash logs
+hs_err_pid*
+
+# Ignore version control system files
+_svn
+.svn
+.git
